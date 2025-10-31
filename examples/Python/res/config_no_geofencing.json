@@ -1,0 +1,14 @@
+{
+    "measurement_rate_hz": 25,
+    "dynamic_model": 2,
+    "geofencing": null,
+    "timepulse_pin_config": {
+        "active": true,
+        "fixed_pulse": {
+            "frequency": 2,
+            "pulse_width": 0.05
+        },
+        "pulse_when_no_fix": null,
+        "polarity": 1
+    }
+}

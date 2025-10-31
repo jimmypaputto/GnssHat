@@ -1,0 +1,6 @@
+Flask==3.0.0
+Flask-SocketIO==5.3.5
+python-socketio==5.10.0
+pyserial==3.5
+pynmea2==1.19.0
+geopy==2.4.1

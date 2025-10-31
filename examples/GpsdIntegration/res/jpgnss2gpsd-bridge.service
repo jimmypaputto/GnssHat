@@ -1,0 +1,33 @@
+[Unit]
+Description=Jimmy Paputto GNSS to GPSD Bridge Daemon
+Documentation=https://github.com/jimmypaputto/GnssHat
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/bin/jimmypaputto/jpgnss2gpsd-bridge
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jpgnss2gpsd-bridge
+
+# Security settings
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/dev /tmp
+PrivateDevices=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Resource limits
+LimitNOFILE=1024
+LimitNPROC=32
+
+[Install]
+WantedBy=multi-user.target

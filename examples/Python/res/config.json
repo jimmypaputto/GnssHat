@@ -1,0 +1,28 @@
+{
+    "measurement_rate_hz": 20,
+    "dynamic_model": 0,
+    "geofencing": {
+        "confidence_level": 3,
+        "geofences": [
+            {
+                "latitude": 41.902205071091224,
+                "longitude": 12.4539203390548,
+                "radius_m": 2005
+            },
+            {
+                "latitude": 52.257211745024186,
+                "longitude": 20.311759615806704,
+                "radius_m": 1810
+            }
+        ]
+    },
+    "timepulse_pin_config": {
+        "active": true,
+        "fixed_pulse": {
+            "frequency": 1,
+            "pulse_width": 0.1
+        },
+        "pulse_when_no_fix": null,
+        "polarity": 1
+    }
+}

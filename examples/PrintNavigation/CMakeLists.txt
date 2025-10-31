@@ -1,0 +1,9 @@
+cmake_minimum_required(VERSION 3.10)
+
+project(PrintNavigation)
+
+add_executable(PrintNavigationAdvanced src/PrintNavigationAdvanced.cpp)
+target_link_libraries(PrintNavigationAdvanced GnssHat)
+
+add_executable(PrintNavigationBasic src/PrintNavigationBasic.cpp)
+target_link_libraries(PrintNavigationBasic GnssHat)

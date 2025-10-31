@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS Visualization - Jimmy Paputto</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛰️ GPS Real-Time Visualization</h1>
+            <div class="status-bar">
+                <div class="status-item">
+                    <span class="status-label">Connection:</span>
+                    <span id="connection-status" class="status-value disconnected">Disconnected</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Fix:</span>
+                    <span id="fix-status" class="status-value">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Satellites:</span>
+                    <span id="satellites" class="status-value">0</span>
+                </div>
+                <button id="reset-btn" class="btn-reset" title="Reset reference position">
+                    🎯 Reset Origin
+                </button>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- Left side: Maps with Tabs -->
+            <div class="map-container">
+                <div class="map-header">
+                    <div class="map-tabs">
+                        <button class="map-tab active" data-tab="relative">📐 Relative Map</button>
+                        <button class="map-tab" data-tab="terrain">🗺️ Terrain Map</button>
+                    </div>
+                    <div class="map-info">
+                        <span id="scale-info">Scale: ±20.0m</span>
+                        <div class="scale-slider-container">
+                            <label for="scale-slider">Range:</label>
+                            <input type="range" id="scale-slider" class="scale-slider" min="0.5" max="30" value="20" step="0.5">
+                            <span id="scale-value">20m</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Relative Canvas Map -->
+                <div id="relative-map" class="map-view active">
+                    <div class="canvas-wrapper">
+                        <canvas id="gps-map"></canvas>
+                    </div>
+                    <div class="map-footer">
+                        <div class="position-display">
+                            <div class="coord-item">
+                                <span class="coord-label">X (East):</span>
+                                <span id="pos-x" class="coord-value">0.00 m</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Y (North):</span>
+                                <span id="pos-y" class="coord-value">0.00 m</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Distance:</span>
+                                <span id="distance" class="coord-value">0.00 m</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- OpenStreetMap Terrain Map -->
+                <div id="terrain-map" class="map-view" style="display: none;">
+                    <div id="osm-map" class="osm-map-wrapper"></div>
+                    <div class="map-footer">
+                        <div class="position-display">
+                            <div class="coord-item">
+                                <span class="coord-label">Lat:</span>
+                                <span id="osm-lat" class="coord-value">0.000000°</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Lon:</span>
+                                <span id="osm-lon" class="coord-value">0.000000°</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Zoom:</span>
+                                <span id="osm-zoom" class="coord-value">18</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right side: Data table -->
+            <div class="data-container">
+                <div class="data-header">
+                    <h2>GPS Data (PVT)</h2>
+                </div>
+                <div class="data-content">
+                    <table class="data-table">
+                        <tbody>
+                            <!-- Time & Date -->
+                            <tr class="section-header">
+                                <td colspan="2">⏰ Time & Date</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">UTC Time</td>
+                                <td class="data-value" id="data-utc-time">--:--:--</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Date</td>
+                                <td class="data-value" id="data-date">----/--/--</td>
+                            </tr>
+
+                            <!-- Fix Information -->
+                            <tr class="section-header">
+                                <td colspan="2">🔧 Fix Information</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Fix Quality</td>
+                                <td class="data-value" id="data-fix-quality">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Fix Status</td>
+                                <td class="data-value" id="data-fix-status">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Fix Type</td>
+                                <td class="data-value" id="data-fix-type">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Satellites</td>
+                                <td class="data-value" id="data-satellites">0</td>
+                            </tr>
+
+                            <!-- Position -->
+                            <tr class="section-header">
+                                <td colspan="2">📍 Position</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Latitude</td>
+                                <td class="data-value" id="data-latitude">0.000000°</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Longitude</td>
+                                <td class="data-value" id="data-longitude">0.000000°</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Altitude (MSL)</td>
+                                <td class="data-value" id="data-altitude-msl">0.0 m</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">HDOP</td>
+                                <td class="data-value" id="data-hdop">0.0</td>
+                            </tr>
+
+                            <!-- Velocity -->
+                            <tr class="section-header">
+                                <td colspan="2">🚀 Velocity</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Speed (Ground)</td>
+                                <td class="data-value" id="data-speed">0.00 m/s</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Heading</td>
+                                <td class="data-value" id="data-heading">0.0°</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Jimmy Paputto GNSS HAT - Visualization System © 2025</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/map.js') }}"></script>
+</body>
+</html>

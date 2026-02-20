@@ -17,20 +17,26 @@ constexpr uint32_t CFG_UART1_DATABITS = 0x20520003;
 constexpr uint32_t CFG_UART1_PARITY   = 0x20520004;
 constexpr uint32_t CFG_UART1_ENABLED  = 0x10520005;
 
+constexpr uint32_t CFG_UART1OUTPROT_UBX  = 0x10740001;
+constexpr uint32_t CFG_UART1OUTPROT_NMEA = 0x10740002;
+
 constexpr uint32_t CFG_UART2_BAUDRATE = 0x40530001;
 constexpr uint32_t CFG_UART2_STOPBITS = 0x20530002;
 constexpr uint32_t CFG_UART2_DATABITS = 0x20530003;
 constexpr uint32_t CFG_UART2_PARITY   = 0x20530004;
 constexpr uint32_t CFG_UART2_ENABLED  = 0x10530005;
 
+constexpr uint32_t CFG_UART2INPROT_RTCM3X = 0x10750004;
+
+constexpr uint32_t CFG_UART2OUTPROT_UBX  = 0x10760001;
+constexpr uint32_t CFG_UART2OUTPROT_NMEA = 0x10760002;
+constexpr uint32_t CFG_UART2OUTPROT_RTCM3X = 0x10760004;
+
 constexpr uint32_t CFG_TXREADY_ENABLED   = 0x10a20001;
 constexpr uint32_t CFG_TXREADY_POLARITY  = 0x10a20002;
 constexpr uint32_t CFG_TXREADY_PIN       = 0x20a20003;
 constexpr uint32_t CFG_TXREADY_THRESHOLD = 0x30a20004;
 constexpr uint32_t CFG_TXREADY_INTERFACE = 0x20a20005;
-
-constexpr uint32_t CFG_UART1OUTPROT_UBX  = 0x10740001;
-constexpr uint32_t CFG_UART1OUTPROT_NMEA = 0x10740002;
 
 constexpr uint32_t CFG_MSGOUT_UBX_MON_RF_UART1  = 0x2091035a;
 constexpr uint32_t CFG_MSGOUT_UBX_NAV_DOP_UART1 = 0x20910039;
@@ -88,6 +94,6 @@ constexpr uint32_t CFG_TP_ALIGN_TO_TOW_TP1 = 0x1005000A; // Align pulse to top o
 constexpr uint32_t CFG_TP_POL_TP1 = 0x1005000B;          // Timepulse 1 polarity (U1: 0=falling, 1=rising)
 constexpr uint32_t CFG_TP_TIMEGRID_TP1 = 0x1005000C;     // Timepulse 1 time grid (U1: 0=UTC, 1=GPS)
 
-}  // JimmyPaputto::PortConfigKeys
+}  // JimmyPaputto::UbxCfgKeys
 
 #endif  // JIMMY_PAPUTTO_UBX_CFG_KEYS_HPP_

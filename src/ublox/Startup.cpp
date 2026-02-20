@@ -478,19 +478,25 @@ std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigVa
     {UbxCfgKeys::CFG_UART1_PARITY,   {static_cast<uint8_t>(CFG_UART1_PARITY::NONE)}},
     {UbxCfgKeys::CFG_UART1_STOPBITS, {static_cast<uint8_t>(CFG_UART1_STOPBITS::ONE)}},
 
+    {UbxCfgKeys::CFG_UART1OUTPROT_UBX,  {0x01}},
+    {UbxCfgKeys::CFG_UART1OUTPROT_NMEA, {0x00}},
+
     {UbxCfgKeys::CFG_UART2_ENABLED,  {0x01}},
     {UbxCfgKeys::CFG_UART2_BAUDRATE, {0x00, 0xC2, 0x01, 0x00}},  // 115200
     {UbxCfgKeys::CFG_UART2_DATABITS, {static_cast<uint8_t>(CFG_UART1_DATABITS::EIGHT)}},
     {UbxCfgKeys::CFG_UART2_PARITY,   {static_cast<uint8_t>(CFG_UART1_PARITY::NONE)}},
     {UbxCfgKeys::CFG_UART2_STOPBITS, {static_cast<uint8_t>(CFG_UART1_STOPBITS::ONE)}},
 
+    {UbxCfgKeys::CFG_UART2INPROT_RTCM3X, {0x01}},
+
+    {UbxCfgKeys::CFG_UART2OUTPROT_UBX,    {0x00}},
+    {UbxCfgKeys::CFG_UART2OUTPROT_NMEA,   {0x00}},
+    {UbxCfgKeys::CFG_UART2OUTPROT_RTCM3X, {0x01}},
+
     {UbxCfgKeys::CFG_TXREADY_ENABLED,   {0x01}},
     {UbxCfgKeys::CFG_TXREADY_POLARITY,  {0x00}},
     {UbxCfgKeys::CFG_TXREADY_PIN,       {0x07}},
     {UbxCfgKeys::CFG_TXREADY_THRESHOLD, {0x01, 0x00}},
-
-    {UbxCfgKeys::CFG_UART1OUTPROT_UBX,  {0x01}},
-    {UbxCfgKeys::CFG_UART1OUTPROT_NMEA, {0x00}},
 
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_UART1,  {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_UART1, {0x01}},
@@ -577,12 +583,12 @@ bool StartupBase::configure(const std::vector<uint32_t>& keys)
     commDriver_.transmitReceive(serializedValset, rxBuff_);
     ubxParser_.parse(rxBuff_);
 
-    if (!ack)
+    if (!set_ack)
     {
-        bool result = try3times([this, &ack]() {
+        bool result = try3times([this, &set_ack]() {
             commDriver_.getRxBuff(rxBuff_.data(), rxBuff_.size());
             ubxParser_.parse(rxBuff_);
-            return ack;
+            return set_ack;
         });
 
         if (!result)
@@ -741,21 +747,24 @@ F9PStartup::F9PStartup(ICommDriver& commDriver,
         return;
 
     base_ = config.rtk->mode == ERtkMode::Base && config.rtk->base.has_value();
-    if (base_)
+    if (!base_)
     {
-        const auto& surveyIn = config.rtk->base->surveyIn;
-        auto& ecv = StartupBase::expectedConfigValues_;
-        ecv[UbxCfgKeys::CFG_TMODE_MODE] =
-            {static_cast<uint8_t>(CFG_TMODE_MODE::SURVEY_IN)};
-        ecv[UbxCfgKeys::CFG_TMODE_SVIN_MIN_DUR] =
-            serializeInt2LittleEndian<uint32_t>(
-                surveyIn.minimumObservationTime_s
-            );
-        ecv[UbxCfgKeys::CFG_TMODE_SVIN_ACC_LIMIT] =
-            serializeInt2LittleEndian<uint32_t>(
-                static_cast<uint32_t>(surveyIn.requiredPositionAccuracy_m * 10000.0)
-            );
+        rover_ = true;
+        return;
     }
+
+    const auto& surveyIn = config.rtk->base->surveyIn;
+    auto& ecv = StartupBase::expectedConfigValues_;
+    ecv[UbxCfgKeys::CFG_TMODE_MODE] =
+        {static_cast<uint8_t>(CFG_TMODE_MODE::SURVEY_IN)};
+    ecv[UbxCfgKeys::CFG_TMODE_SVIN_MIN_DUR] =
+        serializeInt2LittleEndian<uint32_t>(
+            surveyIn.minimumObservationTime_s
+        );
+    ecv[UbxCfgKeys::CFG_TMODE_SVIN_ACC_LIMIT] =
+        serializeInt2LittleEndian<uint32_t>(static_cast<uint32_t>(
+            surveyIn.requiredPositionAccuracy_m * 10000.0
+        ));
 }
 
 bool F9PStartup::execute()
@@ -777,11 +786,15 @@ bool F9PStartup::execute()
     if (!result)
         return false;
 
-    // TODO: ogar protin/out dla uart2
-
     if (base_)
     {
         result = rtkBaseStartup();
+        if (!result)
+            return false;
+    }
+    else if (rover_)
+    {
+        result = rtkRoverStartup();
         if (!result)
             return false;
     }
@@ -802,6 +815,15 @@ bool F9PStartup::rtkBaseStartup()
     if (!result)
         return false;
 
+    const std::vector<uint32_t> uart2ProtOutKeys = {
+        UbxCfgKeys::CFG_UART2OUTPROT_UBX,
+        UbxCfgKeys::CFG_UART2OUTPROT_NMEA,
+        UbxCfgKeys::CFG_UART2OUTPROT_RTCM3X,
+    };
+    result = configure(uart2ProtOutKeys);
+    if (!result)
+        return false;
+
     const std::vector<uint32_t> rtcm3MsgKeys = {
         UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1005_UART2,
         UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1074_UART2,
@@ -818,6 +840,20 @@ bool F9PStartup::rtkBaseStartup()
     if (!result)
         return false;
 
+    return true;
+}
+
+bool F9PStartup::rtkRoverStartup()
+{
+    bool result = false;
+
+    const std::vector<uint32_t> uart2ProtInKeys = {
+        UbxCfgKeys::CFG_UART2INPROT_RTCM3X
+    };
+    result = configure(uart2ProtInKeys);
+    if (!result)
+        return false;
+    
     return true;
 }
 

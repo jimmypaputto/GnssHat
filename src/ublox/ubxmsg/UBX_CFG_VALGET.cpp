@@ -16,11 +16,20 @@ std::unordered_map<uint32_t, uint8_t> ConfigKeySizeMap::keySizes_ = {
     {UbxCfgKeys::CFG_UART1_PARITY,   1},
     {UbxCfgKeys::CFG_UART1_STOPBITS, 1},
 
+    {UbxCfgKeys::CFG_UART1OUTPROT_UBX,  1},
+    {UbxCfgKeys::CFG_UART1OUTPROT_NMEA, 1},
+
     {UbxCfgKeys::CFG_UART2_ENABLED,  1}, 
     {UbxCfgKeys::CFG_UART2_BAUDRATE, 4},
     {UbxCfgKeys::CFG_UART2_DATABITS, 1},
     {UbxCfgKeys::CFG_UART2_PARITY,   1},
     {UbxCfgKeys::CFG_UART2_STOPBITS, 1},
+
+    {UbxCfgKeys::CFG_UART2INPROT_RTCM3X, 1},
+
+    {UbxCfgKeys::CFG_UART2OUTPROT_UBX,    1},
+    {UbxCfgKeys::CFG_UART2OUTPROT_NMEA,   1},
+    {UbxCfgKeys::CFG_UART2OUTPROT_RTCM3X, 1},
 
     {UbxCfgKeys::CFG_TXREADY_ENABLED,   1},
     {UbxCfgKeys::CFG_TXREADY_POLARITY,  1},
@@ -28,8 +37,6 @@ std::unordered_map<uint32_t, uint8_t> ConfigKeySizeMap::keySizes_ = {
     {UbxCfgKeys::CFG_TXREADY_THRESHOLD, 2},
     {UbxCfgKeys::CFG_TXREADY_INTERFACE, 1},
 
-    {UbxCfgKeys::CFG_UART1OUTPROT_UBX,  1},
-    {UbxCfgKeys::CFG_UART1OUTPROT_NMEA, 1},
 
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_UART1,  1},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_UART1, 1},

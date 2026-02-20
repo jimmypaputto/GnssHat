@@ -2,11 +2,14 @@
  * Jimmy Paputto 2025
  */
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <thread>
 
 #include <jimmypaputto/GnssHat.hpp>
+
+using namespace JimmyPaputto;
 
 
 uint16_t getFrameId(const std::vector<uint8_t>& frame)
@@ -20,22 +23,22 @@ uint16_t getFrameId(const std::vector<uint8_t>& frame)
     return msgId;
 }
 
-JimmyPaputto::GnssConfig createConfig()
+GnssConfig createConfig()
 {
-    return JimmyPaputto::GnssConfig {
+    return GnssConfig {
         .measurementRate_Hz = 1,
-        .dynamicModel = JimmyPaputto::EDynamicModel::Stationary,
-        .timepulsePinConfig = JimmyPaputto::TimepulsePinConfig {
+        .dynamicModel = EDynamicModel::Stationary,
+        .timepulsePinConfig = TimepulsePinConfig {
             .active = true,
-            .fixedPulse = JimmyPaputto::TimepulsePinConfig::Pulse { 1, 0.1 },
+            .fixedPulse = TimepulsePinConfig::Pulse { 1, 0.1 },
             .pulseWhenNoFix = std::nullopt,
-            .polarity = JimmyPaputto::ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
+            .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
         },
         .geofencing = std::nullopt,
-        .rtk = JimmyPaputto::RtkConfig {
-            .mode = JimmyPaputto::ERtkMode::Base,
-            .base = JimmyPaputto::BaseConfig {
-                .surveyIn = JimmyPaputto::BaseConfig::SurveyIn {
+        .rtk = RtkConfig {
+            .mode = ERtkMode::Base,
+            .base = BaseConfig {
+                .surveyIn = BaseConfig::SurveyIn {
                     .minimumObservationTime_s = 120,
                     .requiredPositionAccuracy_m = 50.0
                 }
@@ -44,9 +47,23 @@ JimmyPaputto::GnssConfig createConfig()
     };
 }
 
+void printFrame(const std::vector<uint8_t>& frame, const std::string& time)
+{
+    printf("[%s] Frame %zu: %zu bytes: ", 
+        time.c_str(), getFrameId(frame), frame.size());
+
+    for (size_t j = 0; j < frame.size(); ++j)
+    {
+        printf("%02X ", frame[j]);
+        if ((j + 1) % 16 == 0 && j + 1 < frame.size())
+            printf("\n                                             ");
+    }
+    printf("\r\n");
+}
+
 auto main() -> int
 {
-    auto* ubxHat = JimmyPaputto::IGnssHat::create();
+    auto* ubxHat = IGnssHat::create();
     if (!ubxHat)
     {
         printf("Failed to create GNSS HAT instance\r\n");
@@ -66,13 +83,13 @@ auto main() -> int
     {
         const auto pvt = ubxHat->waitAndGetFreshNavigation().pvt;
         const auto fixStatus = pvt.fixType;
-        const auto time = JimmyPaputto::Utils::utcTimeFromGnss_ISO8601(pvt);
-        if (fixStatus != JimmyPaputto::EFixType::TimeOnlyFix)
+        const auto time = Utils::utcTimeFromGnss_ISO8601(pvt);
+        if (fixStatus != EFixType::TimeOnlyFix)
         {
             printf(
                 "[%s] Fix status: %s, waiting for TimeOnlyFix for RTK Base\r\n",
                 time.c_str(),
-                JimmyPaputto::Utils::eFixType2string(fixStatus).c_str()
+                Utils::eFixType2string(fixStatus).c_str()
             );
         }
         else
@@ -84,20 +101,11 @@ auto main() -> int
             const auto rtcm3Frames =
                 ubxHat->rtk()->base()->getTinyCorrections();
 
-            for (size_t i = 0; i < rtcm3Frames.size(); ++i)
-            {
-                const auto& frame = rtcm3Frames[i];
-                printf("[%s] Frame %zu: %zu bytes: ", 
-                    time.c_str(), getFrameId(frame), frame.size());
-                
-                for (size_t j = 0; j < frame.size(); ++j)
-                {
-                    printf("%02X ", frame[j]);
-                    if ((j + 1) % 16 == 0 && j + 1 < frame.size())
-                        printf("\n                                             ");
-                }
-                printf("\r\n");
-            }
+            std::for_each(
+                rtcm3Frames.cbegin(),
+                rtcm3Frames.cend(),
+                [&time](const auto& f) { printFrame(f, time); }
+            );
         }
     }
 

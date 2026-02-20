@@ -72,7 +72,8 @@ protected:
     UbxParser& ubxParser_;
     static constexpr uint32_t rxBuffSize = 1024;
     std::vector<uint8_t> rxBuff_;
-    static std::unordered_map<uint32_t, std::vector<uint8_t>> expectedConfigValues_;
+    static std::unordered_map<uint32_t, std::vector<uint8_t>>
+        expectedConfigValues_;
 };
 
 class M9NStartup: public StartupBase, public IStartupStrategy
@@ -112,6 +113,7 @@ public:
 
 private:
     bool rtkBaseStartup();
+    bool rtkRoverStartup();
 
     bool base_{false};
     bool rover_{false};

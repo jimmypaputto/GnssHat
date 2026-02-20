@@ -110,7 +110,7 @@ int main()
     }
     
     printf("Startup done\n\n");
-    
+
     jp_gnss_navigation_t navigation;
 
     while (atomic_load(&running))

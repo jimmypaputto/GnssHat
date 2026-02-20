@@ -8,28 +8,30 @@
 
 #include <jimmypaputto/GnssHat.hpp>
 
+using namespace JimmyPaputto;
 
-JimmyPaputto::GnssConfig createConfig()
+
+GnssConfig createConfig()
 {
-    return JimmyPaputto::GnssConfig {
+    return GnssConfig {
         .measurementRate_Hz = 1,
-        .dynamicModel = JimmyPaputto::EDynamicModel::Stationary,
-        .timepulsePinConfig = JimmyPaputto::TimepulsePinConfig {
+        .dynamicModel = EDynamicModel::Stationary,
+        .timepulsePinConfig = TimepulsePinConfig {
             .active = true,
-            .fixedPulse = JimmyPaputto::TimepulsePinConfig::Pulse { 1, 0.1 },
+            .fixedPulse = TimepulsePinConfig::Pulse { 1, 0.1 },
             .pulseWhenNoFix = std::nullopt,
-            .polarity = JimmyPaputto::ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
+            .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
         },
         .geofencing = std::nullopt,
-        .rtk = JimmyPaputto::RtkConfig {
-            .mode = JimmyPaputto::ERtkMode::Rover
+        .rtk = RtkConfig {
+            .mode = ERtkMode::Rover
         }
     };
 }
 
 auto main() -> int
 {
-    auto* ubxHat = JimmyPaputto::IGnssHat::create();
+    auto* ubxHat = IGnssHat::create();
     if (!ubxHat)
     {
         printf("Failed to create GNSS HAT instance\r\n");
@@ -51,9 +53,9 @@ auto main() -> int
         const auto fixQuality = pvt.fixQuality;
         const auto fixType = pvt.fixType;
         printf("[%s] Fix Quality: %s, Fix Type: %s\r\n",
-            JimmyPaputto::Utils::utcTimeFromGnss_ISO8601(pvt).c_str(),
-            JimmyPaputto::Utils::eFixQuality2string(fixQuality).c_str(),
-            JimmyPaputto::Utils::eFixType2string(fixType).c_str()
+            Utils::utcTimeFromGnss_ISO8601(pvt).c_str(),
+            Utils::eFixQuality2string(fixQuality).c_str(),
+            Utils::eFixType2string(fixType).c_str()
         );
     }
 

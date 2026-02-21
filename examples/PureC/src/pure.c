@@ -94,14 +94,6 @@ int main()
     jp_gnss_gnss_config_t config = create_config();
     printf("Configuration prepared successfully\r\n");
 
-    if (!jp_gnss_gnss_config_validate(&config))
-    {
-        printf("Error: Invalid configuration\n");
-        jp_gnss_hat_destroy(gnss);
-        return -1;
-    }
-    printf("Configuration validated successfully\n");
-
     if (!jp_gnss_hat_start(gnss, &config))
     {
         printf("Error: Failed to start GNSS\n");

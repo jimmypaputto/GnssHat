@@ -781,8 +781,16 @@ static PyObject* PositionVelocityTime_new(PyTypeObject* type, PyObject* args,
         self->fix_quality = 0;
         self->fix_status = 0;
         self->fix_type = 0;
-        self->utc_time = PyObject_CallObject((PyObject*)&UtcTimeType, NULL);
-        self->date = PyObject_CallObject((PyObject*)&DateType, NULL);
+        self->utc_time = UtcTimeType.tp_alloc(&UtcTimeType, 0);
+        if (self->utc_time) {
+            ((UtcTime*)self->utc_time)->valid = Py_False;
+            Py_INCREF(Py_False);
+        }
+        self->date = DateType.tp_alloc(&DateType, 0);
+        if (self->date) {
+            ((Date*)self->date)->valid = Py_False;
+            Py_INCREF(Py_False);
+        }
     }
     return (PyObject*)self;
 }
@@ -796,11 +804,6 @@ static void PositionVelocityTime_dealloc(PositionVelocityTime* self)
 
 static PyObject* PositionVelocityTime_str(PositionVelocityTime* self)
 {
-    /* Get enum names via IntEnum .name attribute */
-    const char* fix_quality_name = "?";
-    const char* fix_status_name = "?";
-    const char* fix_type_name = "?";
-
     /* utc_time / date __str__ */
     PyObject* utc_repr = NULL;
     PyObject* date_repr = NULL;
@@ -1043,9 +1046,9 @@ static PyObject* TimepulsePinConfig_new(PyTypeObject* type, PyObject* args,
         self->active = Py_False;
         Py_INCREF(self->active);
         self->fixed_pulse =
-            (Pulse*)PyObject_CallObject((PyObject*)&PulseType, NULL);
+            (Pulse*)PulseType.tp_alloc(&PulseType, 0);
         self->pulse_when_no_fix =
-            (Pulse*)PyObject_CallObject((PyObject*)&PulseType, NULL);
+            (Pulse*)PulseType.tp_alloc(&PulseType, 0);
         self->polarity = JP_GNSS_TIMEPULSE_POLARITY_RISING_EDGE;
     }
     return (PyObject*)self;

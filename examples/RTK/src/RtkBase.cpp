@@ -23,7 +23,7 @@ uint16_t getFrameId(const std::vector<uint8_t>& frame)
     return msgId;
 }
 
-GnssConfig createConfig()
+GnssConfig createSurveyInConfig()
 {
     return GnssConfig {
         .measurementRate_Hz = 1,
@@ -38,9 +38,65 @@ GnssConfig createConfig()
         .rtk = RtkConfig {
             .mode = ERtkMode::Base,
             .base = BaseConfig {
-                .surveyIn = BaseConfig::SurveyIn {
+                .mode = BaseConfig::SurveyIn {
                     .minimumObservationTime_s = 120,
                     .requiredPositionAccuracy_m = 50.0
+                }
+            }
+        }
+    };
+}
+
+GnssConfig createFixedPositionConfig_Lla()
+{
+    return GnssConfig {
+        .measurementRate_Hz = 1,
+        .dynamicModel = EDynamicModel::Stationary,
+        .timepulsePinConfig = TimepulsePinConfig {
+            .active = true,
+            .fixedPulse = TimepulsePinConfig::Pulse { 1, 0.1 },
+            .pulseWhenNoFix = std::nullopt,
+            .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
+        },
+        .geofencing = std::nullopt,
+        .rtk = RtkConfig {
+            .mode = ERtkMode::Base,
+            .base = BaseConfig {
+                .mode = BaseConfig::FixedPosition {
+                    .position = BaseConfig::FixedPosition::Lla {
+                        .latitude_deg  = 52.232222222,
+                        .longitude_deg = 21.008055556,
+                        .height_m      = 110.0
+                    },
+                    .positionAccuracy_m = 0.5
+                }
+            }
+        }
+    };
+}
+
+GnssConfig createFixedPositionConfig_Ecef()
+{
+    return GnssConfig {
+        .measurementRate_Hz = 1,
+        .dynamicModel = EDynamicModel::Stationary,
+        .timepulsePinConfig = TimepulsePinConfig {
+            .active = true,
+            .fixedPulse = TimepulsePinConfig::Pulse { 1, 0.1 },
+            .pulseWhenNoFix = std::nullopt,
+            .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
+        },
+        .geofencing = std::nullopt,
+        .rtk = RtkConfig {
+            .mode = ERtkMode::Base,
+            .base = BaseConfig {
+                .mode = BaseConfig::FixedPosition {
+                    .position = BaseConfig::FixedPosition::Ecef {
+                        .x_m = 3656215.987,
+                        .y_m = 1409547.654,
+                        .z_m = 5049982.321
+                    },
+                    .positionAccuracy_m = 0.5
                 }
             }
         }
@@ -71,7 +127,7 @@ auto main() -> int
     }
 
     ubxHat->softResetUbloxSom_HotStart();
-    const bool isStartupDone = ubxHat->start(createConfig());
+    const bool isStartupDone = ubxHat->start(createSurveyInConfig());
     if (!isStartupDone)
     {
         printf("Failed to start GNSS\r\n");

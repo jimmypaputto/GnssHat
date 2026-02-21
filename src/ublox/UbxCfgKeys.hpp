@@ -54,6 +54,20 @@ constexpr uint32_t CFG_MSGOUT_RTCM_3X_TYPE1127_UART2 = 0x209102d8;
 constexpr uint32_t CFG_MSGOUT_RTCM_3X_TYPE1230_UART2 = 0x20910305;
 
 constexpr uint32_t CFG_TMODE_MODE           = 0x20030001;
+constexpr uint32_t CFG_TMODE_POS_TYPE       = 0x20030002;
+constexpr uint32_t CFG_TMODE_ECEF_X         = 0x40030003;
+constexpr uint32_t CFG_TMODE_ECEF_Y         = 0x40030004;
+constexpr uint32_t CFG_TMODE_ECEF_Z         = 0x40030005;
+constexpr uint32_t CFG_TMODE_ECEF_X_HP      = 0x20030006;
+constexpr uint32_t CFG_TMODE_ECEF_Y_HP      = 0x20030007;
+constexpr uint32_t CFG_TMODE_ECEF_Z_HP      = 0x20030008;
+constexpr uint32_t CFG_TMODE_LAT            = 0x40030009;
+constexpr uint32_t CFG_TMODE_LON            = 0x4003000a;
+constexpr uint32_t CFG_TMODE_HEIGHT         = 0x4003000b;
+constexpr uint32_t CFG_TMODE_LAT_HP         = 0x2003000c;
+constexpr uint32_t CFG_TMODE_LON_HP         = 0x2003000d;
+constexpr uint32_t CFG_TMODE_HEIGHT_HP      = 0x2003000e;
+constexpr uint32_t CFG_TMODE_FIXED_POS_ACC  = 0x4003000f;
 constexpr uint32_t CFG_TMODE_SVIN_MIN_DUR   = 0x40030010;
 constexpr uint32_t CFG_TMODE_SVIN_ACC_LIMIT = 0x40030011;
 

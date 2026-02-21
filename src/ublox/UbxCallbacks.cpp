@@ -48,7 +48,7 @@ UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
         std::ref(configRegistry)
     );
 
-    callbacks_[to_underlying(UBX_CFG_CFG)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
+    callbacks_[to_underlying(UBX_CFG_CFG)] = [](ubxmsg::IUbxMsg&) -> void {
         // empty callback
     };
 
@@ -93,7 +93,7 @@ UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
         );
     };
 
-    callbacks_[to_underlying(UBX_CFG_VALSET)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
+    callbacks_[to_underlying(UBX_CFG_VALSET)] = [](ubxmsg::IUbxMsg&) -> void {
         // empty callback
     };
 

@@ -16,17 +16,12 @@ class UBX_CFG_CFG: public IUbxMsg  // not fully supported, just used for save cf
 public:
     explicit UBX_CFG_CFG() = default;
 
-    explicit UBX_CFG_CFG(std::span<const uint8_t> serialized)
-    {
-        deserialize(serialized);
-    }
-
     std::vector<uint8_t> serialize() const override
     {
         return { };
     }
 
-    void deserialize(std::span<const uint8_t> serialized) override
+    void deserialize(std::span<const uint8_t>) override
     {
 
     }

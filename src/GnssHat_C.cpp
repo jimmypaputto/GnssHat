@@ -82,21 +82,10 @@ EDynamicModel convert_dynamic_model(jp_gnss_dynamic_model_t model)
     return static_cast<EDynamicModel>(model);
 }
 
-jp_gnss_dynamic_model_t convert_dynamic_model(EDynamicModel model)
-{
-    return static_cast<jp_gnss_dynamic_model_t>(model);
-}
-
 ETimepulsePinPolarity convert_timepulse_polarity(
     jp_gnss_timepulse_polarity_t polarity)
 {
     return static_cast<ETimepulsePinPolarity>(polarity);
-}
-
-jp_gnss_timepulse_polarity_t convert_timepulse_polarity(
-    ETimepulsePinPolarity polarity)
-{
-    return static_cast<jp_gnss_timepulse_polarity_t>(polarity);
 }
 
 EPioPinPolarity convert_pio_pin_polarity(jp_gnss_pio_pin_polarity_t polarity)
@@ -217,29 +206,6 @@ TimepulsePinConfig convert_timepulse_config(
 
     cpp_config.polarity = convert_timepulse_polarity(c_config.polarity);
     return cpp_config;
-}
-
-jp_gnss_timepulse_pin_config_t convert_timepulse_config(
-    const TimepulsePinConfig& cpp_config)
-{
-    jp_gnss_timepulse_pin_config_t c_config;
-
-    c_config.active = cpp_config.active;
-    c_config.fixed_pulse.frequency = cpp_config.fixedPulse.frequency;
-    c_config.fixed_pulse.pulse_width = cpp_config.fixedPulse.pulseWidth;
-
-    c_config.has_pulse_when_no_fix = cpp_config.pulseWhenNoFix.has_value();
-    if (c_config.has_pulse_when_no_fix)
-    {
-        c_config.pulse_when_no_fix.frequency =
-            cpp_config.pulseWhenNoFix->frequency;
-        c_config.pulse_when_no_fix.pulse_width =
-            cpp_config.pulseWhenNoFix->pulseWidth;
-    }
-
-    c_config.polarity = convert_timepulse_polarity(cpp_config.polarity);
-
-    return c_config;
 }
 
 GnssConfig convert_gnss_config(const jp_gnss_gnss_config_t& c_config)

@@ -34,7 +34,7 @@ bool checkGeofencing(const std::optional<GnssConfig::Geofencing>& geofencing)
         return true;
     }
 
-    if (geofencing->confidenceLevel > 5 || geofencing->confidenceLevel < 0)
+    if (geofencing->confidenceLevel > 5)
     {
         fprintf(
             stderr,

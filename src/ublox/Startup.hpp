@@ -68,8 +68,8 @@ protected:
 
     std::vector<uint8_t> getExpectedValue(const uint32_t key);
 
-    IUbloxConfigRegistry& configRegistry_;
     ICommDriver& commDriver_;
+    IUbloxConfigRegistry& configRegistry_;
     UbxParser& ubxParser_;
     static constexpr uint32_t rxBuffSize = 1024;
     std::vector<uint8_t> rxBuff_;

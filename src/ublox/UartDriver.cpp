@@ -17,9 +17,9 @@ namespace JimmyPaputto
 {
 
 UartDriver::UartDriver()
-:	uartFd_(-1),
+:   baudrate_(expectedBaudrate),
+    uartFd_(-1),
     uartDevice_(UBX_UART_DEV),
-    baudrate_(expectedBaudrate),
     epollFd_(-1)
 {
     init(baudrate_);
@@ -54,11 +54,11 @@ void UartDriver::transmitReceive(std::span<const uint8_t> txBuff,
     }
 
     const ssize_t written = write(uartFd_, txBuff.data(), txBuff.size());
-    if (written != txBuff.size())
+    if (written != static_cast<ssize_t>(txBuff.size()))
     {
         printf(
             "[UART] Error: Failed to write all data, expected: %zu, "
-            "written: %d\n",
+            "written: %ld\n",
             txBuff.size(),
             written
         );
@@ -188,11 +188,11 @@ void UartDriver::transmit(std::span<const uint8_t> txBuff)
     }
 
     const ssize_t written = write(uartFd_, txBuff.data(), txBuff.size());
-    if (written != txBuff.size())
+    if (written != static_cast<ssize_t>(txBuff.size()))
     {
         printf(
             "[UART] Error: Failed to write all data, expected: %zu, "
-            "written: %d\n",
+            "written: %ld\n",
             txBuff.size(),
             written
         );

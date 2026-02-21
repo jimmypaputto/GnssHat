@@ -146,7 +146,7 @@ std::array<uint8_t, 2> UbxParser::checksum(std::span<const uint8_t> frame,
     uint8_t cka = 0;
     uint8_t ckb = 0;
 
-    for (int i = 2; i < frame.size() - offset; i++)
+    for (std::size_t i = 2; i < frame.size() - offset; i++)
     {
         cka += frame[i];
         ckb += cka;
@@ -160,7 +160,7 @@ bool UbxParser::checkFrame(std::span<const uint8_t> frame)
     uint8_t cka = 0;
     uint8_t ckb = 0;
 
-    for (int i = 2; i < frame.size() - 2; i++)
+    for (std::size_t i = 2; i < frame.size() - 2; i++)
     {
         cka += frame[i];
         ckb += cka;

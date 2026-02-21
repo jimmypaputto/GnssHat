@@ -80,12 +80,12 @@ public:
         });
     }
 
-    inline const EUbxMsg eUbxMsg() const
+    inline EUbxMsg eUbxMsg() const
     {
         return UbxClassMsgId::instance().translate({ classId_, msgId_ });
     }
 
-    inline const std::array<uint8_t, numberOfUbxPrts> sendRates() const
+    inline std::array<uint8_t, numberOfUbxPrts> sendRates() const
     {
         return sendRateOnPort_;
     }

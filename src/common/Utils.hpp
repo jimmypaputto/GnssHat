@@ -19,18 +19,6 @@ bool try3times(std::function<bool()> configureFunction);
 
 void setGpio(const char* chipname, const uint32_t line_num, int value);
 
-static void printVector(const std::string& name, std::span<const uint8_t> data)
-{
-    printf("[DEBUG] %s: [", name.c_str());
-    for (size_t i = 0; i < data.size(); ++i) {
-        printf("0x%02X", data[i]);
-        if (i < data.size() - 1) {
-            printf(", ");
-        }
-    }
-    printf("] (size: %zu)\r\n", data.size());
-}
-
 template<typename E, E beginVal, E endVal>
 constexpr uint8_t countEnum()
 {

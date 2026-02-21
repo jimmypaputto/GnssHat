@@ -44,8 +44,11 @@ public:
             lineSettings = gpiod_line_settings_new();
             if(!lineSettings)
             {
-                fprintf(stderr, "Failed to get line settings.\n");
-                throw;
+                fprintf(
+                    stderr,
+                    "[Timepulse] Failed to get line settings.\n"
+                );
+                std::terminate();
             }
         }
         int rc = gpiod_line_settings_set_direction(lineSettings, GPIOD_LINE_DIRECTION_INPUT);
@@ -59,10 +62,15 @@ public:
             );
             gpiod_line_settings_free(lineSettings);
             gpiod_line_config_free(config);
-            throw;
+            std::terminate();
         }
 
-        rc = gpiod_line_config_add_line_settings(config, (unsigned int *) &timepulsePin, 1, lineSettings);
+        rc = gpiod_line_config_add_line_settings(
+            config,
+            (unsigned int *) &timepulsePin,
+            1,
+            lineSettings
+        );
         if(rc)
         {
             fprintf(
@@ -72,7 +80,7 @@ public:
             );
             gpiod_line_settings_free(lineSettings);
             gpiod_line_config_free(config);
-            throw;
+            std::terminate();
         }
 
         lineReq = gpiod_chip_request_lines(chip, NULL, config);

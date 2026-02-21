@@ -32,9 +32,8 @@ def wait_for_fix(gnss_hat, timeout_seconds=300):
     while time.time() - start_time < timeout_seconds:
         try:
             nav = gnss_hat.wait_and_get_fresh_navigation()
-            fix_status = nav.pvt.fix_status
 
-            if fix_status and fix_status.get('name') == 'ACTIVE':
+            if gnsshat.FixStatus(nav.pvt.fix_status) == gnsshat.FixStatus.ACTIVE:
                 return True
 
         except Exception as e:

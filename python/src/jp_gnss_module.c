@@ -20,6 +20,8 @@ static PyTypeObject GeofenceType;
 static PyTypeObject RfBlockType;
 static PyTypeObject PulseType;
 static PyTypeObject TimepulsePinConfigType;
+static PyTypeObject UtcTimeType;
+static PyTypeObject DateType;
 
 typedef struct
 {
@@ -42,12 +44,31 @@ typedef struct
     uint8_t visible_satellites;
     float horizontal_accuracy;
     float vertical_accuracy;
-    PyObject* fix_quality;
-    PyObject* fix_status;
-    PyObject* fix_type;
-    PyObject* utc_time;
-    PyObject* date;
+    int fix_quality;
+    int fix_status;
+    int fix_type;
+    PyObject* utc_time;   /* UtcTime object */
+    PyObject* date;       /* Date object    */
 } PositionVelocityTime;
+
+typedef struct
+{
+    PyObject_HEAD
+    uint8_t hours;
+    uint8_t minutes;
+    uint8_t seconds;
+    PyObject* valid;      /* bool */
+    int32_t accuracy;
+} UtcTime;
+
+typedef struct
+{
+    PyObject_HEAD
+    uint8_t day;
+    uint8_t month;
+    uint16_t year;
+    PyObject* valid;      /* bool */
+} Date;
 
 typedef struct
 {
@@ -144,74 +165,115 @@ typedef struct
     PyObject* geofences;
 } GnssConfig;
 
-static PyObject* create_enum_value(const char* name, int value)
+/* ---- UtcTime ---- */
+
+static PyObject* UtcTime_new(PyTypeObject* type, PyObject* args, PyObject* kwds)
 {
-    PyObject* dict = PyDict_New();
-    if (!dict)
-        return NULL;
-
-    PyDict_SetItemString(dict, "name", PyUnicode_FromString(name));
-    PyDict_SetItemString(dict, "value", PyLong_FromLong(value));
-
-    return dict;
-}
-
-static PyObject* convert_fix_quality(jp_gnss_fix_quality_t quality)
-{
-    switch (quality)
+    UtcTime* self = (UtcTime*)type->tp_alloc(type, 0);
+    if (self)
     {
-        case JP_GNSS_FIX_QUALITY_INVALID:
-            return create_enum_value("INVALID", quality);
-        case JP_GNSS_FIX_QUALITY_GPS_FIX_2D_3D:
-            return create_enum_value("GPS_FIX_2D_3D", quality);
-        case JP_GNSS_FIX_QUALITY_DGNSS:
-            return create_enum_value("DGNSS", quality);
-        case JP_GNSS_FIX_QUALITY_PPS_FIX:
-            return create_enum_value("PPS_FIX", quality);
-        case JP_GNSS_FIX_QUALITY_FIXED_RTK:
-            return create_enum_value("FIXED_RTK", quality);
-        case JP_GNSS_FIX_QUALITY_FLOAT_RTK:
-            return create_enum_value("FLOAT_RTK", quality);
-        case JP_GNSS_FIX_QUALITY_DEAD_RECKONING:
-            return create_enum_value("DEAD_RECKONING", quality);
-        default:
-            return create_enum_value("UNKNOWN", quality);
+        self->hours = 0;
+        self->minutes = 0;
+        self->seconds = 0;
+        self->valid = Py_False;
+        Py_INCREF(Py_False);
+        self->accuracy = 0;
     }
+    return (PyObject*)self;
 }
 
-static PyObject* convert_fix_status(jp_gnss_fix_status_t status)
+static void UtcTime_dealloc(UtcTime* self)
 {
-    switch (status)
-    {
-        case JP_GNSS_FIX_STATUS_VOID:
-            return create_enum_value("VOID", status);
-        case JP_GNSS_FIX_STATUS_ACTIVE:
-            return create_enum_value("ACTIVE", status);
-        default:
-            return create_enum_value("UNKNOWN", status);
-    }
+    Py_XDECREF(self->valid);
+    Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-static PyObject* convert_fix_type(jp_gnss_fix_type_t type)
+static PyObject* UtcTime_str(UtcTime* self)
 {
-    switch (type)
-    {
-        case JP_GNSS_FIX_TYPE_NO_FIX:
-            return create_enum_value("NO_FIX", type);
-        case JP_GNSS_FIX_TYPE_DEAD_RECKONING_ONLY:
-            return create_enum_value("DEAD_RECKONING_ONLY", type);
-        case JP_GNSS_FIX_TYPE_FIX_2D:
-            return create_enum_value("FIX_2D", type);
-        case JP_GNSS_FIX_TYPE_FIX_3D:
-            return create_enum_value("FIX_3D", type);
-        case JP_GNSS_FIX_TYPE_GNSS_WITH_DEAD_RECKONING:
-            return create_enum_value("GNSS_WITH_DEAD_RECKONING", type);
-        case JP_GNSS_FIX_TYPE_TIME_ONLY_FIX:
-            return create_enum_value("TIME_ONLY_FIX", type);
-        default:
-            return create_enum_value("UNKNOWN", type);
-    }
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer),
+        "%02d:%02d:%02d (valid=%s, accuracy=%d ns)",
+        self->hours, self->minutes, self->seconds,
+        PyObject_IsTrue(self->valid) ? "True" : "False",
+        self->accuracy);
+    return PyUnicode_FromString(buffer);
 }
+
+static PyMemberDef UtcTime_members[] = {
+    {"hours",    T_UBYTE, offsetof(UtcTime, hours),    0, "Hours (0-23)"},
+    {"minutes",  T_UBYTE, offsetof(UtcTime, minutes),  0, "Minutes (0-59)"},
+    {"seconds",  T_UBYTE, offsetof(UtcTime, seconds),  0, "Seconds (0-59)"},
+    {"valid",    T_OBJECT_EX, offsetof(UtcTime, valid), 0, "Time validity flag"},
+    {"accuracy", T_INT,   offsetof(UtcTime, accuracy), 0, "Time accuracy in ns"},
+    {NULL}
+};
+
+static PyTypeObject UtcTimeType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "jimmypaputto.gnsshat.UtcTime",
+    .tp_doc = "UTC time",
+    .tp_basicsize = sizeof(UtcTime),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_new = UtcTime_new,
+    .tp_dealloc = (destructor)UtcTime_dealloc,
+    .tp_str = (reprfunc)UtcTime_str,
+    .tp_repr = (reprfunc)UtcTime_str,
+    .tp_members = UtcTime_members,
+};
+
+/* ---- Date ---- */
+
+static PyObject* Date_new(PyTypeObject* type, PyObject* args, PyObject* kwds)
+{
+    Date* self = (Date*)type->tp_alloc(type, 0);
+    if (self)
+    {
+        self->day = 0;
+        self->month = 0;
+        self->year = 0;
+        self->valid = Py_False;
+        Py_INCREF(Py_False);
+    }
+    return (PyObject*)self;
+}
+
+static void Date_dealloc(Date* self)
+{
+    Py_XDECREF(self->valid);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject* Date_str(Date* self)
+{
+    char buffer[64];
+    snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d (valid=%s)",
+        self->year, self->month, self->day,
+        PyObject_IsTrue(self->valid) ? "True" : "False");
+    return PyUnicode_FromString(buffer);
+}
+
+static PyMemberDef Date_members[] = {
+    {"day",   T_UBYTE,  offsetof(Date, day),   0, "Day of month (1-31)"},
+    {"month", T_UBYTE,  offsetof(Date, month), 0, "Month (1-12)"},
+    {"year",  T_USHORT, offsetof(Date, year),  0, "Year"},
+    {"valid", T_OBJECT_EX, offsetof(Date, valid), 0, "Date validity flag"},
+    {NULL}
+};
+
+static PyTypeObject DateType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "jimmypaputto.gnsshat.Date",
+    .tp_doc = "Date",
+    .tp_basicsize = sizeof(Date),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_new = Date_new,
+    .tp_dealloc = (destructor)Date_dealloc,
+    .tp_str = (reprfunc)Date_str,
+    .tp_repr = (reprfunc)Date_str,
+    .tp_members = Date_members,
+};
 
 static PyObject* Geofence_new(PyTypeObject* type, PyObject* args,
     PyObject* kwds)
@@ -714,20 +776,17 @@ static PyObject* PositionVelocityTime_new(PyTypeObject* type, PyObject* args,
         self->visible_satellites = 0;
         self->horizontal_accuracy = 0.0;
         self->vertical_accuracy = 0.0;
-        self->fix_quality = NULL;
-        self->fix_status = NULL;
-        self->fix_type = NULL;
-        self->utc_time = NULL;
-        self->date = NULL;
+        self->fix_quality = 0;
+        self->fix_status = 0;
+        self->fix_type = 0;
+        self->utc_time = PyObject_CallObject((PyObject*)&UtcTimeType, NULL);
+        self->date = PyObject_CallObject((PyObject*)&DateType, NULL);
     }
     return (PyObject*)self;
 }
 
 static void PositionVelocityTime_dealloc(PositionVelocityTime* self)
 {
-    Py_XDECREF(self->fix_quality);
-    Py_XDECREF(self->fix_status);
-    Py_XDECREF(self->fix_type);
     Py_XDECREF(self->utc_time);
     Py_XDECREF(self->date);
     Py_TYPE(self)->tp_free((PyObject*)self);
@@ -735,78 +794,26 @@ static void PositionVelocityTime_dealloc(PositionVelocityTime* self)
 
 static PyObject* PositionVelocityTime_str(PositionVelocityTime* self)
 {
-    const char* fix_quality_name = "UNKNOWN";
-    if (self->fix_quality && PyDict_Check(self->fix_quality))
-    {
-        PyObject* name_obj = PyDict_GetItemString(self->fix_quality, "name");
-        if (name_obj && PyUnicode_Check(name_obj))
-            fix_quality_name = PyUnicode_AsUTF8(name_obj);
-    }
+    /* Get enum names via IntEnum .name attribute */
+    const char* fix_quality_name = "?";
+    const char* fix_status_name = "?";
+    const char* fix_type_name = "?";
 
-    const char* fix_status_name = "UNKNOWN";
-    if (self->fix_status && PyDict_Check(self->fix_status))
-    {
-        PyObject* name_obj = PyDict_GetItemString(self->fix_status, "name");
-        if (name_obj && PyUnicode_Check(name_obj))
-            fix_status_name = PyUnicode_AsUTF8(name_obj);
-    }
+    /* utc_time / date __str__ */
+    PyObject* utc_repr = NULL;
+    PyObject* date_repr = NULL;
+    const char* utc_str = "N/A";
+    const char* date_str = "N/A";
 
-    const char* fix_type_name = "UNKNOWN";
-    if (self->fix_type && PyDict_Check(self->fix_type))
+    if (self->utc_time && Py_TYPE(self->utc_time) == &UtcTimeType)
     {
-        PyObject* name_obj = PyDict_GetItemString(self->fix_type, "name");
-        if (name_obj && PyUnicode_Check(name_obj))
-            fix_type_name = PyUnicode_AsUTF8(name_obj);
+        utc_repr = UtcTime_str((UtcTime*)self->utc_time);
+        if (utc_repr) utc_str = PyUnicode_AsUTF8(utc_repr);
     }
-    
-    char utc_str[32] = "N/A";
-    bool utc_valid = false;
-    int32_t utc_accuracy = 0;
-    if (self->utc_time && PyDict_Check(self->utc_time))
+    if (self->date && Py_TYPE(self->date) == &DateType)
     {
-        PyObject* hours = PyDict_GetItemString(self->utc_time, "hours");
-        PyObject* minutes = PyDict_GetItemString(self->utc_time, "minutes");
-        PyObject* seconds = PyDict_GetItemString(self->utc_time, "seconds");
-        PyObject* valid = PyDict_GetItemString(self->utc_time, "valid");
-        PyObject* accuracy = PyDict_GetItemString(self->utc_time, "accuracy");
-        
-        if (hours && minutes && seconds)
-            snprintf(
-                utc_str,
-                sizeof(utc_str),
-                "%02ld:%02ld:%02ld", 
-                PyLong_AsLong(hours),
-                PyLong_AsLong(minutes),
-                PyLong_AsLong(seconds)
-            );
-        
-        if (valid)
-            utc_valid = PyObject_IsTrue(valid);
-        if (accuracy)
-            utc_accuracy = PyLong_AsLong(accuracy);
-    }
-
-    char date_str[32] = "N/A";
-    bool date_valid = false;
-    if (self->date && PyDict_Check(self->date))
-    {
-        PyObject* day = PyDict_GetItemString(self->date, "day");
-        PyObject* month = PyDict_GetItemString(self->date, "month");
-        PyObject* year = PyDict_GetItemString(self->date, "year");
-        PyObject* valid = PyDict_GetItemString(self->date, "valid");
-        
-        if (day && month && year)
-            snprintf(
-                date_str,
-                sizeof(date_str),
-                "%04ld-%02ld-%02ld", 
-                PyLong_AsLong(year),
-                PyLong_AsLong(month),
-                PyLong_AsLong(day)
-            );
-        
-        if (valid)
-            date_valid = PyObject_IsTrue(valid);
+        date_repr = Date_str((Date*)self->date);
+        if (date_repr) date_str = PyUnicode_AsUTF8(date_repr);
     }
 
     char buffer[4096];
@@ -814,11 +821,11 @@ static PyObject* PositionVelocityTime_str(PositionVelocityTime* self)
         buffer,
         sizeof(buffer),
         "PositionVelocityTime(\n"
-        "    quality=%s\n"
-        "    status=%s\n"
-        "    type=%s\n"
-        "    utc_time=%s (valid=%s, accuracy=%d)\n"
-        "    date=%s (valid=%s)\n"
+        "    fix_quality=%d\n"
+        "    fix_status=%d\n"
+        "    fix_type=%d\n"
+        "    utc_time=%s\n"
+        "    date=%s\n"
         "    altitude=%.2fm\n"
         "    altitude_msl=%.2fm\n"
         "    latitude=%.8f°\n"
@@ -831,14 +838,11 @@ static PyObject* PositionVelocityTime_str(PositionVelocityTime* self)
         "    horizontal_accuracy=%.2fm\n"
         "    vertical_accuracy=%.2fm\n"
         ")",
-        fix_quality_name,
-        fix_status_name,
-        fix_type_name,
+        self->fix_quality,
+        self->fix_status,
+        self->fix_type,
         utc_str,
-        utc_valid ? "true" : "false",
-        utc_accuracy,
         date_str,
-        date_valid ? "true" : "false",
         self->altitude,
         self->altitude_msl,
         self->latitude,
@@ -851,6 +855,9 @@ static PyObject* PositionVelocityTime_str(PositionVelocityTime* self)
         self->horizontal_accuracy,
         self->vertical_accuracy
     );
+
+    Py_XDECREF(utc_repr);
+    Py_XDECREF(date_repr);
 
     return PyUnicode_FromString(buffer);
 }
@@ -935,24 +942,24 @@ static PyMemberDef PositionVelocityTime_members[] = {
     },
     {
         "fix_quality",
-        T_OBJECT_EX,
+        T_INT,
         offsetof(PositionVelocityTime, fix_quality),
         0,
-        "Fix quality information"
+        "Fix quality (use FixQuality IntEnum to interpret)"
     },
     {
         "fix_status",
-        T_OBJECT_EX,
+        T_INT,
         offsetof(PositionVelocityTime, fix_status),
         0,
-        "Fix status information"
+        "Fix status (use FixStatus IntEnum to interpret)"
     },
     {
         "fix_type",
-        T_OBJECT_EX,
+        T_INT,
         offsetof(PositionVelocityTime, fix_type),
         0,
-        "Fix type information"
+        "Fix type (use FixType IntEnum to interpret)"
     },
     {
         "utc_time",
@@ -1477,26 +1484,38 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
     pvt->visible_satellites = nav->pvt.visible_satellites;
     pvt->horizontal_accuracy = nav->pvt.horizontal_accuracy;
     pvt->vertical_accuracy = nav->pvt.vertical_accuracy;
-    pvt->fix_quality = convert_fix_quality(nav->pvt.fix_quality);
-    pvt->fix_status = convert_fix_status(nav->pvt.fix_status);
-    pvt->fix_type = convert_fix_type(nav->pvt.fix_type);
+    pvt->fix_quality = (int)nav->pvt.fix_quality;
+    pvt->fix_status = (int)nav->pvt.fix_status;
+    pvt->fix_type = (int)nav->pvt.fix_type;
 
-    pvt->utc_time = Py_BuildValue(
-        "{s:i,s:i,s:i,s:O,s:i}",
-        "hours", nav->pvt.utc.hh,
-        "minutes", nav->pvt.utc.mm,
-        "seconds", nav->pvt.utc.ss,
-        "valid", nav->pvt.utc.valid ? Py_True : Py_False,
-        "accuracy", nav->pvt.utc.accuracy
-    );
-    
-    pvt->date = Py_BuildValue(
-        "{s:i,s:i,s:i,s:O}",
-        "day", nav->pvt.date.day,
-        "month", nav->pvt.date.month,
-        "year", nav->pvt.date.year,
-        "valid", nav->pvt.date.valid ? Py_True : Py_False
-    );
+    /* Populate UtcTime object */
+    Py_XDECREF(pvt->utc_time);
+    UtcTime* utc = (UtcTime*)PyObject_CallObject((PyObject*)&UtcTimeType, NULL);
+    if (utc)
+    {
+        utc->hours = nav->pvt.utc.hh;
+        utc->minutes = nav->pvt.utc.mm;
+        utc->seconds = nav->pvt.utc.ss;
+        Py_DECREF(utc->valid);
+        utc->valid = nav->pvt.utc.valid ? Py_True : Py_False;
+        Py_INCREF(utc->valid);
+        utc->accuracy = nav->pvt.utc.accuracy;
+    }
+    pvt->utc_time = (PyObject*)utc;
+
+    /* Populate Date object */
+    Py_XDECREF(pvt->date);
+    Date* dt = (Date*)PyObject_CallObject((PyObject*)&DateType, NULL);
+    if (dt)
+    {
+        dt->day = nav->pvt.date.day;
+        dt->month = nav->pvt.date.month;
+        dt->year = nav->pvt.date.year;
+        Py_DECREF(dt->valid);
+        dt->valid = nav->pvt.date.valid ? Py_True : Py_False;
+        Py_INCREF(dt->valid);
+    }
+    pvt->date = (PyObject*)dt;
 
     Py_XDECREF(nav_obj->pvt);
     nav_obj->pvt = (PyObject*)pvt;
@@ -2299,26 +2318,20 @@ static PyObject* utc_time_iso8601(PyObject* self, PyObject* args)
     jp_gnss_position_velocity_time_t c_pvt;
     memset(&c_pvt, 0, sizeof(c_pvt));
 
-    if (pvt_obj->utc_time && PyDict_Check(pvt_obj->utc_time))
+    if (pvt_obj->utc_time && Py_TYPE(pvt_obj->utc_time) == &UtcTimeType)
     {
-        PyObject* hh = PyDict_GetItemString(pvt_obj->utc_time, "hours");
-        PyObject* mm = PyDict_GetItemString(pvt_obj->utc_time, "minutes");
-        PyObject* ss = PyDict_GetItemString(pvt_obj->utc_time, "seconds");
-
-        if (hh) c_pvt.utc.hh = (uint8_t)PyLong_AsLong(hh);
-        if (mm) c_pvt.utc.mm = (uint8_t)PyLong_AsLong(mm);
-        if (ss) c_pvt.utc.ss = (uint8_t)PyLong_AsLong(ss);
+        UtcTime* utc = (UtcTime*)pvt_obj->utc_time;
+        c_pvt.utc.hh = utc->hours;
+        c_pvt.utc.mm = utc->minutes;
+        c_pvt.utc.ss = utc->seconds;
     }
 
-    if (pvt_obj->date && PyDict_Check(pvt_obj->date))
+    if (pvt_obj->date && Py_TYPE(pvt_obj->date) == &DateType)
     {
-        PyObject* day = PyDict_GetItemString(pvt_obj->date, "day");
-        PyObject* month = PyDict_GetItemString(pvt_obj->date, "month");
-        PyObject* year = PyDict_GetItemString(pvt_obj->date, "year");
-
-        if (day) c_pvt.date.day = (uint8_t)PyLong_AsLong(day);
-        if (month) c_pvt.date.month = (uint8_t)PyLong_AsLong(month);
-        if (year) c_pvt.date.year = (uint16_t)PyLong_AsLong(year);
+        Date* dt = (Date*)pvt_obj->date;
+        c_pvt.date.day = dt->day;
+        c_pvt.date.month = dt->month;
+        c_pvt.date.year = dt->year;
     }
 
     const char* iso_str = jp_gnss_utc_time_iso8601(&c_pvt);
@@ -2376,6 +2389,10 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
         return NULL;
     if (PyType_Ready(&TimepulsePinConfigType) < 0)
         return NULL;
+    if (PyType_Ready(&UtcTimeType) < 0)
+        return NULL;
+    if (PyType_Ready(&DateType) < 0)
+        return NULL;
     
     m = PyModule_Create(&jimmypaputto_gnss_module);
     if (!m)
@@ -2404,6 +2421,12 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
     Py_INCREF(&TimepulsePinConfigType);
     PyModule_AddObject(m, "TimepulsePinConfig",
         (PyObject*)&TimepulsePinConfigType);
+
+    Py_INCREF(&UtcTimeType);
+    PyModule_AddObject(m, "UtcTime", (PyObject*)&UtcTimeType);
+
+    Py_INCREF(&DateType);
+    PyModule_AddObject(m, "Date", (PyObject*)&DateType);
 
     Py_INCREF(&GeofenceType);
     PyModule_AddObject(m, "Geofence", (PyObject*)&GeofenceType);

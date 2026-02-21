@@ -39,7 +39,7 @@ void UartDriver::reinit(const uint32_t baudrate)
     init(baudrate_);
 }
 
-void UartDriver::transmitReceive(const std::vector<uint8_t>& txBuff,
+void UartDriver::transmitReceive(std::span<const uint8_t> txBuff,
     std::vector<uint8_t>& rxBuff)
 {
     if (uartFd_ < 0)
@@ -174,7 +174,7 @@ void UartDriver::deinit() const
     }
 }
 
-void UartDriver::transmit(const std::vector<uint8_t>& txBuff)
+void UartDriver::transmit(std::span<const uint8_t> txBuff)
 {
     if (uartFd_ < 0)
     {

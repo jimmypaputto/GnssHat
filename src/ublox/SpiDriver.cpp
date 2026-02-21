@@ -34,7 +34,7 @@ void SpiDriver::reinit(const ESpiMode spiMode)
     init(convertSpiMode(currentSpiMode_));
 }
 
-void SpiDriver::transmitReceive(const std::vector<uint8_t>& txBuff,
+void SpiDriver::transmitReceive(std::span<const uint8_t> txBuff,
     std::vector<uint8_t>& rxBuff)
 {
     struct spi_ioc_transfer spiTransfer = {};

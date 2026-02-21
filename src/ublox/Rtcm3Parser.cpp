@@ -107,7 +107,7 @@ void Rtcm3Parser::extractFrames(std::span<uint8_t> buffer,
     }
 }
 
-uint16_t Rtcm3Parser::getFrameId(const std::vector<uint8_t>& frame)
+uint16_t Rtcm3Parser::getFrameId(std::span<const uint8_t> frame)
 {
     if (frame.size() < 6 || frame[0] != 0xD3)
         return 0;
@@ -137,7 +137,7 @@ uint32_t crc24q(const uint8_t* data, size_t length)
     return crc & 0xFFFFFF;
 }
 
-bool Rtcm3Parser::checkFrame(const std::vector<uint8_t>& frame)
+bool Rtcm3Parser::checkFrame(std::span<const uint8_t> frame)
 {
     if (frame.size() < 6)
         return false;

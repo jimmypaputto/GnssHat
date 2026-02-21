@@ -25,7 +25,7 @@ namespace JimmyPaputto
 {
 
 ubxmsg::IUbxMsg& UbxFactory::create(const EUbxMsg& eUbxMsg,
-    const std::vector<uint8_t>& frame)
+    std::span<const uint8_t> frame)
 {
     static UbxFactory factory;
     auto* ubxMsg = factory.create_[to_underlying(eUbxMsg)];

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <span>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -18,7 +19,7 @@ bool try3times(std::function<bool()> configureFunction);
 
 void setGpio(const char* chipname, const uint32_t line_num, int value);
 
-static void printVector(const std::string& name, const std::vector<uint8_t>& data)
+static void printVector(const std::string& name, std::span<const uint8_t> data)
 {
     printf("[DEBUG] %s: [", name.c_str());
     for (size_t i = 0; i < data.size(); ++i) {
@@ -59,7 +60,7 @@ constexpr bool isLittleEndian()
 /// Read a value of type T from a little-endian byte buffer at given offset.
 /// Uses std::memcpy to avoid strict aliasing and unaligned access UB.
 template <typename T>
-T readLE(const std::vector<uint8_t>& data, size_t offset)
+T readLE(std::span<const uint8_t> data, size_t offset)
 {
     T result;
     std::memcpy(&result, data.data() + offset, sizeof(T));

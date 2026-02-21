@@ -30,7 +30,7 @@ public:
     : rate_(rate)
     {}
 
-    explicit UBX_CFG_RATE(const std::vector<uint8_t>& frame)
+    explicit UBX_CFG_RATE(std::span<const uint8_t> frame)
     {
         deserialize(frame);
     }
@@ -55,7 +55,7 @@ public:
         return buildFrame(frame);
     }
 
-    void deserialize(const std::vector<uint8_t>& frame) override
+    void deserialize(std::span<const uint8_t> frame) override
     {
         if (frame.size() < 14)
         {

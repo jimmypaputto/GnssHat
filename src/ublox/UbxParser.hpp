@@ -6,6 +6,7 @@
 #define JP_UBX_PARSER_HPP_
 
 #include <memory>
+#include <span>
 #include <vector>
 
 #include "IUbloxConfigRegistry.hpp"
@@ -23,15 +24,15 @@ public:
     explicit UbxParser(IUbloxConfigRegistry& configRegistry,
         Notifier& navigationNotifier, bool callbackNotificationEnabled = true);
 
-    std::vector<uint8_t> parse(const std::vector<uint8_t>& buffer);
+    std::vector<uint8_t> parse(std::span<const uint8_t> buffer);
 
     static void addChecksum(std::vector<uint8_t>& frame);
-    static std::vector<uint8_t> checksum(const std::vector<uint8_t>& frame,
+    static std::vector<uint8_t> checksum(std::span<const uint8_t> frame,
         uint8_t offset = 2);
-    static bool checkFrame(const std::vector<uint8_t>& frame);
+    static bool checkFrame(std::span<const uint8_t> frame);
 
 private:
-    void extractFrames(const std::vector<uint8_t>& buffer);
+    void extractFrames(std::span<const uint8_t> buffer);
 
     constexpr static uint16_t maxNumberOfFrames_ = 300;
     std::array<std::vector<uint8_t>, maxNumberOfFrames_> frames_;

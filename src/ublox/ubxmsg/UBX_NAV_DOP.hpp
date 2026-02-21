@@ -18,7 +18,7 @@ class UBX_NAV_DOP: public IUbxMsg
 public:
     explicit UBX_NAV_DOP() = default;
 
-    explicit UBX_NAV_DOP(const std::vector<uint8_t>& frame)
+    explicit UBX_NAV_DOP(std::span<const uint8_t> frame)
     {
         deserialize(frame);
     }
@@ -28,7 +28,7 @@ public:
         return { };
     }
 
-    void deserialize(const std::vector<uint8_t>& serialized) override
+    void deserialize(std::span<const uint8_t> serialized) override
     {
         dop_.geometric = readLE<uint16_t>(serialized, 10) * 0.01;
         dop_.position = readLE<uint16_t>(serialized, 12) * 0.01;

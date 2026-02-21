@@ -18,7 +18,7 @@ class UBX_NAV_GEOFENCE: public IUbxMsg
 public:
     explicit UBX_NAV_GEOFENCE() = default;
 
-    explicit UBX_NAV_GEOFENCE(const std::vector<uint8_t>& frame)
+    explicit UBX_NAV_GEOFENCE(std::span<const uint8_t> frame)
     {
         deserialize(frame);
     }
@@ -28,7 +28,7 @@ public:
         return {};
     }
 
-    void deserialize(const std::vector<uint8_t>& serialized) override
+    void deserialize(std::span<const uint8_t> serialized) override
     {
         nav_.iTOW = readLE<uint32_t>(serialized, 6);
         nav_.geofencingStatus = static_cast<EGeofencingStatus>(serialized[11]);

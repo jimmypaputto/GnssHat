@@ -38,7 +38,7 @@ UbxParser::UbxParser(IUbloxConfigRegistry& configRegistry,
     }
 }
 
-std::vector<uint8_t> UbxParser::parse(const std::vector<uint8_t>& buffer)
+std::vector<uint8_t> UbxParser::parse(std::span<const uint8_t> buffer)
 {
     unfinishedFrameFromBuffer_.clear();
     extractFrames(buffer);
@@ -59,7 +59,7 @@ std::vector<uint8_t> UbxParser::parse(const std::vector<uint8_t>& buffer)
     return unfinishedFrameFromBuffer_;
 }
 
-void UbxParser::extractFrames(const std::vector<uint8_t>& buffer)
+void UbxParser::extractFrames(std::span<const uint8_t> buffer)
 {
     std::array<uint8_t, 2> pattern {0xB5, 0x62};
     auto bufferBegin = buffer.begin();
@@ -140,7 +140,7 @@ void UbxParser::addChecksum(std::vector<uint8_t>& frame)
     }
 }
 
-std::vector<uint8_t> UbxParser::checksum(const std::vector<uint8_t>& frame,
+std::vector<uint8_t> UbxParser::checksum(std::span<const uint8_t> frame,
     uint8_t offset)
 {
     uint8_t cka = 0;
@@ -155,7 +155,7 @@ std::vector<uint8_t> UbxParser::checksum(const std::vector<uint8_t>& frame,
     return std::vector<uint8_t> { cka, ckb };
 }
 
-bool UbxParser::checkFrame(const std::vector<uint8_t>& frame)
+bool UbxParser::checkFrame(std::span<const uint8_t> frame)
 {
     uint8_t cka = 0;
     uint8_t ckb = 0;

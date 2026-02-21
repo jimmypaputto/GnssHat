@@ -19,7 +19,7 @@ class UBX_MON_RF : public IUbxMsg
 public:
     explicit UBX_MON_RF() = default;
 
-    explicit UBX_MON_RF(const std::vector<uint8_t>& frame)
+    explicit UBX_MON_RF(std::span<const uint8_t> frame)
     {
         rfBlocks_.reserve(RfBlock::maxNumberOfRfBlocks);
         deserialize(frame);
@@ -30,7 +30,7 @@ public:
         return { };
     }
 
-    void deserialize(const std::vector<uint8_t>& serialized) override
+    void deserialize(std::span<const uint8_t> serialized) override
     {
         uint8_t numberOfRfBlocks = serialized[7];
 

@@ -109,7 +109,7 @@ struct Timepulse5
         return serialized;
     }
 
-    static Timepulse5 deserialize(const std::vector<uint8_t>& serialized)
+    static Timepulse5 deserialize(std::span<const uint8_t> serialized)
     {
         Timepulse5 timepulse;
         timepulse.tpIdx = static_cast<ETimepulseIdx>(serialized[0]);
@@ -145,7 +145,7 @@ public:
     :   timepulse_(Timepulse5::create(timepulsePinConfig))
     {}
 
-    explicit UBX_CFG_TP5(const std::vector<uint8_t>& frame)
+    explicit UBX_CFG_TP5(std::span<const uint8_t> frame)
     {
         deserialize(frame);
     }
@@ -160,15 +160,14 @@ public:
         return buildFrame(frame);
     }
 
-    void deserialize(const std::vector<uint8_t>& frame) override
+    void deserialize(std::span<const uint8_t> frame) override
     {
         if (frame.size() < 34)
         {
             throw std::runtime_error("Invalid frame size for UBX_CFG_TP5");
         }
         timepulse_ = Timepulse5::deserialize(
-            std::vector<uint8_t>(frame.begin() + 6,
-            frame.end() - 2)
+            frame.subspan(6, frame.size() - 8)
         );
     }
 

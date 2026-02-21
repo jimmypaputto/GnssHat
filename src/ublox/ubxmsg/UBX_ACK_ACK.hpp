@@ -16,7 +16,7 @@ class UBX_ACK_ACK: public IUbxMsg
 public:
     explicit UBX_ACK_ACK() = default;
 
-    explicit UBX_ACK_ACK(const std::vector<uint8_t>& frame)
+    explicit UBX_ACK_ACK(std::span<const uint8_t> frame)
     {
         deserialize(frame);
     }
@@ -26,7 +26,7 @@ public:
         return buildFrame({ 0xB5, 0x62, 0x05, 0x01, 0x02, 0x00, classId_, msgId_ });
     }
 
-    void deserialize(const std::vector<uint8_t>& serialized) override
+    void deserialize(std::span<const uint8_t> serialized) override
     {
         classId_ = serialized[6];
         msgId_ = serialized[7];

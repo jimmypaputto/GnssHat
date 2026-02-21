@@ -35,7 +35,7 @@ struct TxReady
         return serializeInt2LittleEndian(output);
     }
 
-    void deserialize(const std::vector<uint8_t>& frame)
+    void deserialize(std::span<const uint8_t> frame)
     {
         const uint16_t serialized = readLE<uint16_t>(frame, 0);
         enable = getBit(serialized, 0);
@@ -63,7 +63,7 @@ struct Mode
         PortType == EUbxPrt::UBX_UART_2, "Only SPI and UART ports supported");
     
     std::vector<uint8_t> serialize() const;
-    void deserialize(const std::vector<uint8_t>& frame);
+    void deserialize(std::span<const uint8_t> frame);
 };
 
 template<>
@@ -77,7 +77,7 @@ struct Mode<EUbxPrt::UBX_SPI>
         return serializeInt2LittleEndian(output);
     }
 
-    void deserialize(const std::vector<uint8_t>& frame)
+    void deserialize(std::span<const uint8_t> frame)
     {
         const uint32_t serialized = readLE<uint32_t>(frame, 0);
         spiMode = static_cast<ESpiMode>((serialized >> 1) & 0x3);
@@ -100,7 +100,7 @@ struct Mode<EUbxPrt::UBX_UART_1>
         return serializeInt2LittleEndian(output);
     }
 
-    void deserialize(const std::vector<uint8_t>& frame)
+    void deserialize(std::span<const uint8_t> frame)
     {
         const uint32_t serialized = readLE<uint32_t>(frame, 0);
         charLen = static_cast<CharLen>((serialized >> 6) & 0x3);
@@ -154,7 +154,7 @@ struct ProtoMask
         return serializeInt2LittleEndian(output);
     }
 
-    void deserialize(const std::vector<uint8_t>& frame)
+    void deserialize(std::span<const uint8_t> frame)
     {
         const uint16_t serialized = readLE<uint16_t>(frame, 0);
         ubx = getBit(serialized, 0);
@@ -178,7 +178,7 @@ struct Flags
         return serializeInt2LittleEndian(output);
     }
 
-    void deserialize(const std::vector<uint8_t>& frame)
+    void deserialize(std::span<const uint8_t> frame)
     {
         const uint16_t serialized = readLE<uint16_t>(frame, 0);
         extendedTxTimeout = getBit(serialized, 1);
@@ -203,7 +203,7 @@ public:
         flags_(flags)
     {}
 
-    explicit UBX_CFG_PRT_BASE(const std::vector<uint8_t>& frame)
+    explicit UBX_CFG_PRT_BASE(std::span<const uint8_t> frame)
     {
         deserialize(frame);
     }
@@ -213,7 +213,7 @@ public:
         return static_cast<const PortImpl*>(this)->serializeImpl();
     }
 
-    void deserialize(const std::vector<uint8_t>& serialized) override
+    void deserialize(std::span<const uint8_t> serialized) override
     {
         static_cast<PortImpl*>(this)->deserializeImpl(serialized);
     }
@@ -248,7 +248,7 @@ public:
             outProtoMask, flags)
     {}
 
-    explicit UBX_CFG_PRT_SPI(const std::vector<uint8_t>& frame)
+    explicit UBX_CFG_PRT_SPI(std::span<const uint8_t> frame)
     :	UBX_CFG_PRT_BASE<UBX_CFG_PRT_SPI, EUbxPrt::UBX_SPI>(frame)
     {}
 
@@ -269,15 +269,13 @@ public:
         return buildFrame(serialized);
     }
 
-    void deserializeImpl(const std::vector<uint8_t>& serialized)
+    void deserializeImpl(std::span<const uint8_t> serialized)
     {
-        txReady_.deserialize({ serialized[8], serialized[9] });
-        mode_.deserialize(
-            { serialized[10], serialized[11], serialized[12], serialized[13] }
-        );
-        inProtoMask_.deserialize({ serialized[18], serialized[19] });
-        outProtoMask_.deserialize({ serialized[20], serialized[21] });
-        flags_.deserialize({ serialized[22], serialized[23] });
+        txReady_.deserialize(serialized.subspan(8, 2));
+        mode_.deserialize(serialized.subspan(10, 4));
+        inProtoMask_.deserialize(serialized.subspan(18, 2));
+        outProtoMask_.deserialize(serialized.subspan(20, 2));
+        flags_.deserialize(serialized.subspan(22, 2));
     }
 };
 
@@ -297,7 +295,7 @@ public:
         baudrate_(baudrate)
     {}
 
-    explicit UBX_CFG_PRT_UART(const std::vector<uint8_t>& frame)
+    explicit UBX_CFG_PRT_UART(std::span<const uint8_t> frame)
     :	UBX_CFG_PRT_BASE<UBX_CFG_PRT_UART<UartID>, UartID>(frame)
     {}
 
@@ -318,16 +316,14 @@ public:
         return this->buildFrame(serialized);
     }
 
-    void deserializeImpl(const std::vector<uint8_t>& serialized)
+    void deserializeImpl(std::span<const uint8_t> serialized)
     {
-        this->txReady_.deserialize({ serialized[8], serialized[9] });
-        this->mode_.deserialize(
-            { serialized[10], serialized[11], serialized[12], serialized[13] }
-        );
+        this->txReady_.deserialize(serialized.subspan(8, 2));
+        this->mode_.deserialize(serialized.subspan(10, 4));
         baudrate_ = readLE<uint32_t>(serialized, 14);
-        this->inProtoMask_.deserialize({ serialized[18], serialized[19] });
-        this->outProtoMask_.deserialize({ serialized[20], serialized[21] });
-        this->flags_.deserialize({ serialized[22], serialized[23] });
+        this->inProtoMask_.deserialize(serialized.subspan(18, 2));
+        this->outProtoMask_.deserialize(serialized.subspan(20, 2));
+        this->flags_.deserialize(serialized.subspan(22, 2));
     }
 
 private:
@@ -337,7 +333,7 @@ private:
 class UBX_CFG_PRT_UART1 : public UBX_CFG_PRT_UART<EUbxPrt::UBX_UART_1>
 {
 public:
-    explicit UBX_CFG_PRT_UART1(const std::vector<uint8_t>& frame)
+    explicit UBX_CFG_PRT_UART1(std::span<const uint8_t> frame)
     :	UBX_CFG_PRT_UART<EUbxPrt::UBX_UART_1>(frame)
     {}
 };
@@ -345,7 +341,7 @@ public:
 class UBX_CFG_PRT_UART2 : public UBX_CFG_PRT_UART<EUbxPrt::UBX_UART_2>
 {
 public:
-    explicit UBX_CFG_PRT_UART2(const std::vector<uint8_t>& frame)
+    explicit UBX_CFG_PRT_UART2(std::span<const uint8_t> frame)
     :	UBX_CFG_PRT_UART<EUbxPrt::UBX_UART_2>(frame)
     {}
 };
@@ -363,7 +359,7 @@ public:
         );
     }
 
-    void deserialize(const std::vector<uint8_t>& frame) override
+    void deserialize(std::span<const uint8_t> frame) override
     {
         if (frame.size() < 9)
         {

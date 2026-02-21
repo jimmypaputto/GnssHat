@@ -5,6 +5,7 @@
 #ifndef JIMMY_PAPUTTO_STARTUP_HPP_
 #define JIMMY_PAPUTTO_STARTUP_HPP_
 
+#include <span>
 #include <vector>
 
 #include "ublox/ICommDriver.hpp"
@@ -31,10 +32,10 @@ public:
     virtual ~StartupBase() = default;
 
 protected:
-    bool configurePorts(const std::vector<uint8_t>& serializedPoll,
-        const std::vector<uint8_t>& serializedConfig);
-    bool checkPortsConfig(const std::vector<uint8_t>& serializedPoll);
-    bool sendPortsConfig(const std::vector<uint8_t>& serializedConfig);
+    bool configurePorts(std::span<const uint8_t> serializedPoll,
+        std::span<const uint8_t> serializedConfig);
+    bool checkPortsConfig(std::span<const uint8_t> serializedPoll);
+    bool sendPortsConfig(std::span<const uint8_t> serializedConfig);
 
     bool configureRate();
     bool checkRateConfig();

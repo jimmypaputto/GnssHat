@@ -51,7 +51,7 @@ public:
     /**
      * Constructor for deserializing received message
      */
-    explicit UBX_CFG_VALSET(const std::vector<uint8_t>& frame)
+    explicit UBX_CFG_VALSET(std::span<const uint8_t> frame)
     {
         deserialize(frame);
     }
@@ -111,7 +111,7 @@ public:
         return buildFrame(frame);
     }
 
-    void deserialize(const std::vector<uint8_t>& frame) override
+    void deserialize(std::span<const uint8_t> frame) override
     {
         if (frame.size() < 10) {
             throw std::runtime_error("Invalid frame size for UBX_CFG_VALSET");

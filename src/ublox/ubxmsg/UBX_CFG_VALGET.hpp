@@ -75,7 +75,7 @@ public:
      * Constructor for deserializing received message (response only)
      * Only used by UBX parser when receiving VALGET responses from device
      */
-    explicit UBX_CFG_VALGET(const std::vector<uint8_t>& frame)
+    explicit UBX_CFG_VALGET(std::span<const uint8_t> frame)
     {
         deserialize(frame);
     }
@@ -130,7 +130,7 @@ public:
         return buildFrame(frame);
     }
 
-    void deserialize(const std::vector<uint8_t>& frame) override
+    void deserialize(std::span<const uint8_t> frame) override
     {
         if (frame.size() < 10) {
             throw std::runtime_error("Invalid frame size for UBX_CFG_VALGET");
@@ -154,7 +154,7 @@ private:
      * Parse frame as response containing key+value pairs
      * Only called for incoming responses, never for outgoing requests
      */
-    void parseAsResponse(const std::vector<uint8_t>& frame, size_t startOffset) 
+    void parseAsResponse(std::span<const uint8_t> frame, size_t startOffset) 
     {
         size_t offset = startOffset;
         

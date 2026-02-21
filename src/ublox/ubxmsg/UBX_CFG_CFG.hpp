@@ -16,7 +16,7 @@ class UBX_CFG_CFG: public IUbxMsg  // not fully supported, just used for save cf
 public:
     explicit UBX_CFG_CFG() = default;
 
-    explicit UBX_CFG_CFG(const std::vector<uint8_t>& serialized)
+    explicit UBX_CFG_CFG(std::span<const uint8_t> serialized)
     {
         deserialize(serialized);
     }
@@ -26,7 +26,7 @@ public:
         return { };
     }
 
-    void deserialize(const std::vector<uint8_t>& serialized) override
+    void deserialize(std::span<const uint8_t> serialized) override
     {
 
     }

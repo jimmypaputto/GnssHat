@@ -23,7 +23,7 @@ public:
         dynamicModel_(dynamicModel)
     {}
 
-    explicit UBX_CFG_NAV5(const std::vector<uint8_t>& serialized)
+    explicit UBX_CFG_NAV5(std::span<const uint8_t> serialized)
     {
         deserialize(serialized);
     }
@@ -46,7 +46,7 @@ public:
         return buildFrame(serialized);
     }
 
-    void deserialize(const std::vector<uint8_t>& serialized) override
+    void deserialize(std::span<const uint8_t> serialized) override
     {
         mask_ = readLE<uint16_t>(serialized, 6);
         dynamicModel_ = EDynamicModel(serialized[8]);

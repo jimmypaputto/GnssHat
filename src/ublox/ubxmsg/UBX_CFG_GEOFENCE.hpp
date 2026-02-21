@@ -34,7 +34,7 @@ public:
         }
     {}
 
-    explicit UBX_CFG_GEOFENCE(const std::vector<uint8_t>& frame)
+    explicit UBX_CFG_GEOFENCE(std::span<const uint8_t> frame)
     {
         cfg_.geofences.reserve(4);
         deserialize(frame);
@@ -69,7 +69,7 @@ public:
         return buildFrame(serialized + serializedFences);
     }
 
-    void deserialize(const std::vector<uint8_t>& serialized) override
+    void deserialize(std::span<const uint8_t> serialized) override
     {
         const uint8_t numberOfGeofences = serialized[7];
         cfg_.confidenceLevel = serialized[8];

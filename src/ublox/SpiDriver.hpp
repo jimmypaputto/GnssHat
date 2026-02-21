@@ -23,7 +23,7 @@ class SpiDriver: public ICommDriver
 public:
     explicit SpiDriver();
 
-    void transmitReceive(const std::vector<uint8_t>& txBuff,
+    void transmitReceive(std::span<const uint8_t> txBuff,
         std::vector<uint8_t>& rxBuff) override;
     void getRxBuff(uint8_t* rxBuff, const uint32_t size) override;
 

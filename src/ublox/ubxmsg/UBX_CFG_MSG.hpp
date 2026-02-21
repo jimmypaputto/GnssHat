@@ -46,7 +46,7 @@ public:
         sendRateOnPort_(sendRateOnPort)
     {}
 
-    explicit UBX_CFG_MSG(const std::vector<uint8_t>& frame)
+    explicit UBX_CFG_MSG(std::span<const uint8_t> frame)
     {
         deserialize(frame);
     }
@@ -65,7 +65,7 @@ public:
         return buildFrame(serialized);
     }
 
-    void deserialize(const std::vector<uint8_t>& serialized) override
+    void deserialize(std::span<const uint8_t> serialized) override
     {
         classId_ = serialized[6];
         msgId_ = serialized[7];

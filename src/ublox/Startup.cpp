@@ -35,8 +35,8 @@ StartupBase::StartupBase(ICommDriver& commDriver,
 {
 }
 
-bool StartupBase::configurePorts(const std::vector<uint8_t>& serializedPoll,
-    const std::vector<uint8_t>& serializedConfig)
+bool StartupBase::configurePorts(std::span<const uint8_t> serializedPoll,
+    std::span<const uint8_t> serializedConfig)
 {
     const auto configurePortsImpl_ =
         [this, &serializedPoll, &serializedConfig]() -> bool {
@@ -56,7 +56,7 @@ bool StartupBase::configurePorts(const std::vector<uint8_t>& serializedPoll,
     return try3times(configurePortsImpl_);
 }
 
-bool StartupBase::checkPortsConfig(const std::vector<uint8_t>& serializedPoll)
+bool StartupBase::checkPortsConfig(std::span<const uint8_t> serializedPoll)
 {
     bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_PRT)];
     ack = false;
@@ -65,7 +65,7 @@ bool StartupBase::checkPortsConfig(const std::vector<uint8_t>& serializedPoll)
     return ack && configRegistry_.isPortConfigured();  // ogar
 }
 
-bool StartupBase::sendPortsConfig(const std::vector<uint8_t>& serializedConfig)
+bool StartupBase::sendPortsConfig(std::span<const uint8_t> serializedConfig)
 {
     configRegistry_.shouldSaveConfigToFlash(true);
     bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_PRT)];

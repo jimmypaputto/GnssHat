@@ -31,8 +31,8 @@ private:
         std::span<uint8_t> buffer,
         std::vector<uint8_t>& unfinishedFrame
     );
-    uint16_t getFrameId(const std::vector<uint8_t>& frame);
-    bool checkFrame(const std::vector<uint8_t>& frame);
+    uint16_t getFrameId(std::span<const uint8_t> frame);
+    bool checkFrame(std::span<const uint8_t> frame);
 
     constexpr static uint16_t maxNumberOfFrames_ = 30;
     std::array<std::vector<uint8_t>, maxNumberOfFrames_> frames_;

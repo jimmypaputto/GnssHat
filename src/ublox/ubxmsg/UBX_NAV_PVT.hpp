@@ -19,7 +19,7 @@ class UBX_NAV_PVT: public IUbxMsg
 public:
     explicit UBX_NAV_PVT() = default;
 
-    explicit UBX_NAV_PVT(const std::vector<uint8_t>& frame)
+    explicit UBX_NAV_PVT(std::span<const uint8_t> frame)
     {
         deserialize(frame);
     }
@@ -29,7 +29,7 @@ public:
         return {};
     }
 
-    void deserialize(const std::vector<uint8_t>& serialized) override
+    void deserialize(std::span<const uint8_t> serialized) override
     {
         pvt_.date.day = serialized[13];
         pvt_.date.month = serialized[12];

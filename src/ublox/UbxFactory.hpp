@@ -8,6 +8,7 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <span>
 #include <vector>
 
 #include "EUbxMsg.hpp"
@@ -21,7 +22,7 @@ class UbxFactory
 {
 public:
     static ubxmsg::IUbxMsg& create(const EUbxMsg& eUbxMsg,
-        const std::vector<uint8_t>& frame);
+        std::span<const uint8_t> frame);
 
 private:
     explicit UbxFactory();

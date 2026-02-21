@@ -2650,5 +2650,9 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
     #undef MAKE_ENUM
     Py_DECREF(IntEnum);
 
+    /* ── Hardware limits ────────────────────────────────────────────── */
+    PyModule_AddIntConstant(m, "MAX_GEOFENCES", UBLOX_MAX_GEOFENCES);
+    PyModule_AddIntConstant(m, "MAX_RF_BLOCKS", UBLOX_MAX_RF_BLOCKS);
+
     return m;
 }

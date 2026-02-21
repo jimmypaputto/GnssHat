@@ -476,6 +476,7 @@ static PyTypeObject RfBlockType = {
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
     .tp_new = RfBlock_new,
     .tp_str = (reprfunc)RfBlock_str,
+    .tp_repr = (reprfunc)RfBlock_str,
     .tp_members = RfBlock_members,
 };
 
@@ -587,6 +588,7 @@ static PyTypeObject DilutionOverPrecisionType = {
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
     .tp_new = DilutionOverPrecision_new,
     .tp_str = (reprfunc)DilutionOverPrecision_str,
+    .tp_repr = (reprfunc)DilutionOverPrecision_str,
     .tp_members = DilutionOverPrecision_members,
 };
 
@@ -988,6 +990,7 @@ static PyTypeObject PositionVelocityTimeType = {
     .tp_new = PositionVelocityTime_new,
     .tp_dealloc = (destructor)PositionVelocityTime_dealloc,
     .tp_str = (reprfunc)PositionVelocityTime_str,
+    .tp_repr = (reprfunc)PositionVelocityTime_str,
     .tp_members = PositionVelocityTime_members,
 };
 
@@ -1453,19 +1456,94 @@ static PyObject* GnssHat_start(GnssHat* self, PyObject* args, PyObject* kwargs)
     Py_RETURN_TRUE;
 }
 
+/* ---- Fast allocators (bypass tp_new/tp_init overhead) ---- */
+
+static inline UtcTime* UtcTime_alloc(void)
+{
+    UtcTime* self = (UtcTime*)UtcTimeType.tp_alloc(&UtcTimeType, 0);
+    if (self) { self->valid = Py_False; Py_INCREF(Py_False); }
+    return self;
+}
+
+static inline Date* Date_alloc(void)
+{
+    Date* self = (Date*)DateType.tp_alloc(&DateType, 0);
+    if (self) { self->valid = Py_False; Py_INCREF(Py_False); }
+    return self;
+}
+
+static inline PositionVelocityTime* PVT_alloc(void)
+{
+    PositionVelocityTime* self =
+        (PositionVelocityTime*)PositionVelocityTimeType.tp_alloc(
+            &PositionVelocityTimeType, 0);
+    if (self) { self->utc_time = NULL; self->date = NULL; }
+    return self;
+}
+
+static inline DilutionOverPrecision* DOP_alloc(void)
+{
+    return (DilutionOverPrecision*)DilutionOverPrecisionType.tp_alloc(
+        &DilutionOverPrecisionType, 0);
+}
+
+static inline Geofence* Geofence_alloc(void)
+{
+    return (Geofence*)GeofenceType.tp_alloc(&GeofenceType, 0);
+}
+
+static inline GeofencingCfg* GeofencingCfg_alloc(void)
+{
+    GeofencingCfg* self =
+        (GeofencingCfg*)GeofencingCfgType.tp_alloc(&GeofencingCfgType, 0);
+    if (self) { self->geofences = NULL; }
+    return self;
+}
+
+static inline GeofencingNav* GeofencingNav_alloc(void)
+{
+    GeofencingNav* self =
+        (GeofencingNav*)GeofencingNavType.tp_alloc(&GeofencingNavType, 0);
+    if (self) { self->geofences = NULL; }
+    return self;
+}
+
+static inline Geofencing* Geofencing_alloc(void)
+{
+    Geofencing* self =
+        (Geofencing*)GeofencingType.tp_alloc(&GeofencingType, 0);
+    if (self) { self->cfg = NULL; self->nav = NULL; }
+    return self;
+}
+
+static inline RfBlock* RfBlock_alloc(void)
+{
+    return (RfBlock*)RfBlockType.tp_alloc(&RfBlockType, 0);
+}
+
+static inline Navigation* Navigation_alloc(void)
+{
+    Navigation* self =
+        (Navigation*)NavigationType.tp_alloc(&NavigationType, 0);
+    if (self)
+    {
+        self->dop = NULL;
+        self->pvt = NULL;
+        self->geofencing = NULL;
+        self->rf_blocks = NULL;
+    }
+    return self;
+}
+
 /* Private function to convert C navigation data to Python objects */
 static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
 {
-    Navigation* nav_obj =
-        (Navigation*)PyObject_CallObject((PyObject*)&NavigationType, NULL);
+    Navigation* nav_obj = Navigation_alloc();
     if (!nav_obj)
         return NULL;
 
     /* Convert PVT data */
-    PositionVelocityTime* pvt = (PositionVelocityTime*)PyObject_CallObject(
-        (PyObject*)&PositionVelocityTimeType,
-        NULL
-    );
+    PositionVelocityTime* pvt = PVT_alloc();
 
     if (!pvt)
     {
@@ -1489,8 +1567,7 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
     pvt->fix_type = (int)nav->pvt.fix_type;
 
     /* Populate UtcTime object */
-    Py_XDECREF(pvt->utc_time);
-    UtcTime* utc = (UtcTime*)PyObject_CallObject((PyObject*)&UtcTimeType, NULL);
+    UtcTime* utc = UtcTime_alloc();
     if (utc)
     {
         utc->hours = nav->pvt.utc.hh;
@@ -1504,8 +1581,7 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
     pvt->utc_time = (PyObject*)utc;
 
     /* Populate Date object */
-    Py_XDECREF(pvt->date);
-    Date* dt = (Date*)PyObject_CallObject((PyObject*)&DateType, NULL);
+    Date* dt = Date_alloc();
     if (dt)
     {
         dt->day = nav->pvt.date.day;
@@ -1517,14 +1593,10 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
     }
     pvt->date = (PyObject*)dt;
 
-    Py_XDECREF(nav_obj->pvt);
     nav_obj->pvt = (PyObject*)pvt;
 
     /* Convert DOP data */
-    DilutionOverPrecision* dop_obj = (DilutionOverPrecision*)PyObject_CallObject(
-        (PyObject*)&DilutionOverPrecisionType,
-        NULL
-    );
+    DilutionOverPrecision* dop_obj = DOP_alloc();
     if (!dop_obj)
     {
         Py_DECREF(nav_obj);
@@ -1539,19 +1611,16 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
     dop_obj->northing = nav->dop.northing;
     dop_obj->easting = nav->dop.easting;
 
-    Py_XDECREF(nav_obj->dop);
     nav_obj->dop = (PyObject*)dop_obj;
 
-    Geofencing* geofencing_obj =
-        (Geofencing*)PyObject_CallObject((PyObject*)&GeofencingType, NULL);
+    Geofencing* geofencing_obj = Geofencing_alloc();
     if (!geofencing_obj)
     {
         Py_DECREF(nav_obj);
         return NULL;
     }
 
-    GeofencingCfg* geofencing_cfg =
-        (GeofencingCfg*)PyObject_CallObject((PyObject*)&GeofencingCfgType, NULL);
+    GeofencingCfg* geofencing_cfg = GeofencingCfg_alloc();
     if (!geofencing_cfg)
     {
         Py_DECREF(nav_obj);
@@ -1573,8 +1642,7 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
     
     for (int i = 0; i < nav->geofencing.cfg.geofence_count; i++)
     {
-        Geofence* geofence =
-            (Geofence*)PyObject_CallObject((PyObject*)&GeofenceType, NULL);
+        Geofence* geofence = Geofence_alloc();
         if (!geofence)
         {
             Py_DECREF(nav_obj);
@@ -1591,12 +1659,10 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
         PyList_SetItem(geofences_list, i, (PyObject*)geofence);
     }
 
-    Py_DECREF(geofencing_cfg->geofences);
     geofencing_cfg->geofences = geofences_list;
 
     /* Create geofencing nav */
-    GeofencingNav* geofencing_nav = 
-        (GeofencingNav*)PyObject_CallObject((PyObject*)&GeofencingNavType, NULL);
+    GeofencingNav* geofencing_nav = GeofencingNav_alloc();
     if (!geofencing_nav)
     {
         Py_DECREF(nav_obj);
@@ -1627,12 +1693,10 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
         PyList_SetItem(geofence_statuses, i, status);
     }
 
-    Py_DECREF(geofencing_nav->geofences);
     geofencing_nav->geofences = geofence_statuses;
 
     geofencing_obj->cfg = (PyObject*)geofencing_cfg;
     geofencing_obj->nav = (PyObject*)geofencing_nav;
-    Py_XDECREF(nav_obj->geofencing);
     nav_obj->geofencing = (PyObject*)geofencing_obj;
 
     // Create RF blocks list
@@ -1645,8 +1709,7 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
 
     for (int i = 0; i < nav->num_rf_blocks; i++)
     {
-        RfBlock* rf_block =
-            (RfBlock*)PyObject_CallObject((PyObject*)&RfBlockType, NULL);
+        RfBlock* rf_block = RfBlock_alloc();
         if (!rf_block)
         {
             Py_DECREF(nav_obj);
@@ -1671,7 +1734,6 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
         PyList_SetItem(rf_blocks_list, i, (PyObject*)rf_block);
     }
 
-    Py_XDECREF(nav_obj->rf_blocks);
     nav_obj->rf_blocks = rf_blocks_list;
 
     return (PyObject*)nav_obj;
@@ -1680,7 +1742,11 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
 static PyObject* GnssHat_get_navigation(GnssHat* self, PyObject* args)
 {
     jp_gnss_navigation_t nav;
-    bool result = jp_gnss_hat_get_navigation(self->hat, &nav);
+    bool result;
+
+    Py_BEGIN_ALLOW_THREADS
+    result = jp_gnss_hat_get_navigation(self->hat, &nav);
+    Py_END_ALLOW_THREADS
 
     if (!result)
     {
@@ -2275,6 +2341,7 @@ static PyTypeObject NavigationType = {
     .tp_new = Navigation_new,
     .tp_dealloc = (destructor)Navigation_dealloc,
     .tp_str = (reprfunc)Navigation_str,
+    .tp_repr = (reprfunc)Navigation_str,
     .tp_members = Navigation_members,
 };
 

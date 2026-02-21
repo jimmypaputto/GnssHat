@@ -448,7 +448,9 @@ const char* jp_gnss_hat_get_gpsd_device_path(jp_gnss_hat_t* hat)
     if (!hat->instance)
         return nullptr;
 
-    return hat->instance->getGpsdDevicePath().c_str();
+    static std::string path;
+    path = hat->instance->getGpsdDevicePath();
+    return path.c_str();
 }
 
 void jp_gnss_hat_hard_reset_cold_start(jp_gnss_hat_t* hat)

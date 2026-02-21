@@ -1675,8 +1675,11 @@ static PyObject* GnssHat_get_navigation(GnssHat* self, PyObject* args)
 static PyObject* GnssHat_wait_and_get_fresh_navigation(GnssHat* self, PyObject* args)
 {
     jp_gnss_navigation_t nav;
-    bool result =
-        jp_gnss_hat_wait_and_get_fresh_navigation(self->hat, &nav);
+    bool result;
+
+    Py_BEGIN_ALLOW_THREADS
+    result = jp_gnss_hat_wait_and_get_fresh_navigation(self->hat, &nav);
+    Py_END_ALLOW_THREADS
 
     if (!result)
     {

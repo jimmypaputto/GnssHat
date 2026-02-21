@@ -29,7 +29,8 @@ else:
 while True:
     try:
         nav = hat.wait_and_get_fresh_navigation()
-        print(nav.pvt)
+        print("\033[2J\033[H")  # clear terminal
+        print(nav)
 
     except KeyboardInterrupt:
         print("Exiting...")

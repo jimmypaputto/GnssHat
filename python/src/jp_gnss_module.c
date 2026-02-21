@@ -371,6 +371,40 @@ static PyMemberDef RfBlock_members[] = {
     {NULL}
 };
 
+static PyObject* RfBlock_str(RfBlock* self)
+{
+    char buffer[1024];
+    snprintf(
+        buffer,
+        sizeof(buffer),
+        "RfBlock(\n"
+        "    id=%d\n"
+        "    jamming_state=%d\n"
+        "    antenna_status=%d\n"
+        "    antenna_power=%d\n"
+        "    post_status=%u\n"
+        "    noise_per_ms=%u\n"
+        "    agc_monitor=%.2f%%\n"
+        "    cw_interference_suppression_level=%.2f\n"
+        "    ofs_i=%d  mag_i=%u\n"
+        "    ofs_q=%d  mag_q=%u\n"
+        ")",
+        self->id,
+        self->jamming_state,
+        self->antenna_status,
+        self->antenna_power,
+        self->post_status,
+        self->noise_per_ms,
+        self->agc_monitor,
+        self->cw_interference_suppression_level,
+        self->ofs_i,
+        self->mag_i,
+        self->ofs_q,
+        self->mag_q
+    );
+    return PyUnicode_FromString(buffer);
+}
+
 static PyTypeObject RfBlockType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "jimmypaputto.gnsshat.RfBlock",
@@ -379,7 +413,119 @@ static PyTypeObject RfBlockType = {
     .tp_itemsize = 0,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
     .tp_new = RfBlock_new,
+    .tp_str = (reprfunc)RfBlock_str,
     .tp_members = RfBlock_members,
+};
+
+/* ---- DilutionOfPrecision ---- */
+
+static PyObject* DilutionOfPrecision_new(PyTypeObject* type, PyObject* args,
+    PyObject* kwds)
+{
+    DilutionOfPrecision* self =
+        (DilutionOfPrecision*)type->tp_alloc(type, 0);
+    if (self)
+    {
+        self->geometric = 0.0f;
+        self->position = 0.0f;
+        self->time = 0.0f;
+        self->vertical = 0.0f;
+        self->horizontal = 0.0f;
+        self->northing = 0.0f;
+        self->easting = 0.0f;
+    }
+    return (PyObject*)self;
+}
+
+static PyObject* DilutionOfPrecision_str(DilutionOfPrecision* self)
+{
+    char buffer[512];
+    snprintf(
+        buffer,
+        sizeof(buffer),
+        "DilutionOfPrecision(\n"
+        "    geometric=%.2f\n"
+        "    position=%.2f\n"
+        "    time=%.2f\n"
+        "    vertical=%.2f\n"
+        "    horizontal=%.2f\n"
+        "    northing=%.2f\n"
+        "    easting=%.2f\n"
+        ")",
+        self->geometric,
+        self->position,
+        self->time,
+        self->vertical,
+        self->horizontal,
+        self->northing,
+        self->easting
+    );
+    return PyUnicode_FromString(buffer);
+}
+
+static PyMemberDef DilutionOfPrecision_members[] = {
+    {
+        "geometric",
+        T_FLOAT,
+        offsetof(DilutionOfPrecision, geometric),
+        0,
+        "Geometric DOP"
+    },
+    {
+        "position",
+        T_FLOAT,
+        offsetof(DilutionOfPrecision, position),
+        0,
+        "Position DOP"
+    },
+    {
+        "time",
+        T_FLOAT,
+        offsetof(DilutionOfPrecision, time),
+        0,
+        "Time DOP"
+    },
+    {
+        "vertical",
+        T_FLOAT,
+        offsetof(DilutionOfPrecision, vertical),
+        0,
+        "Vertical DOP"
+    },
+    {
+        "horizontal",
+        T_FLOAT,
+        offsetof(DilutionOfPrecision, horizontal),
+        0,
+        "Horizontal DOP"
+    },
+    {
+        "northing",
+        T_FLOAT,
+        offsetof(DilutionOfPrecision, northing),
+        0,
+        "Northing DOP"
+    },
+    {
+        "easting",
+        T_FLOAT,
+        offsetof(DilutionOfPrecision, easting),
+        0,
+        "Easting DOP"
+    },
+    {NULL}
+};
+
+static PyTypeObject DilutionOfPrecisionType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "jimmypaputto.gnsshat.DilutionOfPrecision",
+    .tp_doc = "Dilution of Precision (DOP) values",
+    .tp_basicsize = sizeof(DilutionOfPrecision),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_new = DilutionOfPrecision_new,
+    .tp_str = (reprfunc)DilutionOfPrecision_str,
+    .tp_members = DilutionOfPrecision_members,
 };
 
 static PyObject* GeofencingCfg_new(PyTypeObject* type, PyObject* args,
@@ -1352,7 +1498,30 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
         "valid", nav->pvt.date.valid ? Py_True : Py_False
     );
 
+    Py_XDECREF(nav_obj->pvt);
     nav_obj->pvt = (PyObject*)pvt;
+
+    /* Convert DOP data */
+    DilutionOfPrecision* dop_obj = (DilutionOfPrecision*)PyObject_CallObject(
+        (PyObject*)&DilutionOfPrecisionType,
+        NULL
+    );
+    if (!dop_obj)
+    {
+        Py_DECREF(nav_obj);
+        return NULL;
+    }
+
+    dop_obj->geometric = nav->dop.geometric;
+    dop_obj->position = nav->dop.position;
+    dop_obj->time = nav->dop.time;
+    dop_obj->vertical = nav->dop.vertical;
+    dop_obj->horizontal = nav->dop.horizontal;
+    dop_obj->northing = nav->dop.northing;
+    dop_obj->easting = nav->dop.easting;
+
+    Py_XDECREF(nav_obj->dop);
+    nav_obj->dop = (PyObject*)dop_obj;
 
     Geofencing* geofencing_obj =
         (Geofencing*)PyObject_CallObject((PyObject*)&GeofencingType, NULL);
@@ -1444,6 +1613,7 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
 
     geofencing_obj->cfg = (PyObject*)geofencing_cfg;
     geofencing_obj->nav = (PyObject*)geofencing_nav;
+    Py_XDECREF(nav_obj->geofencing);
     nav_obj->geofencing = (PyObject*)geofencing_obj;
 
     // Create RF blocks list
@@ -1482,6 +1652,7 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
         PyList_SetItem(rf_blocks_list, i, (PyObject*)rf_block);
     }
 
+    Py_XDECREF(nav_obj->rf_blocks);
     nav_obj->rf_blocks = rf_blocks_list;
 
     return (PyObject*)nav_obj;
@@ -1682,10 +1853,13 @@ static PyObject* Navigation_new(PyTypeObject* type, PyObject* args,
     Navigation* self = (Navigation*)type->tp_alloc(type, 0);
     if (self)
     {
-        self->dop = NULL;
-        self->pvt = NULL;
-        self->geofencing = NULL;
-        self->rf_blocks = NULL;
+        self->dop = PyObject_CallObject(
+            (PyObject*)&DilutionOfPrecisionType, NULL);
+        self->pvt = PyObject_CallObject(
+            (PyObject*)&PositionVelocityTimeType, NULL);
+        self->geofencing = PyObject_CallObject(
+            (PyObject*)&GeofencingType, NULL);
+        self->rf_blocks = PyList_New(0);
     }
     return (PyObject*)self;
 }
@@ -1731,6 +1905,81 @@ static PyMemberDef Navigation_members[] = {
     {NULL}
 };
 
+static PyObject* Navigation_str(Navigation* self)
+{
+    /* Build sub-object strings */
+    PyObject* pvt_str = NULL;
+    PyObject* dop_str = NULL;
+    PyObject* rf_str = NULL;
+
+    if (self->pvt)
+        pvt_str = PyObject_Str(self->pvt);
+    if (self->dop)
+        dop_str = PyObject_Str(self->dop);
+
+    /* Build RF blocks string */
+    PyObject* rf_parts = PyUnicode_FromString("");
+    if (self->rf_blocks && PyList_Check(self->rf_blocks))
+    {
+        Py_ssize_t n = PyList_Size(self->rf_blocks);
+        for (Py_ssize_t i = 0; i < n; i++)
+        {
+            PyObject* item = PyList_GetItem(self->rf_blocks, i);
+            PyObject* item_str = PyObject_Str(item);
+            if (item_str)
+            {
+                PyObject* prefix = PyUnicode_FromFormat("\n  [%zd] ", i);
+                PyObject* tmp = PyUnicode_Concat(rf_parts, prefix);
+                Py_DECREF(prefix);
+                Py_DECREF(rf_parts);
+                rf_parts = PyUnicode_Concat(tmp, item_str);
+                Py_DECREF(tmp);
+                Py_DECREF(item_str);
+            }
+        }
+    }
+
+    /* Build geofencing string */
+    PyObject* geo_str = PyUnicode_FromString("N/A");
+    if (self->geofencing)
+    {
+        Geofencing* g = (Geofencing*)self->geofencing;
+        if (g->cfg && g->nav)
+        {
+            GeofencingNav* gnav = (GeofencingNav*)g->nav;
+            GeofencingCfg* gcfg = (GeofencingCfg*)g->cfg;
+            Py_DECREF(geo_str);
+            geo_str = PyUnicode_FromFormat(
+                "Geofencing(confidence=%u, fences=%u, status=%d, combined=%d)",
+                gcfg->confidence_level,
+                gnav->number_of_geofences,
+                gnav->status,
+                gnav->combined_state
+            );
+        }
+    }
+
+    PyObject* result = PyUnicode_FromFormat(
+        "===== Navigation =====\n"
+        "\n--- PVT ---\n%U\n"
+        "\n--- DOP ---\n%U\n"
+        "\n--- Geofencing ---\n%U\n"
+        "\n--- RF Blocks ---%U\n"
+        "=======================",
+        pvt_str ? pvt_str : PyUnicode_FromString("N/A"),
+        dop_str ? dop_str : PyUnicode_FromString("N/A"),
+        geo_str,
+        rf_parts
+    );
+
+    Py_XDECREF(pvt_str);
+    Py_XDECREF(dop_str);
+    Py_DECREF(geo_str);
+    Py_DECREF(rf_parts);
+
+    return result;
+}
+
 static PyTypeObject NavigationType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "jimmypaputto.gnsshat.Navigation",
@@ -1740,6 +1989,7 @@ static PyTypeObject NavigationType = {
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
     .tp_new = Navigation_new,
     .tp_dealloc = (destructor)Navigation_dealloc,
+    .tp_str = (reprfunc)Navigation_str,
     .tp_members = Navigation_members,
 };
 
@@ -1905,7 +2155,7 @@ static PyMethodDef jimmypaputto_gnss_methods[] = {
 static struct PyModuleDef jimmypaputto_gnss_module = {
     PyModuleDef_HEAD_INIT,
     "jimmypaputto.gnsshat",
-    "Professional Python interface for Jimmy Paputto GNSS HAT",
+    "Python interface for Jimmy Paputto GNSS HAT",
     -1,
     jimmypaputto_gnss_methods
 };
@@ -1919,6 +2169,8 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
     if (PyType_Ready(&PositionVelocityTimeType) < 0)
         return NULL;
     if (PyType_Ready(&NavigationType) < 0)
+        return NULL;
+    if (PyType_Ready(&DilutionOfPrecisionType) < 0)
         return NULL;
     if (PyType_Ready(&GeofenceType) < 0)
         return NULL;
@@ -1948,6 +2200,10 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
     
     Py_INCREF(&NavigationType);
     PyModule_AddObject(m, "Navigation", (PyObject*)&NavigationType);
+
+    Py_INCREF(&DilutionOfPrecisionType);
+    PyModule_AddObject(m, "DilutionOfPrecision",
+        (PyObject*)&DilutionOfPrecisionType);
 
     Py_INCREF(&RfBlockType);
     PyModule_AddObject(m, "RfBlock", (PyObject*)&RfBlockType);

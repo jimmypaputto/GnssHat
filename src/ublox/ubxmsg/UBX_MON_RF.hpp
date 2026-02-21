@@ -47,10 +47,10 @@ public:
                 serialized[12 + i * 24]);
             rfBlock.antennaPower = static_cast<EAntennaPower>(
                 serialized[13 + i * 24]);
-            rfBlock.postStatus = *(uint32_t*)&serialized[14 + i * 24];
-            rfBlock.noisePerMS = *(uint16_t*)&serialized[22 + i * 24];
+            rfBlock.postStatus = readLE<uint32_t>(serialized, 14 + i * 24);
+            rfBlock.noisePerMS = readLE<uint16_t>(serialized, 22 + i * 24);
             rfBlock.agcMonitor =
-                *(uint16_t*)&serialized[24 + i * 24] * 100.0 / 8191.0;
+                readLE<uint16_t>(serialized, 24 + i * 24) * 100.0 / 8191.0;
             rfBlock.cwInterferenceSuppressionLevel =
                 serialized[26 + i * 24] * 100.0 / 255.0;
             rfBlock.ofsI = serialized[27 + i * 24];

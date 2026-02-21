@@ -37,7 +37,7 @@ struct TxReady
 
     void deserialize(const std::vector<uint8_t>& frame)
     {
-        const uint16_t serialized = *(uint16_t*)&frame[0];
+        const uint16_t serialized = readLE<uint16_t>(frame, 0);
         enable = getBit(serialized, 0);
         polarity = static_cast<Polarity>(getBit(serialized, 1));
         pin = (serialized >> 2) & 0x3F;
@@ -79,7 +79,7 @@ struct Mode<UBX_SPI>
 
     void deserialize(const std::vector<uint8_t>& frame)
     {
-        const uint32_t serialized = *(uint32_t*)&frame[0];
+        const uint32_t serialized = readLE<uint32_t>(frame, 0);
         spiMode = static_cast<ESpiMode>((serialized >> 1) & 0x3);
         ffCnt = (serialized >> 8) & 0x3F;
     }
@@ -102,7 +102,7 @@ struct Mode<UBX_UART_1>
 
     void deserialize(const std::vector<uint8_t>& frame)
     {
-        const uint32_t serialized = *(uint32_t*)&frame[0];
+        const uint32_t serialized = readLE<uint32_t>(frame, 0);
         charLen = static_cast<CharLen>((serialized >> 6) & 0x3);
         parity = static_cast<Parity>((serialized >> 9) & 0x7);
         nStopBits = static_cast<StopBits>((serialized >> 12) & 0x3);
@@ -156,7 +156,7 @@ struct ProtoMask
 
     void deserialize(const std::vector<uint8_t>& frame)
     {
-        const uint16_t serialized = *(uint16_t*)&frame[0];
+        const uint16_t serialized = readLE<uint16_t>(frame, 0);
         ubx = getBit(serialized, 0);
         nmea = getBit(serialized, 1);
         rtcm = getBit(serialized, 2);
@@ -180,7 +180,7 @@ struct Flags
 
     void deserialize(const std::vector<uint8_t>& frame)
     {
-        const uint16_t serialized = *(uint16_t*)&frame[0];
+        const uint16_t serialized = readLE<uint16_t>(frame, 0);
         extendedTxTimeout = getBit(serialized, 1);
     }
 
@@ -324,7 +324,7 @@ public:
         this->mode_.deserialize(
             { serialized[10], serialized[11], serialized[12], serialized[13] }
         );
-        baudrate_ = *(uint32_t*)&serialized[14];
+        baudrate_ = readLE<uint32_t>(serialized, 14);
         this->inProtoMask_.deserialize({ serialized[18], serialized[19] });
         this->outProtoMask_.deserialize({ serialized[20], serialized[21] });
         this->flags_.deserialize({ serialized[22], serialized[23] });

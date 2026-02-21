@@ -5,7 +5,9 @@
 #ifndef JIMMY_PAPUTTO_UTILS_HPP_
 #define JIMMY_PAPUTTO_UTILS_HPP_
 
+#include <bit>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <string>
 #include <vector>
@@ -44,11 +46,35 @@ constexpr uint8_t countEnum()
 
 constexpr bool isLittleEndian()
 {
-    return static_cast<const uint8_t&>(
-        *(const uint8_t*)(
-            &static_cast<const uint32_t&>(1)
-        )
-    ) == 1;
+    return std::endian::native == std::endian::little;
+}
+
+/// Read a value of type T from a little-endian byte buffer at given offset.
+/// Uses std::memcpy to avoid strict aliasing and unaligned access UB.
+template <typename T>
+T readLE(const std::vector<uint8_t>& data, size_t offset)
+{
+    T result;
+    std::memcpy(&result, data.data() + offset, sizeof(T));
+    return result;
+}
+
+/// Overload: read from raw byte pointer.
+template <typename T>
+T readLE(const uint8_t* data)
+{
+    T result;
+    std::memcpy(&result, data, sizeof(T));
+    return result;
+}
+
+/// Append a value of type T as little-endian bytes to a vector.
+template <typename T>
+void appendLE(T value, std::vector<uint8_t>& out)
+{
+    const size_t offset = out.size();
+    out.resize(offset + sizeof(T));
+    std::memcpy(out.data() + offset, &value, sizeof(T));
 }
 
 template <typename T>
@@ -58,11 +84,7 @@ void serialize(T toSerialize, std::vector<uint8_t>& bufor, const uint32_t offset
     {
         return;
     }
-
-    for (uint8_t i = 0; i < sizeof(T); i++)
-    {
-        bufor[offset + i] = *(reinterpret_cast<uint8_t*>(&toSerialize) + i);
-    }
+    std::memcpy(bufor.data() + offset, &toSerialize, sizeof(T));
 }
 
 template <typename integer>
@@ -70,9 +92,9 @@ std::vector<uint8_t> serializeInt2LittleEndian(integer value)
 {
     if (isLittleEndian())
     {
-        return std::vector<uint8_t> (
-            (uint8_t*)&value, (uint8_t*)&value + sizeof(integer)
-        );
+        std::vector<uint8_t> result(sizeof(integer));
+        std::memcpy(result.data(), &value, sizeof(integer));
+        return result;
     }
     else
     {

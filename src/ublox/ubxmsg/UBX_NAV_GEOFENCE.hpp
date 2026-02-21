@@ -30,7 +30,7 @@ public:
 
     void deserialize(const std::vector<uint8_t>& serialized) override
     {
-        nav_.iTOW = *(uint32_t*)&serialized[6];
+        nav_.iTOW = readLE<uint32_t>(serialized, 6);
         nav_.geofencingStatus = static_cast<EGeofencingStatus>(serialized[11]);
         if (nav_.geofencingStatus == EGeofencingStatus::Active)
         {

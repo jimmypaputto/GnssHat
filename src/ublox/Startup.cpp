@@ -706,7 +706,7 @@ bool F10TStartup::reconfigureCommPort()
 {
     bool result = false;
 
-    constexpr std::array<uint32_t, 3> baudratesToCheck = {
+    constexpr std::array<uint32_t, 2> baudratesToCheck = {
         38400,
         115200,
     };

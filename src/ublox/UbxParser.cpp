@@ -83,7 +83,8 @@ void UbxParser::extractFrames(const std::vector<uint8_t>& buffer)
             std::distance(beginFrameIterator, buffer.end()) > 5)
         {
             auto endFrameIterator = beginFrameIterator + 4;
-            const uint16_t dataLength = *(uint16_t*)&(*endFrameIterator);
+            uint16_t dataLength;
+            std::memcpy(&dataLength, &(*endFrameIterator), sizeof(uint16_t));
             if (std::distance(++endFrameIterator, buffer.end()) < dataLength + 3)
             {
                 std::copy(

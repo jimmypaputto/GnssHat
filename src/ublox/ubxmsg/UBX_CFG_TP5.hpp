@@ -80,40 +80,19 @@ struct Timepulse5
     std::vector<uint8_t> serialize()
     {
         std::vector<uint8_t> serialized;
+        serialized.reserve(32);
         serialized.push_back(static_cast<uint8_t>(tpIdx));
+        serialized.push_back(0x00);
+        serialized.push_back(0x00);
+        serialized.push_back(0x00);
 
-        serialized += std::vector<uint8_t> {0x00, 0x00, 0x00};
-
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&antCableDelay)));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&antCableDelay) + 1));
-
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&rfGroupDelay)));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&rfGroupDelay) + 1));
-
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&freqPeriod)));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&freqPeriod) + 1));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&freqPeriod) + 2));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&freqPeriod) + 3));
-
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&freqPeriodLock)));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&freqPeriodLock) + 1));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&freqPeriodLock) + 2));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&freqPeriodLock) + 3));
-
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&pulseLenRatio)));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&pulseLenRatio) + 1));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&pulseLenRatio) + 2));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&pulseLenRatio) + 3));
-
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&pulseLenRatioLock)));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&pulseLenRatioLock) + 1));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&pulseLenRatioLock) + 2));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&pulseLenRatioLock) + 3));
-
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&userConfigDelay)));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&userConfigDelay) + 1));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&userConfigDelay) + 2));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&userConfigDelay) + 3));
+        appendLE(antCableDelay, serialized);
+        appendLE(rfGroupDelay, serialized);
+        appendLE(freqPeriod, serialized);
+        appendLE(freqPeriodLock, serialized);
+        appendLE(pulseLenRatio, serialized);
+        appendLE(pulseLenRatioLock, serialized);
+        appendLE(userConfigDelay, serialized);
 
         uint32_t flags = 0;
         setBit(flags, 0, active);
@@ -125,10 +104,7 @@ struct Timepulse5
         setBit(flags, 6, static_cast<bool>(polarity));
         setBit(flags, 7, static_cast<bool>(gridUtcGps));
 
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&flags)));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&flags) + 1));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&flags) + 2));
-        serialized.push_back(*(reinterpret_cast<uint8_t*>(&flags) + 3));
+        appendLE(flags, serialized);
 
         return serialized;
     }
@@ -137,15 +113,15 @@ struct Timepulse5
     {
         Timepulse5 timepulse;
         timepulse.tpIdx = static_cast<ETimepulseIdx>(serialized[0]);
-        timepulse.antCableDelay = *(int16_t*)&serialized[4];
-        timepulse.rfGroupDelay = *(int16_t*)&serialized[6];
-        timepulse.freqPeriod = *(uint32_t*)&serialized[8];
-        timepulse.freqPeriodLock = *(uint32_t*)&serialized[12];
-        timepulse.pulseLenRatio = *(uint32_t*)&serialized[16];
-        timepulse.pulseLenRatioLock = *(uint32_t*)&serialized[20];
-        timepulse.userConfigDelay = *(int32_t*)&serialized[24];
+        timepulse.antCableDelay = readLE<int16_t>(serialized, 4);
+        timepulse.rfGroupDelay = readLE<int16_t>(serialized, 6);
+        timepulse.freqPeriod = readLE<uint32_t>(serialized, 8);
+        timepulse.freqPeriodLock = readLE<uint32_t>(serialized, 12);
+        timepulse.pulseLenRatio = readLE<uint32_t>(serialized, 16);
+        timepulse.pulseLenRatioLock = readLE<uint32_t>(serialized, 20);
+        timepulse.userConfigDelay = readLE<int32_t>(serialized, 24);
 
-        uint32_t flags = *(uint32_t*)&serialized[28];
+        uint32_t flags = readLE<uint32_t>(serialized, 28);
         timepulse.active = getBit(flags, 0);
         timepulse.lockGpsFreq = getBit(flags, 1);
         timepulse.lockedOtherSet = getBit(flags, 2);

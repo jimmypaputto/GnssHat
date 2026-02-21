@@ -33,11 +33,12 @@ public:
         const std::vector<uint8_t> begining = {
             0xB5, 0x62, 0x06, 0x24, 0x24, 0x00
         };
+        uint8_t maskLE[2];
+        std::memcpy(maskLE, &mask_, sizeof(mask_));
         const auto serialized =
             begining +
             std::vector<uint8_t> {
-                *(reinterpret_cast<uint8_t*>(&mask_)),
-                *(reinterpret_cast<uint8_t*>(&mask_) + 1),
+                maskLE[0], maskLE[1],
                 static_cast<uint8_t>(dynamicModel_)
             } +
             std::vector<uint8_t>(33, 0);
@@ -47,7 +48,7 @@ public:
 
     void deserialize(const std::vector<uint8_t>& serialized) override
     {
-        mask_ = *(uint16_t*)&serialized[6];
+        mask_ = readLE<uint16_t>(serialized, 6);
         dynamicModel_ = EDynamicModel(serialized[8]);
     }
 

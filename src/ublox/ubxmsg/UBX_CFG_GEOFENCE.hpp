@@ -44,11 +44,12 @@ public:
     {
         const std::vector<uint8_t> begining = { 0xB5, 0x62, 0x06, 0x69 };
         uint16_t length = 8 + cfg_.geofences.size() * 12;
+        uint8_t lenLE[2];
+        std::memcpy(lenLE, &length, sizeof(length));
 
         const auto serialized =
             begining +
-            std::vector<uint8_t> { *(reinterpret_cast<uint8_t*>(&length)),
-                *(reinterpret_cast<uint8_t*>(&length) + 1) } +
+            std::vector<uint8_t> { lenLE[0], lenLE[1] } +
             std::vector<uint8_t> { 0x00, static_cast<uint8_t>(cfg_.geofences.size()),
                 cfg_.confidenceLevel, 0x00, static_cast<uint8_t>(cfg_.pioEnabled),
                 static_cast<uint8_t>(cfg_.pinPolarity), cfg_.pioPinNumber, 0x00 };
@@ -60,20 +61,9 @@ public:
             uint32_t lon = cfg_.geofences[i].lon * 10000000;
             uint32_t radius = cfg_.geofences[i].radius * 100;
 
-            serializedFences[i * 12] = *(reinterpret_cast<uint8_t*>(&lat));
-            serializedFences[i * 12 + 1] = *(reinterpret_cast<uint8_t*>(&lat) + 1);
-            serializedFences[i * 12 + 2] = *(reinterpret_cast<uint8_t*>(&lat) + 2);
-            serializedFences[i * 12 + 3] = *(reinterpret_cast<uint8_t*>(&lat) + 3);
-
-            serializedFences[4 + i * 12] = *(reinterpret_cast<uint8_t*>(&lon));
-            serializedFences[4 + i * 12 + 1] = *(reinterpret_cast<uint8_t*>(&lon) + 1);
-            serializedFences[4 + i * 12 + 2] = *(reinterpret_cast<uint8_t*>(&lon) + 2);
-            serializedFences[4 + i * 12 + 3] = *(reinterpret_cast<uint8_t*>(&lon) + 3);
-
-            serializedFences[8 + i * 12] = *(reinterpret_cast<uint8_t*>(&radius));
-            serializedFences[8 + i * 12 + 1] = *(reinterpret_cast<uint8_t*>(&radius) + 1);
-            serializedFences[8 + i * 12 + 2] = *(reinterpret_cast<uint8_t*>(&radius) + 2);
-            serializedFences[8 + i * 12 + 3] = *(reinterpret_cast<uint8_t*>(&radius) + 3);
+            std::memcpy(serializedFences.data() + i * 12, &lat, sizeof(lat));
+            std::memcpy(serializedFences.data() + 4 + i * 12, &lon, sizeof(lon));
+            std::memcpy(serializedFences.data() + 8 + i * 12, &radius, sizeof(radius));
         }
 
         return buildFrame(serialized + serializedFences);
@@ -91,11 +81,11 @@ public:
         {
             const auto geofence = Geofence {
                 .lat = static_cast<float>(
-                    (*(uint32_t*)&serialized[14 + i*12]) / 10000000.0),
+                    readLE<uint32_t>(serialized, 14 + i*12) / 10000000.0),
                 .lon = static_cast<float>(
-                    (*(uint32_t*)&serialized[18 + i*12]) / 10000000.0),
+                    readLE<uint32_t>(serialized, 18 + i*12) / 10000000.0),
                 .radius = static_cast<float>(
-                    (*(uint32_t*)&serialized[22 + i*12]) / 100.0)
+                    readLE<uint32_t>(serialized, 22 + i*12) / 100.0)
             };
             cfg_.geofences.push_back(geofence);
         }

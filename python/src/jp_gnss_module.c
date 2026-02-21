@@ -2264,96 +2264,6 @@ static PyObject* jimmypaputto_gnss_version(PyObject* self, PyObject* args)
     return PyUnicode_FromString("1.0.0");
 }
 
-static PyObject* fix_quality_to_string(PyObject* self, PyObject* args)
-{
-    int quality;
-    if (!PyArg_ParseTuple(args, "i", &quality))
-        return NULL;
-    
-    const char* result = jp_gnss_fix_quality_to_string((jp_gnss_fix_quality_t)quality);
-    return PyUnicode_FromString(result);
-}
-
-static PyObject* fix_status_to_string(PyObject* self, PyObject* args)
-{
-    int status;
-    if (!PyArg_ParseTuple(args, "i", &status))
-        return NULL;
-    
-    const char* result = jp_gnss_fix_status_to_string((jp_gnss_fix_status_t)status);
-    return PyUnicode_FromString(result);
-}
-
-static PyObject* fix_type_to_string(PyObject* self, PyObject* args)
-{
-    int type;
-    if (!PyArg_ParseTuple(args, "i", &type))
-        return NULL;
-    
-    const char* result = jp_gnss_fix_type_to_string((jp_gnss_fix_type_t)type);
-    return PyUnicode_FromString(result);
-}
-
-static PyObject* jamming_state_to_string(PyObject* self, PyObject* args)
-{
-    int state;
-    if (!PyArg_ParseTuple(args, "i", &state))
-        return NULL;
-    
-    const char* result = jp_gnss_jamming_state_to_string((jp_gnss_jamming_state_t)state);
-    return PyUnicode_FromString(result);
-}
-
-static PyObject* antenna_status_to_string(PyObject* self, PyObject* args)
-{
-    int status;
-    if (!PyArg_ParseTuple(args, "i", &status))
-        return NULL;
-    
-    const char* result = jp_gnss_antenna_status_to_string((jp_gnss_antenna_status_t)status);
-    return PyUnicode_FromString(result);
-}
-
-static PyObject* antenna_power_to_string(PyObject* self, PyObject* args)
-{
-    int power;
-    if (!PyArg_ParseTuple(args, "i", &power))
-        return NULL;
-    
-    const char* result = jp_gnss_antenna_power_to_string((jp_gnss_antenna_power_t)power);
-    return PyUnicode_FromString(result);
-}
-
-static PyObject* rf_band_to_string(PyObject* self, PyObject* args)
-{
-    int band;
-    if (!PyArg_ParseTuple(args, "i", &band))
-        return NULL;
-    
-    const char* result = jp_gnss_rf_band_to_string((jp_gnss_rf_band_t)band);
-    return PyUnicode_FromString(result);
-}
-
-static PyObject* geofencing_status_to_string(PyObject* self, PyObject* args)
-{
-    int status;
-    if (!PyArg_ParseTuple(args, "i", &status))
-        return NULL;
-    
-    const char* result = jp_gnss_geofencing_status_to_string((jp_gnss_geofencing_status_t)status);
-    return PyUnicode_FromString(result);
-}
-
-static PyObject* geofence_status_to_string(PyObject* self, PyObject* args)
-{
-    int status;
-    if (!PyArg_ParseTuple(args, "i", &status))
-        return NULL;
-    
-    const char* result = jp_gnss_geofence_status_to_string((jp_gnss_geofence_status_t)status);
-    return PyUnicode_FromString(result);
-}
-
 static PyObject* utc_time_iso8601(PyObject* self, PyObject* args)
 {
     PyObject* obj;
@@ -2421,60 +2331,6 @@ static PyMethodDef jimmypaputto_gnss_methods[] = {
         jimmypaputto_gnss_version,
         METH_NOARGS,
         "Get library version"
-    },
-    {
-        "fix_quality_to_string",
-        fix_quality_to_string,
-        METH_VARARGS,
-        "Convert fix quality enum to string"
-    },
-    {
-        "fix_status_to_string",
-        fix_status_to_string,
-        METH_VARARGS,
-        "Convert fix status enum to string"
-    },
-    {
-        "fix_type_to_string",
-        fix_type_to_string,
-        METH_VARARGS,
-        "Convert fix type enum to string"
-    },
-    {
-        "jamming_state_to_string",
-        jamming_state_to_string,
-        METH_VARARGS,
-        "Convert jamming state enum to string"
-    },
-    {
-        "antenna_status_to_string",
-        antenna_status_to_string,
-        METH_VARARGS,
-        "Convert antenna status enum to string"
-    },
-    {
-        "antenna_power_to_string",
-        antenna_power_to_string,
-        METH_VARARGS,
-        "Convert antenna power enum to string"
-    },
-    {
-        "rf_band_to_string",
-        rf_band_to_string,
-        METH_VARARGS,
-        "Convert RF band enum to string"
-    },
-    {
-        "geofencing_status_to_string",
-        geofencing_status_to_string,
-        METH_VARARGS,
-        "Convert geofencing status enum to string"
-    },
-    {
-        "geofence_status_to_string",
-        geofence_status_to_string,
-        METH_VARARGS,
-        "Convert geofence status enum to string"
     },
     {
         "utc_time_iso8601",
@@ -2561,50 +2417,131 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
     Py_INCREF(&GeofencingType);
     PyModule_AddObject(m, "Geofencing", (PyObject*)&GeofencingType);
 
-    PyModule_AddIntConstant(m, "DYNAMIC_MODEL_PORTABLE",
-        JP_GNSS_DYNAMIC_MODEL_PORTABLE);
-    PyModule_AddIntConstant(m, "DYNAMIC_MODEL_STATIONARY",
-        JP_GNSS_DYNAMIC_MODEL_STATIONARY);
-    PyModule_AddIntConstant(m, "DYNAMIC_MODEL_PEDESTRIAN",
-        JP_GNSS_DYNAMIC_MODEL_PEDESTRIAN);
-    PyModule_AddIntConstant(m, "DYNAMIC_MODEL_AUTOMOTIVE",
-        JP_GNSS_DYNAMIC_MODEL_AUTOMOTIVE);
-    PyModule_AddIntConstant(m, "DYNAMIC_MODEL_SEA",
-        JP_GNSS_DYNAMIC_MODEL_SEA);
-    PyModule_AddIntConstant(m, "DYNAMIC_MODEL_AIRBORNE_1G",
-        JP_GNSS_DYNAMIC_MODEL_AIRBORNE_1G);
-    PyModule_AddIntConstant(m, "DYNAMIC_MODEL_AIRBORNE_2G",
-        JP_GNSS_DYNAMIC_MODEL_AIRBORNE_2G);
-    PyModule_AddIntConstant(m, "DYNAMIC_MODEL_AIRBORNE_4G",
-        JP_GNSS_DYNAMIC_MODEL_AIRBORNE_4G);
-    PyModule_AddIntConstant(m, "DYNAMIC_MODEL_WRIST",
-        JP_GNSS_DYNAMIC_MODEL_WRIST);
-    PyModule_AddIntConstant(m, "DYNAMIC_MODEL_BIKE",
-        JP_GNSS_DYNAMIC_MODEL_BIKE);
-    PyModule_AddIntConstant(m, "DYNAMIC_MODEL_MOWER",
-        JP_GNSS_DYNAMIC_MODEL_MOWER);
-    PyModule_AddIntConstant(m, "DYNAMIC_MODEL_ESCOOTER",
-        JP_GNSS_DYNAMIC_MODEL_ESCOOTER);
+    /* ── IntEnum helper ─────────────────────────────────────────────── */
+    PyObject *enum_mod = PyImport_ImportModule("enum");
+    if (!enum_mod) { Py_DECREF(m); return NULL; }
+    PyObject *IntEnum = PyObject_GetAttrString(enum_mod, "IntEnum");
+    Py_DECREF(enum_mod);
+    if (!IntEnum) { Py_DECREF(m); return NULL; }
 
-    PyModule_AddIntConstant(m, "TIMEPULSE_POLARITY_FALLING_EDGE",
-        JP_GNSS_TIMEPULSE_POLARITY_FALLING_EDGE);
-    PyModule_AddIntConstant(m, "TIMEPULSE_POLARITY_RISING_EDGE",
-        JP_GNSS_TIMEPULSE_POLARITY_RISING_EDGE);
+    #define MAKE_ENUM(py_name, ...)                                        \
+    do {                                                                   \
+        typedef struct { const char *n; int v; } _ep;                      \
+        _ep _pairs[] = { __VA_ARGS__ };                                    \
+        int _cnt = (int)(sizeof(_pairs)/sizeof(_pairs[0]));                \
+        PyObject *_d = PyDict_New();                                       \
+        for (int _i = 0; _i < _cnt; _i++) {                               \
+            PyObject *_val = PyLong_FromLong(_pairs[_i].v);                \
+            PyDict_SetItemString(_d, _pairs[_i].n, _val);                 \
+            Py_DECREF(_val);                                               \
+        }                                                                  \
+        PyObject *_nm = PyUnicode_FromString(py_name);                     \
+        PyObject *_ar = PyTuple_Pack(2, _nm, _d);                         \
+        PyObject *_ec = PyObject_Call(IntEnum, _ar, NULL);                 \
+        Py_DECREF(_nm); Py_DECREF(_ar); Py_DECREF(_d);                    \
+        if (_ec) PyModule_AddObject(m, py_name, _ec);                     \
+    } while(0)
 
-    PyModule_AddIntConstant(m, "FIX_QUALITY_INVALID",
-        JP_GNSS_FIX_QUALITY_INVALID);
-    PyModule_AddIntConstant(m, "FIX_QUALITY_GPS_FIX_2D_3D",
-        JP_GNSS_FIX_QUALITY_GPS_FIX_2D_3D);
-    PyModule_AddIntConstant(m, "FIX_QUALITY_DGNSS",
-        JP_GNSS_FIX_QUALITY_DGNSS);
-    PyModule_AddIntConstant(m, "FIX_QUALITY_PPS_FIX",
-        JP_GNSS_FIX_QUALITY_PPS_FIX);
-    PyModule_AddIntConstant(m, "FIX_QUALITY_FIXED_RTK",
-        JP_GNSS_FIX_QUALITY_FIXED_RTK);
-    PyModule_AddIntConstant(m, "FIX_QUALITY_FLOAT_RTK",
-        JP_GNSS_FIX_QUALITY_FLOAT_RTK);
-    PyModule_AddIntConstant(m, "FIX_QUALITY_DEAD_RECKONING",
-        JP_GNSS_FIX_QUALITY_DEAD_RECKONING);
+    /* ── DynamicModel ───────────────────────────────────────────────── */
+    MAKE_ENUM("DynamicModel",
+        {"PORTABLE",    JP_GNSS_DYNAMIC_MODEL_PORTABLE},
+        {"STATIONARY",  JP_GNSS_DYNAMIC_MODEL_STATIONARY},
+        {"PEDESTRIAN",  JP_GNSS_DYNAMIC_MODEL_PEDESTRIAN},
+        {"AUTOMOTIVE",  JP_GNSS_DYNAMIC_MODEL_AUTOMOTIVE},
+        {"SEA",         JP_GNSS_DYNAMIC_MODEL_SEA},
+        {"AIRBORNE_1G", JP_GNSS_DYNAMIC_MODEL_AIRBORNE_1G},
+        {"AIRBORNE_2G", JP_GNSS_DYNAMIC_MODEL_AIRBORNE_2G},
+        {"AIRBORNE_4G", JP_GNSS_DYNAMIC_MODEL_AIRBORNE_4G},
+        {"WRIST",       JP_GNSS_DYNAMIC_MODEL_WRIST},
+        {"BIKE",        JP_GNSS_DYNAMIC_MODEL_BIKE},
+        {"MOWER",       JP_GNSS_DYNAMIC_MODEL_MOWER},
+        {"ESCOOTER",    JP_GNSS_DYNAMIC_MODEL_ESCOOTER}
+    );
+
+    /* ── FixQuality ─────────────────────────────────────────────────── */
+    MAKE_ENUM("FixQuality",
+        {"INVALID",         JP_GNSS_FIX_QUALITY_INVALID},
+        {"GPS_FIX_2D_3D",   JP_GNSS_FIX_QUALITY_GPS_FIX_2D_3D},
+        {"DGNSS",           JP_GNSS_FIX_QUALITY_DGNSS},
+        {"PPS_FIX",         JP_GNSS_FIX_QUALITY_PPS_FIX},
+        {"FIXED_RTK",       JP_GNSS_FIX_QUALITY_FIXED_RTK},
+        {"FLOAT_RTK",       JP_GNSS_FIX_QUALITY_FLOAT_RTK},
+        {"DEAD_RECKONING",  JP_GNSS_FIX_QUALITY_DEAD_RECKONING}
+    );
+
+    /* ── FixStatus ──────────────────────────────────────────────────── */
+    MAKE_ENUM("FixStatus",
+        {"VOID",   JP_GNSS_FIX_STATUS_VOID},
+        {"ACTIVE", JP_GNSS_FIX_STATUS_ACTIVE}
+    );
+
+    /* ── FixType ────────────────────────────────────────────────────── */
+    MAKE_ENUM("FixType",
+        {"NO_FIX",                   JP_GNSS_FIX_TYPE_NO_FIX},
+        {"DEAD_RECKONING_ONLY",      JP_GNSS_FIX_TYPE_DEAD_RECKONING_ONLY},
+        {"FIX_2D",                   JP_GNSS_FIX_TYPE_FIX_2D},
+        {"FIX_3D",                   JP_GNSS_FIX_TYPE_FIX_3D},
+        {"GNSS_WITH_DEAD_RECKONING", JP_GNSS_FIX_TYPE_GNSS_WITH_DEAD_RECKONING},
+        {"TIME_ONLY_FIX",            JP_GNSS_FIX_TYPE_TIME_ONLY_FIX}
+    );
+
+    /* ── TimepulsePolarity ──────────────────────────────────────────── */
+    MAKE_ENUM("TimepulsePolarity",
+        {"FALLING_EDGE", JP_GNSS_TIMEPULSE_POLARITY_FALLING_EDGE},
+        {"RISING_EDGE",  JP_GNSS_TIMEPULSE_POLARITY_RISING_EDGE}
+    );
+
+    /* ── PioPinPolarity ─────────────────────────────────────────────── */
+    MAKE_ENUM("PioPinPolarity",
+        {"LOW_MEANS_INSIDE",  JP_GNSS_PIO_PIN_POLARITY_LOW_MEANS_INSIDE},
+        {"LOW_MEANS_OUTSIDE", JP_GNSS_PIO_PIN_POLARITY_LOW_MEANS_OUTSIDE}
+    );
+
+    /* ── GeofenceStatus ─────────────────────────────────────────────── */
+    MAKE_ENUM("GeofenceStatus",
+        {"UNKNOWN", JP_GNSS_GEOFENCE_STATUS_UNKNOWN},
+        {"INSIDE",  JP_GNSS_GEOFENCE_STATUS_INSIDE},
+        {"OUTSIDE", JP_GNSS_GEOFENCE_STATUS_OUTSIDE}
+    );
+
+    /* ── GeofencingStatus ───────────────────────────────────────────── */
+    MAKE_ENUM("GeofencingStatus",
+        {"NOT_AVAILABLE", JP_GNSS_GEOFENCING_STATUS_NOT_AVAILABLE},
+        {"ACTIVE",        JP_GNSS_GEOFENCING_STATUS_ACTIVE}
+    );
+
+    /* ── RfBand ─────────────────────────────────────────────────────── */
+    MAKE_ENUM("RfBand",
+        {"L1",       JP_GNSS_RF_BAND_L1},
+        {"L2_OR_L5", JP_GNSS_RF_BAND_L2_OR_L5}
+    );
+
+    /* ── JammingState ───────────────────────────────────────────────── */
+    MAKE_ENUM("JammingState",
+        {"UNKNOWN",                                  JP_GNSS_JAMMING_STATE_UNKNOWN},
+        {"OK_NO_SIGNIFICANT_JAMMING",                JP_GNSS_JAMMING_STATE_OK_NO_SIGNIFICANT_JAMMING},
+        {"WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK",  JP_GNSS_JAMMING_STATE_WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK},
+        {"CRITICAL_INTERFERENCE_VISIBLE_AND_NO_FIX", JP_GNSS_JAMMING_STATE_CRITICAL_INTERFERENCE_VISIBLE_AND_NO_FIX}
+    );
+
+    /* ── AntennaStatus ──────────────────────────────────────────────── */
+    MAKE_ENUM("AntennaStatus",
+        {"INIT",      JP_GNSS_ANTENNA_STATUS_INIT},
+        {"DONT_KNOW", JP_GNSS_ANTENNA_STATUS_DONT_KNOW},
+        {"OK",        JP_GNSS_ANTENNA_STATUS_OK},
+        {"SHORT",     JP_GNSS_ANTENNA_STATUS_SHORT},
+        {"OPEN",      JP_GNSS_ANTENNA_STATUS_OPEN}
+    );
+
+    /* ── AntennaPower ───────────────────────────────────────────────── */
+    MAKE_ENUM("AntennaPower",
+        {"OFF",       JP_GNSS_ANTENNA_POWER_OFF},
+        {"ON",        JP_GNSS_ANTENNA_POWER_ON},
+        {"DONT_KNOW", JP_GNSS_ANTENNA_POWER_DONT_KNOW}
+    );
+
+    #undef MAKE_ENUM
+    Py_DECREF(IntEnum);
 
     return m;
 }

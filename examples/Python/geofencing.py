@@ -31,7 +31,7 @@ def create_default_config() -> dict:
 
     return {
         'measurement_rate_hz': 1,
-        'dynamic_model': gnsshat.DYNAMIC_MODEL_STATIONARY,
+        'dynamic_model': gnsshat.DynamicModel.STATIONARY,
         'timepulse_pin_config': {
             'active': True,
             'fixed_pulse': {
@@ -39,7 +39,7 @@ def create_default_config() -> dict:
                 'pulse_width': 0.1
             },
             'pulse_when_no_fix': None,
-            'polarity': gnsshat.TIMEPULSE_POLARITY_RISING_EDGE
+            'polarity': gnsshat.TimepulsePolarity.RISING_EDGE
         },
         'geofencing': geofencing_config
     }
@@ -60,12 +60,12 @@ def confidence_level_to_str(level: int) -> str:
 
 def geofencing_status_to_str(status: int) -> str:
     """Convert geofencing status to human readable string"""
-    return gnsshat.geofencing_status_to_string(status)
+    return gnsshat.GeofencingStatus(status).name
 
 
 def geofence_status_to_str(status: int) -> str:
     """Convert geofence status to human readable string"""
-    return gnsshat.geofence_status_to_string(status)
+    return gnsshat.GeofenceStatus(status).name
 
 
 def print_geofencing(geofencing):

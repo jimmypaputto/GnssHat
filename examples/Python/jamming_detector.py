@@ -7,7 +7,7 @@ def create_default_config() -> dict:
     """Create configuration optimized for jamming detection"""
     return {
         'measurement_rate_hz': 5,
-        'dynamic_model': gnsshat.DYNAMIC_MODEL_STATIONARY,
+        'dynamic_model': gnsshat.DynamicModel.STATIONARY,
         'timepulse_pin_config': {
             'active': True,
             'fixed_pulse': {
@@ -15,7 +15,7 @@ def create_default_config() -> dict:
                 'pulse_width': 0.1
             },
             'pulse_when_no_fix': None,
-            'polarity': gnsshat.TIMEPULSE_POLARITY_RISING_EDGE
+            'polarity': gnsshat.TimepulsePolarity.RISING_EDGE
         },
         'geofencing': None  # No geofencing for jamming detection
     }
@@ -23,22 +23,22 @@ def create_default_config() -> dict:
 
 def rf_band_to_str(band_id: int) -> str:
     """Convert RF band ID to human readable string"""
-    return gnsshat.rf_band_to_string(band_id)
+    return gnsshat.RfBand(band_id).name
 
 
 def jamming_state_to_str(state: int) -> str:
     """Convert jamming state to human readable string"""
-    return gnsshat.jamming_state_to_string(state)
+    return gnsshat.JammingState(state).name
 
 
 def antenna_status_to_str(status: int) -> str:
     """Convert antenna status to human readable string"""
-    return gnsshat.antenna_status_to_string(status)
+    return gnsshat.AntennaStatus(status).name
 
 
 def antenna_power_to_str(power: int) -> str:
     """Convert antenna power to human readable string"""
-    return gnsshat.antenna_power_to_string(power)
+    return gnsshat.AntennaPower(power).name
 
 
 def print_rf_block(rf_block):

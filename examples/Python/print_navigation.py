@@ -5,14 +5,14 @@ from jimmypaputto import gnsshat
 def create_config() -> dict:
     return {
         'measurement_rate_hz': 1,
-        'dynamic_model': gnsshat.DYNAMIC_MODEL_PORTABLE,
+        'dynamic_model': gnsshat.DynamicModel.PORTABLE,
         'timepulse_pin_config': {
             'active': True,
             'fixed_pulse': {
                 'frequency': 1,
                 'pulse_width': 0.1
             },
-            'polarity': gnsshat.TIMEPULSE_POLARITY_RISING_EDGE
+            'polarity': gnsshat.TimepulsePolarity.RISING_EDGE
         },
         'geofencing': None
     }

@@ -11,10 +11,10 @@ def create_default_config():
     """Create default configuration for the GNSS HAT."""
     return {
         'measurement_rate_hz': 10,
-        'dynamic_model': gnsshat.DYNAMIC_MODEL_STATIONARY,
+        'dynamic_model': gnsshat.DynamicModel.STATIONARY,
         'timepulse_pin_config': {
             'active': True,
-            'polarity': gnsshat.TIMEPULSE_POLARITY_RISING_EDGE,
+            'polarity': gnsshat.TimepulsePolarity.RISING_EDGE,
             'fixed_pulse': {
                 'frequency': 1,
                 'pulse_width': 0.1

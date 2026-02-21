@@ -4,6 +4,7 @@
 
 #include "ublox/Startup.hpp"
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <thread>
@@ -275,7 +276,11 @@ bool M9NStartup::execute()
 {
     bool result = false;
 
-    auto flusher = std::vector<uint8_t>(4096, 0xFF);
+    static constexpr auto flusher = []{
+        std::array<uint8_t, 4096> a{};
+        for (auto& b : a) b = 0xFF;
+        return a;
+    }();
     commDriver_.transmitReceive(flusher, rxBuff_);
 
     result = configurePorts(
@@ -525,7 +530,7 @@ std::vector<uint8_t> StartupBase::getExpectedValue(const uint32_t key)
     return {};
 }
 
-bool StartupBase::configure(const std::vector<uint32_t>& keys)
+bool StartupBase::configure(std::span<const uint32_t> keys)
 {
     configRegistry_.clearStoredConfigValues();
 
@@ -646,7 +651,7 @@ bool F10TStartup::execute()
 
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-    std::vector<uint32_t> uart1Keys = {
+    constexpr std::array<uint32_t, 5> uart1Keys = {
         UbxCfgKeys::CFG_UART1_ENABLED,
         UbxCfgKeys::CFG_UART1_BAUDRATE,
         UbxCfgKeys::CFG_UART1_DATABITS,
@@ -661,7 +666,7 @@ bool F10TStartup::execute()
             return false;
     }
 
-    std::vector<uint32_t> txReadyKeys = {
+    constexpr std::array<uint32_t, 4> txReadyKeys = {
         UbxCfgKeys::CFG_TXREADY_ENABLED,
         UbxCfgKeys::CFG_TXREADY_PIN,
         UbxCfgKeys::CFG_TXREADY_POLARITY,
@@ -671,7 +676,7 @@ bool F10TStartup::execute()
     if (!result)
         return false;
 
-    std::vector<uint32_t> prtOutProtoKeys = {
+    constexpr std::array<uint32_t, 2> prtOutProtoKeys = {
         UbxCfgKeys::CFG_UART1OUTPROT_UBX,
         UbxCfgKeys::CFG_UART1OUTPROT_NMEA
     };
@@ -679,7 +684,7 @@ bool F10TStartup::execute()
     if (!result)
         return false;
 
-    std::vector<uint32_t> msgCfgKeys = {
+    constexpr std::array<uint32_t, 3> msgCfgKeys = {
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_UART1,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_UART1,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_UART1
@@ -715,7 +720,7 @@ bool F10TStartup::reconfigureCommPort()
 
     auto& uartDriver = static_cast<UartDriver&>(commDriver_);
 
-    std::vector<uint32_t> uart1Keys = {
+    constexpr std::array<uint32_t, 5> uart1Keys = {
         UbxCfgKeys::CFG_UART1_ENABLED,
         UbxCfgKeys::CFG_UART1_BAUDRATE,
         UbxCfgKeys::CFG_UART1_DATABITS,
@@ -853,7 +858,7 @@ bool F9PStartup::execute()
 
     configRegistry_.shouldSaveConfigToFlash(false);
 
-    const std::vector<uint32_t> uart2Keys = {
+    constexpr std::array<uint32_t, 5> uart2Keys = {
         UbxCfgKeys::CFG_UART2_ENABLED,
         UbxCfgKeys::CFG_UART2_BAUDRATE,
         UbxCfgKeys::CFG_UART2_DATABITS,
@@ -929,7 +934,7 @@ bool F9PStartup::rtkBaseStartup()
     if (!result)
         return false;
 
-    const std::vector<uint32_t> uart2ProtOutKeys = {
+    constexpr std::array<uint32_t, 3> uart2ProtOutKeys = {
         UbxCfgKeys::CFG_UART2OUTPROT_UBX,
         UbxCfgKeys::CFG_UART2OUTPROT_NMEA,
         UbxCfgKeys::CFG_UART2OUTPROT_RTCM3X,
@@ -938,7 +943,7 @@ bool F9PStartup::rtkBaseStartup()
     if (!result)
         return false;
 
-    const std::vector<uint32_t> rtcm3MsgKeys = {
+    constexpr std::array<uint32_t, 10> rtcm3MsgKeys = {
         UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1005_UART2,
         UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1074_UART2,
         UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1077_UART2,
@@ -961,7 +966,7 @@ bool F9PStartup::rtkRoverStartup()
 {
     bool result = false;
 
-    const std::vector<uint32_t> uart2ProtInKeys = {
+    constexpr std::array<uint32_t, 1> uart2ProtInKeys = {
         UbxCfgKeys::CFG_UART2INPROT_RTCM3X
     };
     result = configure(uart2ProtInKeys);

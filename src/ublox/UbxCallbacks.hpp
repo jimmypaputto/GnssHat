@@ -5,9 +5,9 @@
 #ifndef JP_UBX_CALLBACKS_HPP_
 #define JP_UBX_CALLBACKS_HPP_
 
+#include <array>
 #include <functional>
 #include <memory>
-#include <vector>
 
 #include "EUbxMsg.hpp"
 #include "IUbloxConfigRegistry.hpp"
@@ -30,7 +30,7 @@ private:
     void ackNakCb(ubxmsg::IUbxMsg& ubxMsg, EUbxMsg eUbxMsg,
         IUbloxConfigRegistry& configRegistry);
 
-    std::vector<std::function<void(ubxmsg::IUbxMsg&)>> callbacks_;
+    std::array<std::function<void(ubxmsg::IUbxMsg&)>, numberOfUbxMsgs> callbacks_;
     Notifier& navigationNotifier_;
     const bool callbackNotificationEnabled_;
 };

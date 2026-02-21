@@ -5,8 +5,74 @@
 #include "GnssHat.h"
 #include "GnssHat.hpp"
 
+#include <cstring>
+#include <new>
+
 
 using namespace JimmyPaputto;
+
+// Static asserts to ensure C and C++ enum values stay in sync
+static_assert(static_cast<int>(EDynamicModel::Portable) == JP_GNSS_DYNAMIC_MODEL_PORTABLE);
+static_assert(static_cast<int>(EDynamicModel::Stationary) == JP_GNSS_DYNAMIC_MODEL_STATIONARY);
+static_assert(static_cast<int>(EDynamicModel::Pedestrain) == JP_GNSS_DYNAMIC_MODEL_PEDESTRIAN);
+static_assert(static_cast<int>(EDynamicModel::Automotive) == JP_GNSS_DYNAMIC_MODEL_AUTOMOTIVE);
+static_assert(static_cast<int>(EDynamicModel::Sea) == JP_GNSS_DYNAMIC_MODEL_SEA);
+static_assert(static_cast<int>(EDynamicModel::Airborne1G) == JP_GNSS_DYNAMIC_MODEL_AIRBORNE_1G);
+static_assert(static_cast<int>(EDynamicModel::Airborne2G) == JP_GNSS_DYNAMIC_MODEL_AIRBORNE_2G);
+static_assert(static_cast<int>(EDynamicModel::Airborne4G) == JP_GNSS_DYNAMIC_MODEL_AIRBORNE_4G);
+static_assert(static_cast<int>(EDynamicModel::Wrist) == JP_GNSS_DYNAMIC_MODEL_WRIST);
+static_assert(static_cast<int>(EDynamicModel::Bike) == JP_GNSS_DYNAMIC_MODEL_BIKE);
+static_assert(static_cast<int>(EDynamicModel::Mower) == JP_GNSS_DYNAMIC_MODEL_MOWER);
+static_assert(static_cast<int>(EDynamicModel::Escooter) == JP_GNSS_DYNAMIC_MODEL_ESCOOTER);
+
+static_assert(static_cast<int>(EFixQuality::Invalid) == JP_GNSS_FIX_QUALITY_INVALID);
+static_assert(static_cast<int>(EFixQuality::GpsFix2D3D) == JP_GNSS_FIX_QUALITY_GPS_FIX_2D_3D);
+static_assert(static_cast<int>(EFixQuality::DGNSS) == JP_GNSS_FIX_QUALITY_DGNSS);
+static_assert(static_cast<int>(EFixQuality::PpsFix) == JP_GNSS_FIX_QUALITY_PPS_FIX);
+static_assert(static_cast<int>(EFixQuality::FixedRTK) == JP_GNSS_FIX_QUALITY_FIXED_RTK);
+static_assert(static_cast<int>(EFixQuality::FloatRtk) == JP_GNSS_FIX_QUALITY_FLOAT_RTK);
+static_assert(static_cast<int>(EFixQuality::DeadReckoning) == JP_GNSS_FIX_QUALITY_DEAD_RECKONING);
+
+static_assert(static_cast<int>(EFixStatus::Void) == JP_GNSS_FIX_STATUS_VOID);
+static_assert(static_cast<int>(EFixStatus::Active) == JP_GNSS_FIX_STATUS_ACTIVE);
+
+static_assert(static_cast<int>(EFixType::NoFix) == JP_GNSS_FIX_TYPE_NO_FIX);
+static_assert(static_cast<int>(EFixType::DeadReckoningOnly) == JP_GNSS_FIX_TYPE_DEAD_RECKONING_ONLY);
+static_assert(static_cast<int>(EFixType::Fix2D) == JP_GNSS_FIX_TYPE_FIX_2D);
+static_assert(static_cast<int>(EFixType::Fix3D) == JP_GNSS_FIX_TYPE_FIX_3D);
+static_assert(static_cast<int>(EFixType::GnssWithDeadReckoning) == JP_GNSS_FIX_TYPE_GNSS_WITH_DEAD_RECKONING);
+static_assert(static_cast<int>(EFixType::TimeOnlyFix) == JP_GNSS_FIX_TYPE_TIME_ONLY_FIX);
+
+static_assert(static_cast<int>(ETimepulsePinPolarity::FallingEdgeAtTopOfSecond) == JP_GNSS_TIMEPULSE_POLARITY_FALLING_EDGE);
+static_assert(static_cast<int>(ETimepulsePinPolarity::RisingEdgeAtTopOfSecond) == JP_GNSS_TIMEPULSE_POLARITY_RISING_EDGE);
+
+static_assert(static_cast<int>(EPioPinPolarity::LowMeansInside) == JP_GNSS_PIO_PIN_POLARITY_LOW_MEANS_INSIDE);
+static_assert(static_cast<int>(EPioPinPolarity::LowMeansOutside) == JP_GNSS_PIO_PIN_POLARITY_LOW_MEANS_OUTSIDE);
+
+static_assert(static_cast<int>(EGeofenceStatus::Unknown) == JP_GNSS_GEOFENCE_STATUS_UNKNOWN);
+static_assert(static_cast<int>(EGeofenceStatus::Inside) == JP_GNSS_GEOFENCE_STATUS_INSIDE);
+static_assert(static_cast<int>(EGeofenceStatus::Outside) == JP_GNSS_GEOFENCE_STATUS_OUTSIDE);
+
+static_assert(static_cast<int>(EGeofencingStatus::NotAvalaible) == JP_GNSS_GEOFENCING_STATUS_NOT_AVAILABLE);
+static_assert(static_cast<int>(EGeofencingStatus::Active) == JP_GNSS_GEOFENCING_STATUS_ACTIVE);
+
+static_assert(static_cast<int>(EBand::L1) == JP_GNSS_RF_BAND_L1);
+static_assert(static_cast<int>(EBand::L2orL5) == JP_GNSS_RF_BAND_L2_OR_L5);
+
+static_assert(static_cast<int>(EJammingState::Unknown) == JP_GNSS_JAMMING_STATE_UNKNOWN);
+static_assert(static_cast<int>(EJammingState::Ok_NoSignifantJamming) == JP_GNSS_JAMMING_STATE_OK_NO_SIGNIFICANT_JAMMING);
+static_assert(static_cast<int>(EJammingState::Warning_InferenceVisibleButFixOk) == JP_GNSS_JAMMING_STATE_WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK);
+static_assert(static_cast<int>(EJammingState::Critical_InferenceVisibleAndNoFix) == JP_GNSS_JAMMING_STATE_CRITICAL_INTERFERENCE_VISIBLE_AND_NO_FIX);
+
+static_assert(static_cast<int>(EAntennaStatus::Init) == JP_GNSS_ANTENNA_STATUS_INIT);
+static_assert(static_cast<int>(EAntennaStatus::DontKnow) == JP_GNSS_ANTENNA_STATUS_DONT_KNOW);
+static_assert(static_cast<int>(EAntennaStatus::Ok) == JP_GNSS_ANTENNA_STATUS_OK);
+static_assert(static_cast<int>(EAntennaStatus::Short) == JP_GNSS_ANTENNA_STATUS_SHORT);
+static_assert(static_cast<int>(EAntennaStatus::Open) == JP_GNSS_ANTENNA_STATUS_OPEN);
+
+static_assert(static_cast<int>(EAntennaPower::Off) == JP_GNSS_ANTENNA_POWER_OFF);
+static_assert(static_cast<int>(EAntennaPower::On) == JP_GNSS_ANTENNA_POWER_ON);
+static_assert(static_cast<int>(EAntennaPower::DontKnow) == JP_GNSS_ANTENNA_POWER_DONT_KNOW);
 
 namespace
 {
@@ -188,7 +254,13 @@ GnssConfig convert_gnss_config(const jp_gnss_gnss_config_t& c_config)
     {
         GnssConfig::Geofencing geofencing;
         geofencing.confidenceLevel = c_config.geofencing.confidence_level;
-        
+
+        if (c_config.geofencing.has_pin_polarity)
+        {
+            geofencing.pioPinPolarity =
+                convert_pio_pin_polarity(c_config.geofencing.pin_polarity);
+        }
+
         for (
             uint8_t i = 0;
             i < c_config.geofencing.geofence_count && i < UBLOX_MAX_GEOFENCES;
@@ -281,7 +353,9 @@ jp_gnss_navigation_t convert_navigation(const Navigation& cpp_nav)
             cpp_nav.geofencing.nav.geofencesStatus[i]);
     }
 
-    c_nav.num_rf_blocks = static_cast<uint8_t>(cpp_nav.rfBlocks.size());
+    c_nav.num_rf_blocks = static_cast<uint8_t>(
+        std::min(cpp_nav.rfBlocks.size(),
+            static_cast<size_t>(UBLOX_MAX_RF_BLOCKS)));
 
     for (
         size_t i = 0;
@@ -448,7 +522,7 @@ const char* jp_gnss_hat_get_gpsd_device_path(jp_gnss_hat_t* hat)
     if (!hat->instance)
         return nullptr;
 
-    static std::string path;
+    thread_local std::string path;
     path = hat->instance->getGpsdDevicePath();
     return path.c_str();
 }
@@ -555,4 +629,221 @@ const char* jp_gnss_geofence_status_to_string(jp_gnss_geofence_status_t status)
     return result.c_str();
 }
 
-} // extern "C"
+void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
+{
+    if (!config)
+        return;
+
+    std::memset(config, 0, sizeof(*config));
+
+    config->measurement_rate_hz = 1;
+    config->dynamic_model = JP_GNSS_DYNAMIC_MODEL_PORTABLE;
+    config->timepulse_pin_config.active = true;
+    config->timepulse_pin_config.fixed_pulse.frequency = 1;
+    config->timepulse_pin_config.fixed_pulse.pulse_width = 0.1f;
+    config->timepulse_pin_config.has_pulse_when_no_fix = false;
+    config->timepulse_pin_config.polarity =
+        JP_GNSS_TIMEPULSE_POLARITY_RISING_EDGE;
+    config->has_geofencing = false;
+}
+
+void jp_gnss_hat_timepulse(jp_gnss_hat_t* hat)
+{
+    if (!hat)
+        return;
+
+    if (!hat->instance)
+        return;
+
+    hat->instance->timepulse();
+}
+
+jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_full_corrections(
+    jp_gnss_hat_t* hat)
+{
+    if (!hat || !hat->instance)
+        return nullptr;
+
+    IRtk* rtk = hat->instance->rtk();
+    if (!rtk)
+        return nullptr;
+
+    IBase* base = rtk->base();
+    if (!base)
+        return nullptr;
+
+    auto cpp_corrections = base->getFullCorrections();
+    if (cpp_corrections.empty())
+        return nullptr;
+
+    auto* result = new (std::nothrow) jp_gnss_rtk_corrections_t;
+    if (!result)
+        return nullptr;
+
+    result->count = static_cast<uint32_t>(cpp_corrections.size());
+    result->frames =
+        new (std::nothrow) jp_gnss_rtcm3_frame_t[result->count];
+    if (!result->frames)
+    {
+        delete result;
+        return nullptr;
+    }
+
+    for (uint32_t i = 0; i < result->count; ++i)
+    {
+        result->frames[i].size =
+            static_cast<uint32_t>(cpp_corrections[i].size());
+        result->frames[i].data =
+            new (std::nothrow) uint8_t[result->frames[i].size];
+        if (!result->frames[i].data)
+        {
+            for (uint32_t j = 0; j < i; ++j)
+                delete[] result->frames[j].data;
+            delete[] result->frames;
+            delete result;
+            return nullptr;
+        }
+        std::memcpy(result->frames[i].data, cpp_corrections[i].data(),
+            result->frames[i].size);
+    }
+
+    return result;
+}
+
+jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_tiny_corrections(
+    jp_gnss_hat_t* hat)
+{
+    if (!hat || !hat->instance)
+        return nullptr;
+
+    IRtk* rtk = hat->instance->rtk();
+    if (!rtk)
+        return nullptr;
+
+    IBase* base = rtk->base();
+    if (!base)
+        return nullptr;
+
+    auto cpp_corrections = base->getTinyCorrections();
+    if (cpp_corrections.empty())
+        return nullptr;
+
+    auto* result = new (std::nothrow) jp_gnss_rtk_corrections_t;
+    if (!result)
+        return nullptr;
+
+    result->count = static_cast<uint32_t>(cpp_corrections.size());
+    result->frames =
+        new (std::nothrow) jp_gnss_rtcm3_frame_t[result->count];
+    if (!result->frames)
+    {
+        delete result;
+        return nullptr;
+    }
+
+    for (uint32_t i = 0; i < result->count; ++i)
+    {
+        result->frames[i].size =
+            static_cast<uint32_t>(cpp_corrections[i].size());
+        result->frames[i].data =
+            new (std::nothrow) uint8_t[result->frames[i].size];
+        if (!result->frames[i].data)
+        {
+            for (uint32_t j = 0; j < i; ++j)
+                delete[] result->frames[j].data;
+            delete[] result->frames;
+            delete result;
+            return nullptr;
+        }
+        std::memcpy(result->frames[i].data, cpp_corrections[i].data(),
+            result->frames[i].size);
+    }
+
+    return result;
+}
+
+jp_gnss_rtcm3_frame_t* jp_gnss_rtk_get_rtcm3_frame(jp_gnss_hat_t* hat,
+    uint16_t id)
+{
+    if (!hat || !hat->instance)
+        return nullptr;
+
+    IRtk* rtk = hat->instance->rtk();
+    if (!rtk)
+        return nullptr;
+
+    IBase* base = rtk->base();
+    if (!base)
+        return nullptr;
+
+    auto cpp_frame = base->getRtcm3Frame(id);
+    if (cpp_frame.empty())
+        return nullptr;
+
+    auto* result = new (std::nothrow) jp_gnss_rtcm3_frame_t;
+    if (!result)
+        return nullptr;
+
+    result->size = static_cast<uint32_t>(cpp_frame.size());
+    result->data = new (std::nothrow) uint8_t[result->size];
+    if (!result->data)
+    {
+        delete result;
+        return nullptr;
+    }
+
+    std::memcpy(result->data, cpp_frame.data(), result->size);
+    return result;
+}
+
+bool jp_gnss_rtk_apply_corrections(jp_gnss_hat_t* hat,
+    const jp_gnss_rtcm3_frame_t* frames, uint32_t count)
+{
+    if (!hat || !hat->instance || !frames || count == 0)
+        return false;
+
+    IRtk* rtk = hat->instance->rtk();
+    if (!rtk)
+        return false;
+
+    IRover* rover = rtk->rover();
+    if (!rover)
+        return false;
+
+    std::vector<std::vector<uint8_t>> cpp_corrections;
+    cpp_corrections.reserve(count);
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        cpp_corrections.emplace_back(
+            frames[i].data, frames[i].data + frames[i].size);
+    }
+
+    rover->applyCorrections(cpp_corrections);
+    return true;
+}
+
+void jp_gnss_rtk_corrections_free(jp_gnss_rtk_corrections_t* corrections)
+{
+    if (!corrections)
+        return;
+
+    if (corrections->frames)
+    {
+        for (uint32_t i = 0; i < corrections->count; ++i)
+            delete[] corrections->frames[i].data;
+        delete[] corrections->frames;
+    }
+    delete corrections;
+}
+
+void jp_gnss_rtcm3_frame_free(jp_gnss_rtcm3_frame_t* frame)
+{
+    if (!frame)
+        return;
+
+    delete[] frame->data;
+    delete frame;
+}
+
+}  // extern "C"

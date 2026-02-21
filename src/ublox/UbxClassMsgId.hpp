@@ -6,8 +6,8 @@
 #define UBX_CLASS_MSG_ID_HPP_
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
-#include <vector>
 #include <utility>
 
 #include "EUbxMsg.hpp"
@@ -22,7 +22,6 @@ class UbxClassMsgId: public GenericSingleton<UbxClassMsgId>
 {
 public:
     explicit UbxClassMsgId()
-    :	ubxClassMsgIdMap_(numberOfUbxMsgs)
     {
         using enum EUbxMsg;
         ubxClassMsgIdMap_[to_underlying(UBX_ACK_ACK)] = { 0x05, 0x01 };
@@ -64,7 +63,7 @@ public:
     }
 
 private:
-    std::vector<std::pair<uint8_t, uint8_t>> ubxClassMsgIdMap_;
+    std::array<std::pair<uint8_t, uint8_t>, numberOfUbxMsgs> ubxClassMsgIdMap_;
 };
 
 }  // JimmyPaputto

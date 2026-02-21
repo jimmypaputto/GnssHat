@@ -64,7 +64,7 @@ protected:
 
     bool saveCurrentConfigToFlash();
 
-    bool configure(const std::vector<uint32_t>& keys);
+    bool configure(std::span<const uint32_t> keys);
 
     std::vector<uint8_t> getExpectedValue(const uint32_t key);
 

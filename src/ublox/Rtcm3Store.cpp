@@ -73,7 +73,7 @@ std::vector<uint8_t> Rtcm3Store::getFrame(const uint16_t id) const
 }
 
 std::vector<std::vector<uint8_t>> Rtcm3Store::getFrames(
-    const std::vector<uint16_t>& ids) const
+    std::span<const uint16_t> ids) const
 {
     std::vector<std::vector<uint8_t>> result;
     if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))

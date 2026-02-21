@@ -6,6 +6,7 @@
 #define JP_RTCM3_STORE_HPP_
 
 #include <cstdint>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -28,7 +29,7 @@ public:
 
     std::vector<uint8_t> getFrame(const uint16_t id) const;
     std::vector<std::vector<uint8_t>> getFrames(
-        const std::vector<uint16_t>& ids) const;
+        std::span<const uint16_t> ids) const;
 
     std::vector<std::vector<uint8_t>> waitForFrames();
 

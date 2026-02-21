@@ -64,11 +64,11 @@ public:
      * @param keys Vector of configuration key IDs to retrieve
      */
     explicit UBX_CFG_VALGET(uint8_t version, EUbxMemoryLayer layer, uint16_t position, 
-                            const std::vector<uint32_t>& keys)
+                            std::span<const uint32_t> keys)
     :   version_(version),
         layer_(layer),
         position_(position),
-        keys_(keys)
+        keys_(keys.begin(), keys.end())
     {}
 
     /**
@@ -90,7 +90,8 @@ public:
      */
     static std::vector<uint8_t> poll(uint32_t key)
     {
-        return UBX_CFG_VALGET(0x00, EUbxMemoryLayer::None, 0x0000, {key}).serialize();
+        const std::array<uint32_t, 1> keys = { key };
+        return UBX_CFG_VALGET(0x00, EUbxMemoryLayer::None, 0x0000, keys).serialize();
     }
 
     /**
@@ -99,7 +100,7 @@ public:
      * @param layer Configuration layer (default: RAM)
      * @return Serialized UBX frame ready to send
      */
-    static std::vector<uint8_t> poll(const std::vector<uint32_t>& keys)
+    static std::vector<uint8_t> poll(std::span<const uint32_t> keys)
     {
         return UBX_CFG_VALGET(0x00, EUbxMemoryLayer::None, 0x0000, keys).serialize();
     }

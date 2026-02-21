@@ -5,6 +5,8 @@
 #include "RTK.hpp"
 #include "RtkFactory.hpp"
 
+#include <array>
+
 
 namespace JimmyPaputto
 {
@@ -20,10 +22,10 @@ public:
     std::vector<uint8_t> getRtcm3Frame(const uint16_t id) override;
 
 private:
-    const std::vector<uint16_t> tinyCorrectionIds = {
+    const std::array<uint16_t, 6> tinyCorrectionIds = {
         1005, 1074, 1084, 1094, 1124, 1230
     };
-    const std::vector<uint16_t> fullCorrectionIds = {
+    const std::array<uint16_t, 6> fullCorrectionIds = {
         1005, 1077, 1087, 1097, 1127, 1230
     };
     const Rtcm3Store& rtcm3Store_;

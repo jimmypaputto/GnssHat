@@ -18,13 +18,13 @@ class Notifier
 public:
     void notify()
     {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::lock_guard lock(mtx);
         cv.notify_one();
     }
 
     void wait()
     {
-        std::unique_lock<std::mutex> lock(mtx);
+        std::unique_lock lock(mtx);
         cv.wait(lock);
     }
 

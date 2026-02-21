@@ -238,6 +238,8 @@ typedef struct
     jp_gnss_geofence_t geofences[UBLOX_MAX_GEOFENCES];
     uint8_t geofence_count;
     uint8_t confidence_level;
+    bool has_pin_polarity;
+    jp_gnss_pio_pin_polarity_t pin_polarity;
 } jp_gnss_geofencing_config_t;
 
 typedef struct
@@ -258,6 +260,18 @@ typedef struct
     jp_gnss_rf_block_t rf_blocks[UBLOX_MAX_RF_BLOCKS];
 } jp_gnss_navigation_t;
 
+typedef struct
+{
+    uint8_t* data;
+    uint32_t size;
+} jp_gnss_rtcm3_frame_t;
+
+typedef struct
+{
+    jp_gnss_rtcm3_frame_t* frames;
+    uint32_t count;
+} jp_gnss_rtk_corrections_t;
+
 typedef struct jp_gnss_hat jp_gnss_hat_t;
 
 jp_gnss_hat_t* jp_gnss_hat_create(void);
@@ -276,9 +290,22 @@ void jp_gnss_hat_join_forward_for_gpsd(jp_gnss_hat_t* hat);
 const char* jp_gnss_hat_get_gpsd_device_path(jp_gnss_hat_t* hat);
 void jp_gnss_hat_hard_reset_cold_start(jp_gnss_hat_t* hat);
 void jp_gnss_hat_soft_reset_hot_start(jp_gnss_hat_t* hat);
+void jp_gnss_hat_timepulse(jp_gnss_hat_t* hat);
 
+void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config);
 bool jp_gnss_gnss_config_add_geofence(jp_gnss_gnss_config_t* config,
     jp_gnss_geofence_t geofence);
+
+jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_full_corrections(
+    jp_gnss_hat_t* hat);
+jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_tiny_corrections(
+    jp_gnss_hat_t* hat);
+jp_gnss_rtcm3_frame_t* jp_gnss_rtk_get_rtcm3_frame(jp_gnss_hat_t* hat,
+    uint16_t id);
+bool jp_gnss_rtk_apply_corrections(jp_gnss_hat_t* hat,
+    const jp_gnss_rtcm3_frame_t* frames, uint32_t count);
+void jp_gnss_rtk_corrections_free(jp_gnss_rtk_corrections_t* corrections);
+void jp_gnss_rtcm3_frame_free(jp_gnss_rtcm3_frame_t* frame);
 
 const char* jp_gnss_fix_quality_to_string(jp_gnss_fix_quality_t quality);
 const char* jp_gnss_fix_status_to_string(jp_gnss_fix_status_t status);

@@ -5,6 +5,7 @@
 #ifndef JP_UBX_PARSER_HPP_
 #define JP_UBX_PARSER_HPP_
 
+#include <array>
 #include <memory>
 #include <span>
 #include <vector>
@@ -27,7 +28,7 @@ public:
     std::vector<uint8_t> parse(std::span<const uint8_t> buffer);
 
     static void addChecksum(std::vector<uint8_t>& frame);
-    static std::vector<uint8_t> checksum(std::span<const uint8_t> frame,
+    static std::array<uint8_t, 2> checksum(std::span<const uint8_t> frame,
         uint8_t offset = 2);
     static bool checkFrame(std::span<const uint8_t> frame);
 

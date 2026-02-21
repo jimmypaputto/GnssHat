@@ -132,7 +132,7 @@ void UbxParser::extractFrames(std::span<const uint8_t> buffer)
 void UbxParser::addChecksum(std::vector<uint8_t>& frame)
 {
     const auto ck = UbxParser::checksum(frame, 0);
-    frame += ck;
+    frame.insert(frame.end(), ck.begin(), ck.end());
 
     if (!UbxParser::checkFrame(frame))
     {
@@ -140,7 +140,7 @@ void UbxParser::addChecksum(std::vector<uint8_t>& frame)
     }
 }
 
-std::vector<uint8_t> UbxParser::checksum(std::span<const uint8_t> frame,
+std::array<uint8_t, 2> UbxParser::checksum(std::span<const uint8_t> frame,
     uint8_t offset)
 {
     uint8_t cka = 0;
@@ -152,7 +152,7 @@ std::vector<uint8_t> UbxParser::checksum(std::span<const uint8_t> frame,
         ckb += cka;
     }
 
-    return std::vector<uint8_t> { cka, ckb };
+    return { cka, ckb };
 }
 
 bool UbxParser::checkFrame(std::span<const uint8_t> frame)

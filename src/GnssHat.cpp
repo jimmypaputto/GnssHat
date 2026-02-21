@@ -4,6 +4,7 @@
 
 #include "GnssHat.hpp"
 
+#include <array>
 #include <cstdio>
 #include <fstream>
 #include <thread>
@@ -415,10 +416,11 @@ void GnssHat::hardResetUbloxSom_ColdStart() const
 
 void GnssHat::softResetUbloxSom_HotStart()
 {
-    auto buffer = std::vector<uint8_t> {
+    static constexpr std::array<uint8_t, 12> txBuffer = {
         0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x0F, 0x66
     };
-    commDriver_->transmitReceive(buffer, buffer);
+    std::vector<uint8_t> rxBuffer(txBuffer.size());
+    commDriver_->transmitReceive(txBuffer, rxBuffer);
 }
 
 void GnssHat::timepulse()

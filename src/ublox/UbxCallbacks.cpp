@@ -28,8 +28,7 @@ namespace JimmyPaputto
 
 UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
     Notifier& navigationNotifier, bool callbackNotificationEnabled)
-:	callbacks_(numberOfUbxMsgs),
-    navigationNotifier_(navigationNotifier),
+:	navigationNotifier_(navigationNotifier),
     callbackNotificationEnabled_(callbackNotificationEnabled)
 {
     using enum EUbxMsg;

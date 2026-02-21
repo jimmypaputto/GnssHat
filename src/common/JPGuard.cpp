@@ -12,7 +12,7 @@ JPGuard::JPGuard()
 
 bool JPGuard::takeResource()
 {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::unique_lock lock(mutex_);
     cv_.wait(lock, [this] { return !locked_; });
     locked_ = true;
     return true;
@@ -20,7 +20,7 @@ bool JPGuard::takeResource()
 
 bool JPGuard::takeResource(const uint32_t timeoutMs)
 {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::unique_lock lock(mutex_);
     const auto cvStatus = cv_.wait_for(
         lock,
         std::chrono::milliseconds(timeoutMs),
@@ -36,7 +36,7 @@ bool JPGuard::takeResource(const uint32_t timeoutMs)
 bool JPGuard::releaseResource()
 {
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         locked_ = false;
     }
     cv_.notify_one();

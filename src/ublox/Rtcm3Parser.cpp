@@ -118,9 +118,44 @@ uint16_t Rtcm3Parser::getFrameId(const std::vector<uint8_t>& frame)
     return msgId;
 }
 
+uint32_t crc24q(const uint8_t* data, size_t length)
+{
+    constexpr uint32_t poly = 0x1864CFB;
+    uint32_t crc = 0;
+
+    for (size_t i = 0; i < length; i++)
+    {
+        crc ^= uint32_t(data[i]) << 16;
+        for (int j = 0; j < 8; j++)
+        {
+            crc <<= 1;
+            if (crc & 0x1000000)
+                crc ^= poly;
+        }
+    }
+
+    return crc & 0xFFFFFF;
+}
+
 bool Rtcm3Parser::checkFrame(const std::vector<uint8_t>& frame)
 {
-    return true;
+    if (frame.size() < 6)
+        return false;
+
+    const uint16_t dataLength = ((frame[1] & 0x03) << 8) | frame[2];
+    const size_t expectedSize = 3 + dataLength + 3;
+    if (frame.size() != expectedSize)
+        return false;
+
+    const size_t crcDataLen = 3 + dataLength;
+    const uint32_t crc = crc24q(frame.data(), crcDataLen);
+
+    const uint32_t receivedCrc =
+        (uint32_t(frame[crcDataLen]) << 16) |
+        (uint32_t(frame[crcDataLen + 1]) << 8) |
+        uint32_t(frame[crcDataLen + 2]);
+
+    return crc == receivedCrc;
 }
 
 }  // JimmyPaputto

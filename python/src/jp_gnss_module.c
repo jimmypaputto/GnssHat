@@ -12,7 +12,7 @@
 static PyTypeObject GnssHatType;
 static PyTypeObject PositionVelocityTimeType;
 static PyTypeObject NavigationType;
-static PyTypeObject DilutionOfPrecisionType;
+static PyTypeObject DilutionOverPrecisionType;
 static PyTypeObject GeofencingType;
 static PyTypeObject GeofencingCfgType;
 static PyTypeObject GeofencingNavType;
@@ -59,7 +59,7 @@ typedef struct
     float horizontal;
     float northing;
     float easting;
-} DilutionOfPrecision;
+} DilutionOverPrecision;
 
 typedef struct
 {
@@ -73,9 +73,9 @@ typedef struct
 typedef struct
 {
     PyObject_HEAD
-    float latitude;
-    float longitude;
-    float radius_m;
+    float lat;
+    float lon;
+    float radius;
 } Geofence;
 
 typedef struct
@@ -219,32 +219,32 @@ static PyObject* Geofence_new(PyTypeObject* type, PyObject* args,
     Geofence* self = (Geofence*)type->tp_alloc(type, 0);
     if (self)
     {
-        self->latitude = 0.0;
-        self->longitude = 0.0;
-        self->radius_m = 0.0;
+        self->lat = 0.0;
+        self->lon = 0.0;
+        self->radius = 0.0;
     }
     return (PyObject*)self;
 }
 
 static PyMemberDef Geofence_members[] = {
     {
-        "latitude",
+        "lat",
         T_FLOAT,
-        offsetof(Geofence, latitude),
+        offsetof(Geofence, lat),
         0,
         "Latitude in degrees"
     },
     {
-        "longitude",
+        "lon",
         T_FLOAT,
-        offsetof(Geofence, longitude),
+        offsetof(Geofence, lon),
         0,
         "Longitude in degrees"
     },
     {
-        "radius_m",
+        "radius",
         T_FLOAT,
-        offsetof(Geofence, radius_m),
+        offsetof(Geofence, radius),
         0,
         "Radius in meters"
     },
@@ -417,13 +417,13 @@ static PyTypeObject RfBlockType = {
     .tp_members = RfBlock_members,
 };
 
-/* ---- DilutionOfPrecision ---- */
+/* ---- DilutionOverPrecision ---- */
 
-static PyObject* DilutionOfPrecision_new(PyTypeObject* type, PyObject* args,
+static PyObject* DilutionOverPrecision_new(PyTypeObject* type, PyObject* args,
     PyObject* kwds)
 {
-    DilutionOfPrecision* self =
-        (DilutionOfPrecision*)type->tp_alloc(type, 0);
+    DilutionOverPrecision* self =
+        (DilutionOverPrecision*)type->tp_alloc(type, 0);
     if (self)
     {
         self->geometric = 0.0f;
@@ -437,13 +437,13 @@ static PyObject* DilutionOfPrecision_new(PyTypeObject* type, PyObject* args,
     return (PyObject*)self;
 }
 
-static PyObject* DilutionOfPrecision_str(DilutionOfPrecision* self)
+static PyObject* DilutionOverPrecision_str(DilutionOverPrecision* self)
 {
     char buffer[512];
     snprintf(
         buffer,
         sizeof(buffer),
-        "DilutionOfPrecision(\n"
+        "DilutionOverPrecision(\n"
         "    geometric=%.2f\n"
         "    position=%.2f\n"
         "    time=%.2f\n"
@@ -463,69 +463,69 @@ static PyObject* DilutionOfPrecision_str(DilutionOfPrecision* self)
     return PyUnicode_FromString(buffer);
 }
 
-static PyMemberDef DilutionOfPrecision_members[] = {
+static PyMemberDef DilutionOverPrecision_members[] = {
     {
         "geometric",
         T_FLOAT,
-        offsetof(DilutionOfPrecision, geometric),
+        offsetof(DilutionOverPrecision, geometric),
         0,
         "Geometric DOP"
     },
     {
         "position",
         T_FLOAT,
-        offsetof(DilutionOfPrecision, position),
+        offsetof(DilutionOverPrecision, position),
         0,
         "Position DOP"
     },
     {
         "time",
         T_FLOAT,
-        offsetof(DilutionOfPrecision, time),
+        offsetof(DilutionOverPrecision, time),
         0,
         "Time DOP"
     },
     {
         "vertical",
         T_FLOAT,
-        offsetof(DilutionOfPrecision, vertical),
+        offsetof(DilutionOverPrecision, vertical),
         0,
         "Vertical DOP"
     },
     {
         "horizontal",
         T_FLOAT,
-        offsetof(DilutionOfPrecision, horizontal),
+        offsetof(DilutionOverPrecision, horizontal),
         0,
         "Horizontal DOP"
     },
     {
         "northing",
         T_FLOAT,
-        offsetof(DilutionOfPrecision, northing),
+        offsetof(DilutionOverPrecision, northing),
         0,
         "Northing DOP"
     },
     {
         "easting",
         T_FLOAT,
-        offsetof(DilutionOfPrecision, easting),
+        offsetof(DilutionOverPrecision, easting),
         0,
         "Easting DOP"
     },
     {NULL}
 };
 
-static PyTypeObject DilutionOfPrecisionType = {
+static PyTypeObject DilutionOverPrecisionType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "jimmypaputto.gnsshat.DilutionOfPrecision",
+    .tp_name = "jimmypaputto.gnsshat.DilutionOverPrecision",
     .tp_doc = "Dilution of Precision (DOP) values",
-    .tp_basicsize = sizeof(DilutionOfPrecision),
+    .tp_basicsize = sizeof(DilutionOverPrecision),
     .tp_itemsize = 0,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-    .tp_new = DilutionOfPrecision_new,
-    .tp_str = (reprfunc)DilutionOfPrecision_str,
-    .tp_members = DilutionOfPrecision_members,
+    .tp_new = DilutionOverPrecision_new,
+    .tp_str = (reprfunc)DilutionOverPrecision_str,
+    .tp_members = DilutionOverPrecision_members,
 };
 
 static PyObject* GeofencingCfg_new(PyTypeObject* type, PyObject* args,
@@ -1288,27 +1288,27 @@ static bool validate_config(PyObject* config_dict)
                     return false;
                 }
 
-                PyObject* lat = PyDict_GetItemString(fence_dict, "latitude");
+                PyObject* lat = PyDict_GetItemString(fence_dict, "lat");
                 if (lat && !PyFloat_Check(lat))
                 {
                     PyErr_Format(PyExc_TypeError,
-                        "geofence[%zd] latitude must be a float", i);
+                        "geofence[%zd] lat must be a float", i);
                     return false;
                 }
 
-                PyObject* lon = PyDict_GetItemString(fence_dict, "longitude");
+                PyObject* lon = PyDict_GetItemString(fence_dict, "lon");
                 if (lon && !PyFloat_Check(lon))
                 {
                     PyErr_Format(PyExc_TypeError,
-                        "geofence[%zd] longitude must be a float", i);
+                        "geofence[%zd] lon must be a float", i);
                     return false;
                 }
 
-                PyObject* radius = PyDict_GetItemString(fence_dict, "radius_m");
+                PyObject* radius = PyDict_GetItemString(fence_dict, "radius");
                 if (radius && !PyFloat_Check(radius) && !PyLong_Check(radius))
                 {
                     PyErr_Format(PyExc_TypeError,
-                        "geofence[%zd] radius_m must be a number", i);
+                        "geofence[%zd] radius must be a number", i);
                     return false;
                 }
             }
@@ -1397,15 +1397,15 @@ static void populate_config_from_dict(PyObject* config_dict, jp_gnss_gnss_config
             {
                 PyObject* fence_dict = PyList_GetItem(geofences_list, i);
                 
-                PyObject* lat = PyDict_GetItemString(fence_dict, "latitude");
+                PyObject* lat = PyDict_GetItemString(fence_dict, "lat");
                 if (lat)
                     config->geofencing.geofences[i].lat = (float)PyFloat_AsDouble(lat);
                 
-                PyObject* lon = PyDict_GetItemString(fence_dict, "longitude");
+                PyObject* lon = PyDict_GetItemString(fence_dict, "lon");
                 if (lon)
                     config->geofencing.geofences[i].lon = (float)PyFloat_AsDouble(lon);
                 
-                PyObject* radius = PyDict_GetItemString(fence_dict, "radius_m");
+                PyObject* radius = PyDict_GetItemString(fence_dict, "radius");
                 if (radius)
                 {
                     if (PyFloat_Check(radius))
@@ -1477,9 +1477,9 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
     pvt->visible_satellites = nav->pvt.visible_satellites;
     pvt->horizontal_accuracy = nav->pvt.horizontal_accuracy;
     pvt->vertical_accuracy = nav->pvt.vertical_accuracy;
-    pvt->fix_quality = convert_fix_quality(nav->pvt.quality);
-    pvt->fix_status = convert_fix_status(nav->pvt.status);
-    pvt->fix_type = convert_fix_type(nav->pvt.type);
+    pvt->fix_quality = convert_fix_quality(nav->pvt.fix_quality);
+    pvt->fix_status = convert_fix_status(nav->pvt.fix_status);
+    pvt->fix_type = convert_fix_type(nav->pvt.fix_type);
 
     pvt->utc_time = Py_BuildValue(
         "{s:i,s:i,s:i,s:O,s:i}",
@@ -1502,8 +1502,8 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
     nav_obj->pvt = (PyObject*)pvt;
 
     /* Convert DOP data */
-    DilutionOfPrecision* dop_obj = (DilutionOfPrecision*)PyObject_CallObject(
-        (PyObject*)&DilutionOfPrecisionType,
+    DilutionOverPrecision* dop_obj = (DilutionOverPrecision*)PyObject_CallObject(
+        (PyObject*)&DilutionOverPrecisionType,
         NULL
     );
     if (!dop_obj)
@@ -1565,9 +1565,9 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
             return NULL;
         }
         
-        geofence->latitude = nav->geofencing.cfg.geofences[i].lat;
-        geofence->longitude = nav->geofencing.cfg.geofences[i].lon;
-        geofence->radius_m = nav->geofencing.cfg.geofences[i].radius;
+        geofence->lat = nav->geofencing.cfg.geofences[i].lat;
+        geofence->lon = nav->geofencing.cfg.geofences[i].lon;
+        geofence->radius = nav->geofencing.cfg.geofences[i].radius;
         
         PyList_SetItem(geofences_list, i, (PyObject*)geofence);
     }
@@ -1710,7 +1710,7 @@ static PyObject* GnssHat_disable_timepulse(GnssHat* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
-static PyObject* GnssHat_start_gpsd_forwarding(GnssHat* self, PyObject* args)
+static PyObject* GnssHat_start_forward_for_gpsd(GnssHat* self, PyObject* args)
 {
     bool result = jp_gnss_hat_start_forward_for_gpsd(self->hat);
     if (!result)
@@ -1721,9 +1721,17 @@ static PyObject* GnssHat_start_gpsd_forwarding(GnssHat* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
-static PyObject* GnssHat_stop_gpsd_forwarding(GnssHat* self, PyObject* args)
+static PyObject* GnssHat_stop_forward_for_gpsd(GnssHat* self, PyObject* args)
 {
     jp_gnss_hat_stop_forward_for_gpsd(self->hat);
+    Py_RETURN_NONE;
+}
+
+static PyObject* GnssHat_join_forward_for_gpsd(GnssHat* self, PyObject* args)
+{
+    Py_BEGIN_ALLOW_THREADS
+    jp_gnss_hat_join_forward_for_gpsd(self->hat);
+    Py_END_ALLOW_THREADS
     Py_RETURN_NONE;
 }
 
@@ -2007,16 +2015,22 @@ static PyMethodDef GnssHat_methods[] = {
         "Disable timepulse output"
     },
     {
-        "start_gpsd_forwarding",
-        (PyCFunction)GnssHat_start_gpsd_forwarding,
+        "start_forward_for_gpsd",
+        (PyCFunction)GnssHat_start_forward_for_gpsd,
         METH_NOARGS,
         "Start forwarding NMEA data to GPSD"
     },
     {
-        "stop_gpsd_forwarding",
-        (PyCFunction)GnssHat_stop_gpsd_forwarding,
+        "stop_forward_for_gpsd",
+        (PyCFunction)GnssHat_stop_forward_for_gpsd,
         METH_NOARGS,
         "Stop GPSD forwarding"
+    },
+    {
+        "join_forward_for_gpsd",
+        (PyCFunction)GnssHat_join_forward_for_gpsd,
+        METH_NOARGS,
+        "Join (wait for) GPSD forwarding thread"
     },
     {
         "get_gpsd_device_path",
@@ -2106,7 +2120,7 @@ static PyObject* Navigation_new(PyTypeObject* type, PyObject* args,
     if (self)
     {
         self->dop = PyObject_CallObject(
-            (PyObject*)&DilutionOfPrecisionType, NULL);
+            (PyObject*)&DilutionOverPrecisionType, NULL);
         self->pvt = PyObject_CallObject(
             (PyObject*)&PositionVelocityTimeType, NULL);
         self->geofencing = PyObject_CallObject(
@@ -2490,7 +2504,7 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
         return NULL;
     if (PyType_Ready(&NavigationType) < 0)
         return NULL;
-    if (PyType_Ready(&DilutionOfPrecisionType) < 0)
+    if (PyType_Ready(&DilutionOverPrecisionType) < 0)
         return NULL;
     if (PyType_Ready(&GeofenceType) < 0)
         return NULL;
@@ -2521,9 +2535,9 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
     Py_INCREF(&NavigationType);
     PyModule_AddObject(m, "Navigation", (PyObject*)&NavigationType);
 
-    Py_INCREF(&DilutionOfPrecisionType);
-    PyModule_AddObject(m, "DilutionOfPrecision",
-        (PyObject*)&DilutionOfPrecisionType);
+    Py_INCREF(&DilutionOverPrecisionType);
+    PyModule_AddObject(m, "DilutionOverPrecision",
+        (PyObject*)&DilutionOverPrecisionType);
 
     Py_INCREF(&RfBlockType);
     PyModule_AddObject(m, "RfBlock", (PyObject*)&RfBlockType);
@@ -2534,6 +2548,18 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
     Py_INCREF(&TimepulsePinConfigType);
     PyModule_AddObject(m, "TimepulsePinConfig",
         (PyObject*)&TimepulsePinConfigType);
+
+    Py_INCREF(&GeofenceType);
+    PyModule_AddObject(m, "Geofence", (PyObject*)&GeofenceType);
+
+    Py_INCREF(&GeofencingCfgType);
+    PyModule_AddObject(m, "GeofencingCfg", (PyObject*)&GeofencingCfgType);
+
+    Py_INCREF(&GeofencingNavType);
+    PyModule_AddObject(m, "GeofencingNav", (PyObject*)&GeofencingNavType);
+
+    Py_INCREF(&GeofencingType);
+    PyModule_AddObject(m, "Geofencing", (PyObject*)&GeofencingType);
 
     PyModule_AddIntConstant(m, "DYNAMIC_MODEL_PORTABLE",
         JP_GNSS_DYNAMIC_MODEL_PORTABLE);

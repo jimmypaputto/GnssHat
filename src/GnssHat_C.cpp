@@ -257,9 +257,9 @@ jp_gnss_navigation_t convert_navigation(const Navigation& cpp_nav)
     c_nav.dop.northing = cpp_nav.dop.northing;
     c_nav.dop.easting = cpp_nav.dop.easting;
     
-    c_nav.pvt.quality = convert_fix_quality(cpp_nav.pvt.fixQuality);
-    c_nav.pvt.status = convert_fix_status(cpp_nav.pvt.fixStatus);
-    c_nav.pvt.type = convert_fix_type(cpp_nav.pvt.fixType);
+    c_nav.pvt.fix_quality = convert_fix_quality(cpp_nav.pvt.fixQuality);
+    c_nav.pvt.fix_status = convert_fix_status(cpp_nav.pvt.fixStatus);
+    c_nav.pvt.fix_type = convert_fix_type(cpp_nav.pvt.fixType);
     
     c_nav.pvt.utc.hh = cpp_nav.pvt.utc.hh;
     c_nav.pvt.utc.mm = cpp_nav.pvt.utc.mm;

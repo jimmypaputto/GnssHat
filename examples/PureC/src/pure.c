@@ -26,9 +26,9 @@ void signal_handler(int sig)
 void print_navigation_data(const jp_gnss_navigation_t* nav)
 {
     printf("Navigation:\r\n");
-    printf("  Fix Quality: %d\n", nav->pvt.quality);
-    printf("  Fix Status: %d\n", nav->pvt.status);
-    printf("  Fix Type: %d\n", nav->pvt.type);
+    printf("  Fix Quality: %d\n", nav->pvt.fix_quality);
+    printf("  Fix Status: %d\n", nav->pvt.fix_status);
+    printf("  Fix Type: %d\n", nav->pvt.fix_type);
     
     if (nav->pvt.latitude != 0.0 || nav->pvt.longitude != 0.0)
     {

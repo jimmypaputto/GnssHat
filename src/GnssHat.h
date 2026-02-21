@@ -145,9 +145,9 @@ typedef struct
 
 typedef struct
 {
-    jp_gnss_fix_quality_t quality;
-    jp_gnss_fix_status_t status;
-    jp_gnss_fix_type_t type;
+    jp_gnss_fix_quality_t fix_quality;
+    jp_gnss_fix_status_t fix_status;
+    jp_gnss_fix_type_t fix_type;
 
     jp_gnss_utc_time_t utc;
     jp_gnss_date_t date;

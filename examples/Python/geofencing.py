@@ -17,14 +17,14 @@ def create_default_config() -> dict:
         'confidence_level': 3,  # 99.7%
         'geofences': [
             {
-                'latitude': 41.902205071091224,
-                'longitude': 12.4539203390548,
-                'radius_m': 2005
+                'lat': 41.902205071091224,
+                'lon': 12.4539203390548,
+                'radius': 2005
             },
             {
-                'latitude': 52.257211745024186,
-                'longitude': 20.311759615806704,
-                'radius_m': 1810
+                'lat': 52.257211745024186,
+                'lon': 20.311759615806704,
+                'radius': 1810
             }
         ]
     }
@@ -78,9 +78,9 @@ def print_geofencing(geofencing):
 
     print("    Geofences:")
     for geofence in geofencing.cfg.geofences:
-        print(f"      Latitude: {geofence.latitude:.6f}, "
-              f"Longitude: {geofence.longitude:.6f}, "
-              f"Radius: {geofence.radius_m:.2f} m")
+        print(f"      Latitude: {geofence.lat:.6f}, "
+              f"Longitude: {geofence.lon:.6f}, "
+              f"Radius: {geofence.radius:.2f} m")
 
     print("  Navigation:")
 

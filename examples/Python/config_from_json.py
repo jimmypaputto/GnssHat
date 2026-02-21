@@ -34,9 +34,9 @@ def print_config_summary(config: Dict[str, Any]) -> None:
         fence_count = len(geofencing.get('geofences', []))
         print(f"  Geofencing: Enabled ({fence_count} fence(s))")
         for i, fence in enumerate(geofencing.get('geofences', [])):
-            lat = fence.get('latitude', 0)
-            lon = fence.get('longitude', 0)
-            radius = fence.get('radius_m', 0)
+            lat = fence.get('lat', 0)
+            lon = fence.get('lon', 0)
+            radius = fence.get('radius', 0)
             print(
                 f"    - Fence {i+1}: {lat:.6f}, {lon:.6f} "
                 f"(radius: {radius:.2f}m)"

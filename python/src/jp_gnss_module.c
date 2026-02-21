@@ -1748,6 +1748,220 @@ static PyObject* GnssHat_soft_reset_hot_start(GnssHat* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
+static PyObject* GnssHat_timepulse(GnssHat* self, PyObject* args)
+{
+    if (!self->hat)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "GNSS HAT not initialized");
+        return NULL;
+    }
+
+    Py_BEGIN_ALLOW_THREADS
+    jp_gnss_hat_timepulse(self->hat);
+    Py_END_ALLOW_THREADS
+
+    Py_RETURN_NONE;
+}
+
+static PyObject* GnssHat_rtk_get_full_corrections(GnssHat* self,
+    PyObject* args)
+{
+    if (!self->hat)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "GNSS HAT not initialized");
+        return NULL;
+    }
+
+    jp_gnss_rtk_corrections_t* corrections;
+
+    Py_BEGIN_ALLOW_THREADS
+    corrections = jp_gnss_rtk_get_full_corrections(self->hat);
+    Py_END_ALLOW_THREADS
+
+    if (!corrections)
+    {
+        PyErr_SetString(PyExc_RuntimeError,
+            "Failed to get RTK corrections (RTK not available or no data)");
+        return NULL;
+    }
+
+    PyObject* list = PyList_New(corrections->count);
+    if (!list)
+    {
+        jp_gnss_rtk_corrections_free(corrections);
+        return NULL;
+    }
+
+    for (uint32_t i = 0; i < corrections->count; i++)
+    {
+        PyObject* frame_bytes = PyBytes_FromStringAndSize(
+            (const char*)corrections->frames[i].data,
+            corrections->frames[i].size
+        );
+        if (!frame_bytes)
+        {
+            Py_DECREF(list);
+            jp_gnss_rtk_corrections_free(corrections);
+            return NULL;
+        }
+        PyList_SetItem(list, i, frame_bytes);
+    }
+
+    jp_gnss_rtk_corrections_free(corrections);
+    return list;
+}
+
+static PyObject* GnssHat_rtk_get_tiny_corrections(GnssHat* self,
+    PyObject* args)
+{
+    if (!self->hat)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "GNSS HAT not initialized");
+        return NULL;
+    }
+
+    jp_gnss_rtk_corrections_t* corrections;
+
+    Py_BEGIN_ALLOW_THREADS
+    corrections = jp_gnss_rtk_get_tiny_corrections(self->hat);
+    Py_END_ALLOW_THREADS
+
+    if (!corrections)
+    {
+        PyErr_SetString(PyExc_RuntimeError,
+            "Failed to get RTK corrections (RTK not available or no data)");
+        return NULL;
+    }
+
+    PyObject* list = PyList_New(corrections->count);
+    if (!list)
+    {
+        jp_gnss_rtk_corrections_free(corrections);
+        return NULL;
+    }
+
+    for (uint32_t i = 0; i < corrections->count; i++)
+    {
+        PyObject* frame_bytes = PyBytes_FromStringAndSize(
+            (const char*)corrections->frames[i].data,
+            corrections->frames[i].size
+        );
+        if (!frame_bytes)
+        {
+            Py_DECREF(list);
+            jp_gnss_rtk_corrections_free(corrections);
+            return NULL;
+        }
+        PyList_SetItem(list, i, frame_bytes);
+    }
+
+    jp_gnss_rtk_corrections_free(corrections);
+    return list;
+}
+
+static PyObject* GnssHat_rtk_get_rtcm3_frame(GnssHat* self, PyObject* args)
+{
+    if (!self->hat)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "GNSS HAT not initialized");
+        return NULL;
+    }
+
+    int frame_id;
+    if (!PyArg_ParseTuple(args, "i", &frame_id))
+        return NULL;
+
+    jp_gnss_rtcm3_frame_t* frame;
+
+    Py_BEGIN_ALLOW_THREADS
+    frame = jp_gnss_rtk_get_rtcm3_frame(self->hat, (uint16_t)frame_id);
+    Py_END_ALLOW_THREADS
+
+    if (!frame)
+    {
+        PyErr_SetString(PyExc_RuntimeError,
+            "Failed to get RTCM3 frame (RTK not available or no data)");
+        return NULL;
+    }
+
+    PyObject* result = PyBytes_FromStringAndSize(
+        (const char*)frame->data, frame->size
+    );
+
+    jp_gnss_rtcm3_frame_free(frame);
+    return result;
+}
+
+static PyObject* GnssHat_rtk_apply_corrections(GnssHat* self, PyObject* args)
+{
+    if (!self->hat)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "GNSS HAT not initialized");
+        return NULL;
+    }
+
+    PyObject* corrections_list;
+    if (!PyArg_ParseTuple(args, "O", &corrections_list))
+        return NULL;
+
+    if (!PyList_Check(corrections_list))
+    {
+        PyErr_SetString(PyExc_TypeError,
+            "corrections must be a list of bytes objects");
+        return NULL;
+    }
+
+    Py_ssize_t count = PyList_Size(corrections_list);
+    if (count == 0)
+    {
+        PyErr_SetString(PyExc_ValueError, "corrections list is empty");
+        return NULL;
+    }
+
+    jp_gnss_rtcm3_frame_t* frames = (jp_gnss_rtcm3_frame_t*)calloc(
+        count, sizeof(jp_gnss_rtcm3_frame_t)
+    );
+    if (!frames)
+    {
+        PyErr_NoMemory();
+        return NULL;
+    }
+
+    for (Py_ssize_t i = 0; i < count; i++)
+    {
+        PyObject* item = PyList_GetItem(corrections_list, i);
+        if (!PyBytes_Check(item))
+        {
+            free(frames);
+            PyErr_Format(PyExc_TypeError,
+                "corrections[%zd] must be a bytes object", i);
+            return NULL;
+        }
+
+        frames[i].data = (uint8_t*)PyBytes_AsString(item);
+        frames[i].size = (uint32_t)PyBytes_Size(item);
+    }
+
+    bool result;
+
+    Py_BEGIN_ALLOW_THREADS
+    result = jp_gnss_rtk_apply_corrections(
+        self->hat, frames, (uint32_t)count
+    );
+    Py_END_ALLOW_THREADS
+
+    free(frames);
+
+    if (!result)
+    {
+        PyErr_SetString(PyExc_RuntimeError,
+            "Failed to apply RTK corrections (RTK rover not available)");
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
 static PyObject* GnssHat_enter(GnssHat* self, PyObject* args)
 {
     Py_INCREF(self);
@@ -1821,6 +2035,41 @@ static PyMethodDef GnssHat_methods[] = {
         (PyCFunction)GnssHat_soft_reset_hot_start,
         METH_NOARGS,
         "Perform soft reset (hot start)"
+    },
+    {
+        "timepulse",
+        (PyCFunction)GnssHat_timepulse,
+        METH_NOARGS,
+        "Wait for the next timepulse interrupt. "
+        "Call enable_timepulse() first."
+    },
+    {
+        "rtk_get_full_corrections",
+        (PyCFunction)GnssHat_rtk_get_full_corrections,
+        METH_NOARGS,
+        "Get full RTK base corrections (M7M). "
+        "Returns a list of bytes objects (RTCM3 frames)."
+    },
+    {
+        "rtk_get_tiny_corrections",
+        (PyCFunction)GnssHat_rtk_get_tiny_corrections,
+        METH_NOARGS,
+        "Get tiny RTK base corrections (M4M). "
+        "Returns a list of bytes objects (RTCM3 frames)."
+    },
+    {
+        "rtk_get_rtcm3_frame",
+        (PyCFunction)GnssHat_rtk_get_rtcm3_frame,
+        METH_VARARGS,
+        "Get a specific RTCM3 frame by message ID. "
+        "Returns a bytes object."
+    },
+    {
+        "rtk_apply_corrections",
+        (PyCFunction)GnssHat_rtk_apply_corrections,
+        METH_VARARGS,
+        "Apply RTK corrections to a rover. "
+        "Takes a list of bytes objects (RTCM3 frames)."
     },
     {
         "__enter__",
@@ -2091,6 +2340,67 @@ static PyObject* geofence_status_to_string(PyObject* self, PyObject* args)
     return PyUnicode_FromString(result);
 }
 
+static PyObject* utc_time_iso8601(PyObject* self, PyObject* args)
+{
+    PyObject* obj;
+    if (!PyArg_ParseTuple(args, "O", &obj))
+        return NULL;
+
+    PositionVelocityTime* pvt_obj = NULL;
+
+    /* Accept either a Navigation object or a PositionVelocityTime object */
+    if (Py_TYPE(obj) == &NavigationType)
+    {
+        Navigation* nav = (Navigation*)obj;
+        if (!nav->pvt)
+        {
+            PyErr_SetString(PyExc_ValueError,
+                "Navigation object has no PVT data");
+            return NULL;
+        }
+        pvt_obj = (PositionVelocityTime*)nav->pvt;
+    }
+    else if (Py_TYPE(obj) == &PositionVelocityTimeType)
+    {
+        pvt_obj = (PositionVelocityTime*)obj;
+    }
+    else
+    {
+        PyErr_SetString(PyExc_TypeError,
+            "Expected a Navigation or PositionVelocityTime object");
+        return NULL;
+    }
+
+    /* Extract UTC time and date from the Python PVT object */
+    jp_gnss_position_velocity_time_t c_pvt;
+    memset(&c_pvt, 0, sizeof(c_pvt));
+
+    if (pvt_obj->utc_time && PyDict_Check(pvt_obj->utc_time))
+    {
+        PyObject* hh = PyDict_GetItemString(pvt_obj->utc_time, "hours");
+        PyObject* mm = PyDict_GetItemString(pvt_obj->utc_time, "minutes");
+        PyObject* ss = PyDict_GetItemString(pvt_obj->utc_time, "seconds");
+
+        if (hh) c_pvt.utc.hh = (uint8_t)PyLong_AsLong(hh);
+        if (mm) c_pvt.utc.mm = (uint8_t)PyLong_AsLong(mm);
+        if (ss) c_pvt.utc.ss = (uint8_t)PyLong_AsLong(ss);
+    }
+
+    if (pvt_obj->date && PyDict_Check(pvt_obj->date))
+    {
+        PyObject* day = PyDict_GetItemString(pvt_obj->date, "day");
+        PyObject* month = PyDict_GetItemString(pvt_obj->date, "month");
+        PyObject* year = PyDict_GetItemString(pvt_obj->date, "year");
+
+        if (day) c_pvt.date.day = (uint8_t)PyLong_AsLong(day);
+        if (month) c_pvt.date.month = (uint8_t)PyLong_AsLong(month);
+        if (year) c_pvt.date.year = (uint16_t)PyLong_AsLong(year);
+    }
+
+    const char* iso_str = jp_gnss_utc_time_iso8601(&c_pvt);
+    return PyUnicode_FromString(iso_str);
+}
+
 static PyMethodDef jimmypaputto_gnss_methods[] = {
     {
         "version",
@@ -2151,6 +2461,13 @@ static PyMethodDef jimmypaputto_gnss_methods[] = {
         geofence_status_to_string,
         METH_VARARGS,
         "Convert geofence status enum to string"
+    },
+    {
+        "utc_time_iso8601",
+        utc_time_iso8601,
+        METH_VARARGS,
+        "Convert PVT navigation data to ISO 8601 UTC time string. "
+        "Takes a Navigation or PositionVelocityTime object."
     },
     {NULL, NULL, 0, NULL}
 };

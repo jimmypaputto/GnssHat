@@ -318,6 +318,9 @@ const char* jp_gnss_geofencing_status_to_string(
     jp_gnss_geofencing_status_t status);
 const char* jp_gnss_geofence_status_to_string(jp_gnss_geofence_status_t status);
 
+const char* jp_gnss_utc_time_iso8601(
+    const jp_gnss_position_velocity_time_t* pvt);
+
 #ifdef __cplusplus
 }
 #endif

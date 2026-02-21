@@ -812,4 +812,22 @@ void jp_gnss_rtcm3_frame_free(jp_gnss_rtcm3_frame_t* frame)
     delete frame;
 }
 
+const char* jp_gnss_utc_time_iso8601(
+    const jp_gnss_position_velocity_time_t* pvt)
+{
+    if (!pvt)
+        return "";
+
+    PositionVelocityTime cpp_pvt{};
+    cpp_pvt.date.year = pvt->date.year;
+    cpp_pvt.date.month = pvt->date.month;
+    cpp_pvt.date.day = pvt->date.day;
+    cpp_pvt.utc.hh = pvt->utc.hh;
+    cpp_pvt.utc.mm = pvt->utc.mm;
+    cpp_pvt.utc.ss = pvt->utc.ss;
+
+    thread_local std::string result = Utils::utcTimeFromGnss_ISO8601(cpp_pvt);
+    return result.c_str();
+}
+
 }  // extern "C"

@@ -11,7 +11,7 @@
 namespace JimmyPaputto
 {
 
-enum EFixQuality: uint8_t
+enum class EFixQuality: uint8_t
 {
     Invalid = 0,
     GpsFix2D3D = 1,

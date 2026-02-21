@@ -10,6 +10,7 @@
 #include <cstring>
 #include <functional>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 
@@ -42,6 +43,12 @@ constexpr uint8_t countEnum()
         size++;
     }
     return size;
+}
+
+template<typename E>
+constexpr std::underlying_type_t<E> to_underlying(E e) noexcept
+{
+    return static_cast<std::underlying_type_t<E>>(e);
 }
 
 constexpr bool isLittleEndian()

@@ -24,26 +24,27 @@ public:
     explicit UbxClassMsgId()
     :	ubxClassMsgIdMap_(numberOfUbxMsgs)
     {
-        ubxClassMsgIdMap_[UBX_ACK_ACK] = { 0x05, 0x01 };
-        ubxClassMsgIdMap_[UBX_ACK_NAK] = { 0x05, 0x00 };
-        ubxClassMsgIdMap_[UBX_CFG_CFG] = { 0x06, 0x09 };
-        ubxClassMsgIdMap_[UBX_CFG_GEOFENCE] = { 0x06, 0x69 };
-        ubxClassMsgIdMap_[UBX_CFG_MSG] = { 0x06, 0x01 };
-        ubxClassMsgIdMap_[UBX_CFG_NAV5] = { 0x06, 0x24 };
-        ubxClassMsgIdMap_[UBX_CFG_PRT] = { 0x06, 0x00 };
-        ubxClassMsgIdMap_[UBX_CFG_RATE] = { 0x06, 0x08 };
-        ubxClassMsgIdMap_[UBX_CFG_TP5] = { 0x06, 0x31 };
-        ubxClassMsgIdMap_[UBX_CFG_VALSET] = { 0x06, 0x8A };
-        ubxClassMsgIdMap_[UBX_CFG_VALGET] = { 0x06, 0x8B };
-        ubxClassMsgIdMap_[UBX_MON_RF] = { 0x0A, 0x38 };
-        ubxClassMsgIdMap_[UBX_NAV_DOP] = { 0x01, 0x04 };
-        ubxClassMsgIdMap_[UBX_NAV_GEOFENCE] = { 0x01, 0x39 };
-        ubxClassMsgIdMap_[UBX_NAV_PVT] = { 0x01, 0x07 };
+        using enum EUbxMsg;
+        ubxClassMsgIdMap_[to_underlying(UBX_ACK_ACK)] = { 0x05, 0x01 };
+        ubxClassMsgIdMap_[to_underlying(UBX_ACK_NAK)] = { 0x05, 0x00 };
+        ubxClassMsgIdMap_[to_underlying(UBX_CFG_CFG)] = { 0x06, 0x09 };
+        ubxClassMsgIdMap_[to_underlying(UBX_CFG_GEOFENCE)] = { 0x06, 0x69 };
+        ubxClassMsgIdMap_[to_underlying(UBX_CFG_MSG)] = { 0x06, 0x01 };
+        ubxClassMsgIdMap_[to_underlying(UBX_CFG_NAV5)] = { 0x06, 0x24 };
+        ubxClassMsgIdMap_[to_underlying(UBX_CFG_PRT)] = { 0x06, 0x00 };
+        ubxClassMsgIdMap_[to_underlying(UBX_CFG_RATE)] = { 0x06, 0x08 };
+        ubxClassMsgIdMap_[to_underlying(UBX_CFG_TP5)] = { 0x06, 0x31 };
+        ubxClassMsgIdMap_[to_underlying(UBX_CFG_VALSET)] = { 0x06, 0x8A };
+        ubxClassMsgIdMap_[to_underlying(UBX_CFG_VALGET)] = { 0x06, 0x8B };
+        ubxClassMsgIdMap_[to_underlying(UBX_MON_RF)] = { 0x0A, 0x38 };
+        ubxClassMsgIdMap_[to_underlying(UBX_NAV_DOP)] = { 0x01, 0x04 };
+        ubxClassMsgIdMap_[to_underlying(UBX_NAV_GEOFENCE)] = { 0x01, 0x39 };
+        ubxClassMsgIdMap_[to_underlying(UBX_NAV_PVT)] = { 0x01, 0x07 };
     }
 
     std::pair<uint8_t, uint8_t> translate(const EUbxMsg& eUbxMsg) const
     {
-        return ubxClassMsgIdMap_[eUbxMsg];
+        return ubxClassMsgIdMap_[to_underlying(eUbxMsg)];
     }
 
     EUbxMsg translate(const std::pair<uint8_t, uint8_t>& rawUbxClassMsgid) const

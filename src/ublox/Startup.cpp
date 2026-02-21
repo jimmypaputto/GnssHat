@@ -56,7 +56,7 @@ bool StartupBase::configurePorts(const std::vector<uint8_t>& serializedPoll,
 
 bool StartupBase::checkPortsConfig(const std::vector<uint8_t>& serializedPoll)
 {
-    bool& ack = configRegistry_.ack()[UBX_CFG_PRT];
+    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_PRT)];
     ack = false;
     commDriver_.transmitReceive(serializedPoll, rxBuff_);
     ubxParser_.parse(rxBuff_);
@@ -66,7 +66,7 @@ bool StartupBase::checkPortsConfig(const std::vector<uint8_t>& serializedPoll)
 bool StartupBase::sendPortsConfig(const std::vector<uint8_t>& serializedConfig)
 {
     configRegistry_.shouldSaveConfigToFlash(true);
-    bool& ack = configRegistry_.ack()[UBX_CFG_PRT];
+    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_PRT)];
     ack = false;
     commDriver_.transmitReceive(serializedConfig, rxBuff_);
     ubxParser_.parse(rxBuff_);
@@ -90,7 +90,7 @@ bool StartupBase::configureRate()
 
 bool StartupBase::checkRateConfig()
 {
-    bool& ack = configRegistry_.ack()[UBX_CFG_RATE];
+    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_RATE)];
     ack = false;
     commDriver_.transmitReceive(ubxmsg::UBX_CFG_RATE::poll(), rxBuff_);
     ubxParser_.parse(rxBuff_);
@@ -100,7 +100,7 @@ bool StartupBase::checkRateConfig()
 bool StartupBase::sendRateConfig()
 {
     configRegistry_.shouldSaveConfigToFlash(true);
-    bool& ack = configRegistry_.ack()[UBX_CFG_RATE];
+    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_RATE)];
     ack = false;
     const auto& serializedRateConfig =
         configRegistry_.rateConfig().serialize();
@@ -126,7 +126,7 @@ bool StartupBase::configureTimepulse()
 
 bool StartupBase::checkTimepulseConfig()
 {
-    bool& ack = configRegistry_.ack()[UBX_CFG_TP5];
+    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_TP5)];
     ack = false;
     commDriver_.transmitReceive(ubxmsg::UBX_CFG_TP5::poll(), rxBuff_);
     ubxParser_.parse(rxBuff_);
@@ -136,7 +136,7 @@ bool StartupBase::checkTimepulseConfig()
 bool StartupBase::sendTimepulseConfig()
 {
     configRegistry_.shouldSaveConfigToFlash(true);
-    bool& ack = configRegistry_.ack()[UBX_CFG_TP5];
+    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_TP5)];
     ack = false;
     const auto& serializedTimepulseConfig =
         configRegistry_.timepulseConfig().serialize();
@@ -162,7 +162,7 @@ bool StartupBase::configureGeofences()
 
 bool StartupBase::checkGeofencesConfig()
 {
-    bool& ack = configRegistry_.ack()[UBX_CFG_GEOFENCE];
+    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_GEOFENCE)];
     ack = false;
     commDriver_.transmitReceive(ubxmsg::UBX_CFG_GEOFENCE::poll(), rxBuff_);
     ubxParser_.parse(rxBuff_);
@@ -172,7 +172,7 @@ bool StartupBase::checkGeofencesConfig()
 bool StartupBase::sendGeofencesConfig()
 {
     configRegistry_.shouldSaveConfigToFlash(true);
-    bool& ack = configRegistry_.ack()[UBX_CFG_GEOFENCE];
+    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_GEOFENCE)];
     ack = false;
     commDriver_.transmitReceive(
         configRegistry_.geofencingConfig().serialize(), rxBuff_
@@ -198,7 +198,7 @@ bool StartupBase::configureDynamicModel()
 
 bool StartupBase::checkDynamicModel()
 {
-    bool& ack = configRegistry_.ack()[UBX_CFG_NAV5];
+    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_NAV5)];
     ack = false;
     commDriver_.transmitReceive(ubxmsg::UBX_CFG_NAV5::poll(), rxBuff_);
     ubxParser_.parse(rxBuff_);
@@ -208,7 +208,7 @@ bool StartupBase::checkDynamicModel()
 bool StartupBase::sendDynamicModel()
 {
     configRegistry_.shouldSaveConfigToFlash(true);
-    bool& ack = configRegistry_.ack()[UBX_CFG_NAV5];
+    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_NAV5)];
     ack = false;
     const ubxmsg::UBX_CFG_NAV5 ubxCfgNav5(configRegistry_.dynamicModel());
     commDriver_.transmitReceive(ubxCfgNav5.serialize(), rxBuff_);
@@ -235,7 +235,7 @@ bool StartupBase::configureUbxMsgSendrate()
 template<typename UbxMsg, EUbxMsg eUbxMsg>
 bool StartupBase::checkUbxMsgSendrate()
 {
-    bool& ack = configRegistry_.ack()[UBX_CFG_MSG];
+    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_MSG)];
     ack = false;
     commDriver_.transmitReceive(ubxmsg::UBX_CFG_MSG::poll(eUbxMsg), rxBuff_);
     ubxParser_.parse(rxBuff_);
@@ -246,7 +246,7 @@ template<typename UbxMsg, EUbxMsg eUbxMsg>
 bool StartupBase::sendUbxMsgSendrate()
 {
     configRegistry_.shouldSaveConfigToFlash(true);
-    bool& ack = configRegistry_.ack()[UBX_CFG_MSG];
+    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_MSG)];
     ack = false;
     const auto& serializedMsgCfg = configRegistry_.cfgMsg(eUbxMsg).serialize();
     commDriver_.transmitReceive(serializedMsgCfg, rxBuff_);
@@ -256,7 +256,7 @@ bool StartupBase::sendUbxMsgSendrate()
 
 bool StartupBase::saveCurrentConfigToFlash()
 {
-    bool& ack = configRegistry_.ack()[UBX_CFG_CFG];
+    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_CFG)];
     ack = false;
     commDriver_.transmitReceive(ubxmsg::UBX_CFG_CFG::saveToFlash(), rxBuff_);
     ubxParser_.parse(rxBuff_);
@@ -277,7 +277,7 @@ bool M9NStartup::execute()
     commDriver_.transmitReceive(flusher, rxBuff_);
 
     result = configurePorts(
-        ubxmsg::UBX_CFG_PRT::poll<UBX_SPI>(),
+        ubxmsg::UBX_CFG_PRT::poll<EUbxPrt::UBX_SPI>(),
         SpiDriver::portConfig().serialize()
     );
     if (!result)
@@ -418,14 +418,14 @@ bool M9NStartup::reconfigureCommPort()
         spiDriver.reinit(spiMode);
         try3times([this](){
             return configurePorts(
-                ubxmsg::UBX_CFG_PRT::poll<UBX_SPI>(),
+                ubxmsg::UBX_CFG_PRT::poll<EUbxPrt::UBX_SPI>(),
                 SpiDriver::portConfig().serialize()
             );
         });
         spiDriver.reinit(SpiDriver::expectedSpiMode);
         result = try3times([this](){
             return configurePorts(
-                ubxmsg::UBX_CFG_PRT::poll<UBX_SPI>(),
+                ubxmsg::UBX_CFG_PRT::poll<EUbxPrt::UBX_SPI>(),
                 SpiDriver::portConfig().serialize()
             );
         });
@@ -528,7 +528,7 @@ bool StartupBase::configure(const std::vector<uint32_t>& keys)
     configRegistry_.clearStoredConfigValues();
 
     const auto serializedPoll = ubxmsg::UBX_CFG_VALGET::poll(keys);
-    bool& ack = configRegistry_.ack()[UBX_CFG_VALGET];
+    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_VALGET)];
     ack = false;
     std::fill(rxBuff_.begin(), rxBuff_.end(), 0);
     commDriver_.transmitReceive(serializedPoll, rxBuff_);
@@ -577,7 +577,7 @@ bool StartupBase::configure(const std::vector<uint32_t>& keys)
         keysValuesToReconfigure
     ).serialize();
 
-    bool& set_ack = configRegistry_.ack()[UBX_CFG_VALSET];
+    bool& set_ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_VALSET)];
     set_ack = false;
     std::fill(rxBuff_.begin(), rxBuff_.end(), 0);
     commDriver_.transmitReceive(serializedValset, rxBuff_);

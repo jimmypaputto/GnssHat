@@ -13,7 +13,7 @@
 namespace JimmyPaputto
 {
 
-enum EUbxMsg: std::uint8_t
+enum class EUbxMsg: std::uint8_t
 {
     UBX_ACK_ACK      = 0x00,
     UBX_ACK_NAK      = 0x01,

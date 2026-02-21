@@ -13,7 +13,7 @@
 namespace JimmyPaputto
 {
 
-enum EUbxPrt: uint8_t
+enum class EUbxPrt: uint8_t
 {
     UBX_I2C      = 0x00,
     UBX_UART_1   = 0x01,

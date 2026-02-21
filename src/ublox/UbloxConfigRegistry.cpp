@@ -25,26 +25,26 @@ UbloxConfigRegistry::UbloxConfigRegistry(const GnssConfig& config,
 
     for (uint8_t i = 0; i < numberOfUbxMsgs; i++)
     {
-        if (i == UBX_MON_RF)
+        if (static_cast<EUbxMsg>(i) == EUbxMsg::UBX_MON_RF)
         {
-            cfgMsgs_[i] = std::make_unique<ubxmsg::UBX_CFG_MSG>(UBX_MON_RF,
+            cfgMsgs_[i] = std::make_unique<ubxmsg::UBX_CFG_MSG>(EUbxMsg::UBX_MON_RF,
                 cfgMsg);
         }
-        else if (i == UBX_NAV_DOP)
+        else if (static_cast<EUbxMsg>(i) == EUbxMsg::UBX_NAV_DOP)
         {
-            cfgMsgs_[i] = std::make_unique<ubxmsg::UBX_CFG_MSG>(UBX_NAV_DOP,
+            cfgMsgs_[i] = std::make_unique<ubxmsg::UBX_CFG_MSG>(EUbxMsg::UBX_NAV_DOP,
                 cfgMsg);
         }
-        else if (i == UBX_NAV_GEOFENCE)
+        else if (static_cast<EUbxMsg>(i) == EUbxMsg::UBX_NAV_GEOFENCE)
         {
             cfgMsgs_[i] = std::make_unique<ubxmsg::UBX_CFG_MSG>(
-                UBX_NAV_GEOFENCE,
+                EUbxMsg::UBX_NAV_GEOFENCE,
                 cfgMsg
             );
         }
-        else if (i == UBX_NAV_PVT)
+        else if (static_cast<EUbxMsg>(i) == EUbxMsg::UBX_NAV_PVT)
         {
-            cfgMsgs_[i] = std::make_unique<ubxmsg::UBX_CFG_MSG>(UBX_NAV_PVT,
+            cfgMsgs_[i] = std::make_unique<ubxmsg::UBX_CFG_MSG>(EUbxMsg::UBX_NAV_PVT,
                 cfgMsg);
         }
         else
@@ -112,18 +112,18 @@ ubxmsg::UBX_CFG_TP5 UbloxConfigRegistry::timepulseConfig() const
 
 void UbloxConfigRegistry::ack(const EUbxMsg& eUbxMsg)
 {
-    ack_[eUbxMsg] = true;
+    ack_[to_underlying(eUbxMsg)] = true;
 }
 
 void UbloxConfigRegistry::nak(const EUbxMsg& eUbxMsg)
 {
-    nak_[eUbxMsg] = true;
+    nak_[to_underlying(eUbxMsg)] = true;
 }
 
 std::array<uint8_t, numberOfUbxPrts> UbloxConfigRegistry::getMsgSendrates(
     const EUbxMsg& eUbxMsg) const
 {
-    return cfgMsgs_[eUbxMsg]->sendRates();
+    return cfgMsgs_[to_underlying(eUbxMsg)]->sendRates();
 }
 
 void UbloxConfigRegistry::checkGeofencing(

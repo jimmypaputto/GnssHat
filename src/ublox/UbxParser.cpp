@@ -51,7 +51,7 @@ std::vector<uint8_t> UbxParser::parse(const std::vector<uint8_t>& buffer)
         const auto eUbxMsg = UbxClassMsgId::instance().translate(
             { frame[2], frame[3] }
         );
-        if (eUbxMsg != END_UBX)
+        if (eUbxMsg != EUbxMsg::END_UBX)
         {
             ubxCallbacks_.run(UbxFactory::create(eUbxMsg, frame), eUbxMsg);
         }

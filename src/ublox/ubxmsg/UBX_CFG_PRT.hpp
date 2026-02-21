@@ -59,15 +59,15 @@ struct TxReady
 template<EUbxPrt PortType>
 struct Mode
 {
-    static_assert(PortType == UBX_SPI || PortType == UBX_UART_1 ||
-        PortType == UBX_UART_2, "Only SPI and UART ports supported");
+    static_assert(PortType == EUbxPrt::UBX_SPI || PortType == EUbxPrt::UBX_UART_1 ||
+        PortType == EUbxPrt::UBX_UART_2, "Only SPI and UART ports supported");
     
     std::vector<uint8_t> serialize() const;
     void deserialize(const std::vector<uint8_t>& frame);
 };
 
 template<>
-struct Mode<UBX_SPI>
+struct Mode<EUbxPrt::UBX_SPI>
 {
     std::vector<uint8_t> serialize() const
     {
@@ -89,7 +89,7 @@ struct Mode<UBX_SPI>
 };
 
 template<>
-struct Mode<UBX_UART_1>
+struct Mode<EUbxPrt::UBX_UART_1>
 {
     std::vector<uint8_t> serialize() const
     {
@@ -138,7 +138,7 @@ struct Mode<UBX_UART_1>
 };
 
 template<>
-struct Mode<UBX_UART_2> : public Mode<UBX_UART_1>
+struct Mode<EUbxPrt::UBX_UART_2> : public Mode<EUbxPrt::UBX_UART_1>
 {
 };
 
@@ -236,20 +236,20 @@ protected:
     Flags flags_;
 };
 
-class UBX_CFG_PRT_SPI : public UBX_CFG_PRT_BASE<UBX_CFG_PRT_SPI, UBX_SPI>
+class UBX_CFG_PRT_SPI : public UBX_CFG_PRT_BASE<UBX_CFG_PRT_SPI, EUbxPrt::UBX_SPI>
 {
 public:
     explicit UBX_CFG_PRT_SPI() = default;
 
-    explicit UBX_CFG_PRT_SPI(const TxReady& txReady, const Mode<UBX_SPI>& mode,
+    explicit UBX_CFG_PRT_SPI(const TxReady& txReady, const Mode<EUbxPrt::UBX_SPI>& mode,
         const ProtoMask& inProtoMask, const ProtoMask& outProtoMask,
         const Flags& flags)
-    :	UBX_CFG_PRT_BASE<UBX_CFG_PRT_SPI, UBX_SPI>(txReady, mode, inProtoMask,
+    :	UBX_CFG_PRT_BASE<UBX_CFG_PRT_SPI, EUbxPrt::UBX_SPI>(txReady, mode, inProtoMask,
             outProtoMask, flags)
     {}
 
     explicit UBX_CFG_PRT_SPI(const std::vector<uint8_t>& frame)
-    :	UBX_CFG_PRT_BASE<UBX_CFG_PRT_SPI, UBX_SPI>(frame)
+    :	UBX_CFG_PRT_BASE<UBX_CFG_PRT_SPI, EUbxPrt::UBX_SPI>(frame)
     {}
 
     std::vector<uint8_t> serializeImpl() const
@@ -334,19 +334,19 @@ private:
     uint32_t baudrate_;
 };
 
-class UBX_CFG_PRT_UART1 : public UBX_CFG_PRT_UART<UBX_UART_1>
+class UBX_CFG_PRT_UART1 : public UBX_CFG_PRT_UART<EUbxPrt::UBX_UART_1>
 {
 public:
     explicit UBX_CFG_PRT_UART1(const std::vector<uint8_t>& frame)
-    :	UBX_CFG_PRT_UART<UBX_UART_1>(frame)
+    :	UBX_CFG_PRT_UART<EUbxPrt::UBX_UART_1>(frame)
     {}
 };
 
-class UBX_CFG_PRT_UART2 : public UBX_CFG_PRT_UART<UBX_UART_2>
+class UBX_CFG_PRT_UART2 : public UBX_CFG_PRT_UART<EUbxPrt::UBX_UART_2>
 {
 public:
     explicit UBX_CFG_PRT_UART2(const std::vector<uint8_t>& frame)
-    :	UBX_CFG_PRT_UART<UBX_UART_2>(frame)
+    :	UBX_CFG_PRT_UART<EUbxPrt::UBX_UART_2>(frame)
     {}
 };
 
@@ -374,19 +374,19 @@ public:
         
         switch (portId)
         {
-            case static_cast<uint8_t>(UBX_SPI):
+            case static_cast<uint8_t>(EUbxPrt::UBX_SPI):
             {
                 UBX_CFG_PRT_SPI spiImpl(frame);
                 impl_ = std::move(spiImpl);
                 break;
             }
-            case static_cast<uint8_t>(UBX_UART_1):
+            case static_cast<uint8_t>(EUbxPrt::UBX_UART_1):
             {
                 UBX_CFG_PRT_UART1 uart1Impl(frame);
                 impl_ = std::move(uart1Impl);
                 break;
             }
-            case static_cast<uint8_t>(UBX_UART_2):
+            case static_cast<uint8_t>(EUbxPrt::UBX_UART_2):
             {
                 UBX_CFG_PRT_UART2 uart2Impl(frame);
                 impl_ = std::move(uart2Impl);

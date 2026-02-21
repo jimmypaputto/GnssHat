@@ -55,7 +55,7 @@ public:
     void nak(const EUbxMsg& eUbxMsg) override;
     ubxmsg::UBX_CFG_MSG& cfgMsg(const EUbxMsg& eUbxMsg) override
     {
-        return *cfgMsgs_[eUbxMsg];
+        return *cfgMsgs_[to_underlying(eUbxMsg)];
     }
     std::array<uint8_t, numberOfUbxPrts> getMsgSendrates(
         const EUbxMsg& eUbxMsg) const override;

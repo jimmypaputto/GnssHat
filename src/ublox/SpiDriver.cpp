@@ -80,7 +80,7 @@ ubxmsg::UBX_CFG_PRT_SPI SpiDriver::portConfig()
             .pin = 7,
             .threshold = 24
         },
-        Mode<UBX_SPI> { .spiMode = SpiDriver::expectedSpiMode, .ffCnt = 63 },
+        Mode<EUbxPrt::UBX_SPI> { .spiMode = SpiDriver::expectedSpiMode, .ffCnt = 63 },
         ProtoMask { .ubx = true, .nmea = false, .rtcm = false, .rtcm3 = false },
         ProtoMask { .ubx = true, .nmea = false, .rtcm = false, .rtcm3 = false },
         Flags { .extendedTxTimeout = false }

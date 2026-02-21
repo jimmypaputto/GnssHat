@@ -11,7 +11,7 @@
 namespace JimmyPaputto
 {
 
-enum EFixType: uint8_t
+enum class EFixType: uint8_t
 {
     NoFix                 = 0x00,
     DeadReckoningOnly     = 0x01,

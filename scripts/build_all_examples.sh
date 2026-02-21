@@ -38,11 +38,32 @@ if [ ! -d "$EXAMPLES_DIR" ]; then
 fi
 
 EXAMPLES=()
+EXAMPLE_PATHS=()
 echo "Discovering examples..."
+
+# Discover examples in language subdirectories (CPP/, C/) and top-level
 for dir in "$EXAMPLES_DIR"/*; do
-    if [ -d "$dir" ] && [ -f "$dir/CMakeLists.txt" ]; then
-        example_name=$(basename "$dir")
+    if [ ! -d "$dir" ]; then
+        continue
+    fi
+
+    dirname=$(basename "$dir")
+
+    # Language grouping directories: scan their subdirectories
+    if [[ "$dirname" == "CPP" || "$dirname" == "C" ]]; then
+        for subdir in "$dir"/*; do
+            if [ -d "$subdir" ] && [ -f "$subdir/CMakeLists.txt" ]; then
+                example_name="$dirname/$(basename "$subdir")"
+                EXAMPLES+=("$example_name")
+                EXAMPLE_PATHS+=("$subdir")
+                echo "  Found: $example_name"
+            fi
+        done
+    # Top-level examples (GpsdIntegration, etc.)
+    elif [ -f "$dir/CMakeLists.txt" ]; then
+        example_name="$dirname"
         EXAMPLES+=("$example_name")
+        EXAMPLE_PATHS+=("$dir")
         echo "  Found: $example_name"
     fi
 done
@@ -58,7 +79,7 @@ echo ""
 
 build_example() {
     local example_name="$1"
-    local example_path="$EXAMPLES_DIR/$example_name"
+    local example_path="$2"
     
     echo -e "${YELLOW}Building $example_name...${NC}"
     
@@ -136,11 +157,11 @@ ORIGINAL_DIR=$(pwd)
 SUCCESS_COUNT=0
 FAILED_EXAMPLES=()
 
-for example in "${EXAMPLES[@]}"; do
-    if build_example "$example"; then
+for i in "${!EXAMPLES[@]}"; do
+    if build_example "${EXAMPLES[$i]}" "${EXAMPLE_PATHS[$i]}"; then
         ((SUCCESS_COUNT++))
     else
-        FAILED_EXAMPLES+=("$example")
+        FAILED_EXAMPLES+=("${EXAMPLES[$i]}")
     fi
     echo ""
 done
@@ -162,8 +183,8 @@ else
     echo -e "${GREEN}All examples built successfully!${NC}"
     echo ""
     echo "Example binaries are located in:"
-    for example in "${EXAMPLES[@]}"; do
-        example_path="$EXAMPLES_DIR/$example/build"
+    for i in "${!EXAMPLES[@]}"; do
+        example_path="${EXAMPLE_PATHS[$i]}/build"
         if [ -d "$example_path" ]; then
             found_binaries=()
             while IFS= read -r -d '' binary; do

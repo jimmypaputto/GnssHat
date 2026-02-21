@@ -1328,6 +1328,167 @@ static bool validate_config(PyObject* config_dict)
         }
     }
 
+    /* ── RTK config validation ──────────────────────────────────────── */
+    PyObject* rtk_dict = PyDict_GetItemString(config_dict, "rtk");
+    if (rtk_dict && rtk_dict != Py_None &&
+        !PyDict_Check(rtk_dict))
+    {
+        PyErr_SetString(PyExc_TypeError,
+            "rtk must be a dictionary or None");
+        return false;
+    }
+
+    if (rtk_dict && rtk_dict != Py_None)
+    {
+        PyObject* rtk_mode = PyDict_GetItemString(rtk_dict, "mode");
+        if (!rtk_mode || !PyLong_Check(rtk_mode))
+        {
+            PyErr_SetString(PyExc_TypeError,
+                "rtk.mode is required and must be an integer (RtkMode)");
+            return false;
+        }
+
+        int mode_val = (int)PyLong_AsLong(rtk_mode);
+        if (mode_val != JP_GNSS_RTK_MODE_BASE &&
+            mode_val != JP_GNSS_RTK_MODE_ROVER)
+        {
+            PyErr_SetString(PyExc_ValueError,
+                "rtk.mode must be RtkMode.BASE or RtkMode.ROVER");
+            return false;
+        }
+
+        PyObject* base_dict = PyDict_GetItemString(rtk_dict, "base");
+        if (base_dict && base_dict != Py_None &&
+            !PyDict_Check(base_dict))
+        {
+            PyErr_SetString(PyExc_TypeError,
+                "rtk.base must be a dictionary or None");
+            return false;
+        }
+
+        if (base_dict && base_dict != Py_None)
+        {
+            PyObject* base_mode = PyDict_GetItemString(base_dict, "base_mode");
+            if (!base_mode || !PyLong_Check(base_mode))
+            {
+                PyErr_SetString(PyExc_TypeError,
+                    "rtk.base.base_mode is required and must be an integer "
+                    "(BaseMode)");
+                return false;
+            }
+
+            int base_mode_val = (int)PyLong_AsLong(base_mode);
+            if (base_mode_val != JP_GNSS_BASE_MODE_SURVEY_IN &&
+                base_mode_val != JP_GNSS_BASE_MODE_FIXED_POSITION)
+            {
+                PyErr_SetString(PyExc_ValueError,
+                    "rtk.base.base_mode must be BaseMode.SURVEY_IN "
+                    "or BaseMode.FIXED_POSITION");
+                return false;
+            }
+
+            if (base_mode_val == JP_GNSS_BASE_MODE_SURVEY_IN)
+            {
+                PyObject* si_dict = PyDict_GetItemString(base_dict,
+                    "survey_in");
+                if (!si_dict || !PyDict_Check(si_dict))
+                {
+                    PyErr_SetString(PyExc_TypeError,
+                        "rtk.base.survey_in is required and must be a "
+                        "dictionary when base_mode is SURVEY_IN");
+                    return false;
+                }
+
+                PyObject* obs_time = PyDict_GetItemString(si_dict,
+                    "minimum_observation_time_s");
+                if (obs_time && !PyLong_Check(obs_time))
+                {
+                    PyErr_SetString(PyExc_TypeError,
+                        "survey_in.minimum_observation_time_s must be "
+                        "an integer");
+                    return false;
+                }
+
+                PyObject* acc = PyDict_GetItemString(si_dict,
+                    "required_position_accuracy_m");
+                if (acc && !PyFloat_Check(acc) && !PyLong_Check(acc))
+                {
+                    PyErr_SetString(PyExc_TypeError,
+                        "survey_in.required_position_accuracy_m must be "
+                        "a number");
+                    return false;
+                }
+            }
+            else /* FIXED_POSITION */
+            {
+                PyObject* fp_dict = PyDict_GetItemString(base_dict,
+                    "fixed_position");
+                if (!fp_dict || !PyDict_Check(fp_dict))
+                {
+                    PyErr_SetString(PyExc_TypeError,
+                        "rtk.base.fixed_position is required and must be "
+                        "a dictionary when base_mode is FIXED_POSITION");
+                    return false;
+                }
+
+                PyObject* pos_type = PyDict_GetItemString(fp_dict,
+                    "position_type");
+                if (!pos_type || !PyLong_Check(pos_type))
+                {
+                    PyErr_SetString(PyExc_TypeError,
+                        "fixed_position.position_type is required and must "
+                        "be an integer (FixedPositionType)");
+                    return false;
+                }
+
+                int pt_val = (int)PyLong_AsLong(pos_type);
+                if (pt_val != JP_GNSS_FIXED_POSITION_ECEF &&
+                    pt_val != JP_GNSS_FIXED_POSITION_LLA)
+                {
+                    PyErr_SetString(PyExc_ValueError,
+                        "position_type must be FixedPositionType.ECEF "
+                        "or FixedPositionType.LLA");
+                    return false;
+                }
+
+                if (pt_val == JP_GNSS_FIXED_POSITION_ECEF)
+                {
+                    PyObject* ecef_dict = PyDict_GetItemString(fp_dict,
+                        "ecef");
+                    if (!ecef_dict || !PyDict_Check(ecef_dict))
+                    {
+                        PyErr_SetString(PyExc_TypeError,
+                            "fixed_position.ecef is required when "
+                            "position_type is ECEF");
+                        return false;
+                    }
+                }
+                else
+                {
+                    PyObject* lla_dict = PyDict_GetItemString(fp_dict, "lla");
+                    if (!lla_dict || !PyDict_Check(lla_dict))
+                    {
+                        PyErr_SetString(PyExc_TypeError,
+                            "fixed_position.lla is required when "
+                            "position_type is LLA");
+                        return false;
+                    }
+                }
+
+                PyObject* pos_acc = PyDict_GetItemString(fp_dict,
+                    "position_accuracy_m");
+                if (pos_acc && !PyFloat_Check(pos_acc) &&
+                    !PyLong_Check(pos_acc))
+                {
+                    PyErr_SetString(PyExc_TypeError,
+                        "fixed_position.position_accuracy_m must be "
+                        "a number");
+                    return false;
+                }
+            }
+        }
+    }
+
     return true;
 }
 
@@ -1432,6 +1593,138 @@ static void populate_config_from_dict(PyObject* config_dict, jp_gnss_gnss_config
     else
     {
         config->has_geofencing = false;
+    }
+
+    /* ── RTK config ─────────────────────────────────────────────────── */
+    config->has_rtk = false;
+    PyObject* rtk_dict = PyDict_GetItemString(config_dict, "rtk");
+    if (rtk_dict && rtk_dict != Py_None)
+    {
+        config->has_rtk = true;
+        memset(&config->rtk, 0, sizeof(config->rtk));
+
+        PyObject* rtk_mode = PyDict_GetItemString(rtk_dict, "mode");
+        if (rtk_mode)
+            config->rtk.mode =
+                (jp_gnss_rtk_mode_t)PyLong_AsLong(rtk_mode);
+
+        config->rtk.has_base_config = false;
+        PyObject* base_dict = PyDict_GetItemString(rtk_dict, "base");
+        if (base_dict && base_dict != Py_None)
+        {
+            config->rtk.has_base_config = true;
+
+            PyObject* base_mode = PyDict_GetItemString(base_dict,
+                "base_mode");
+            if (base_mode)
+                config->rtk.base.base_mode =
+                    (jp_gnss_base_mode_t)PyLong_AsLong(base_mode);
+
+            if (config->rtk.base.base_mode == JP_GNSS_BASE_MODE_SURVEY_IN)
+            {
+                PyObject* si_dict = PyDict_GetItemString(base_dict,
+                    "survey_in");
+                if (si_dict)
+                {
+                    PyObject* obs_time = PyDict_GetItemString(si_dict,
+                        "minimum_observation_time_s");
+                    if (obs_time)
+                        config->rtk.base.survey_in
+                            .minimum_observation_time_s =
+                                (uint32_t)PyLong_AsLong(obs_time);
+
+                    PyObject* acc = PyDict_GetItemString(si_dict,
+                        "required_position_accuracy_m");
+                    if (acc)
+                    {
+                        if (PyFloat_Check(acc))
+                            config->rtk.base.survey_in
+                                .required_position_accuracy_m =
+                                    PyFloat_AsDouble(acc);
+                        else if (PyLong_Check(acc))
+                            config->rtk.base.survey_in
+                                .required_position_accuracy_m =
+                                    PyLong_AsDouble(acc);
+                    }
+                }
+            }
+            else /* FIXED_POSITION */
+            {
+                PyObject* fp_dict = PyDict_GetItemString(base_dict,
+                    "fixed_position");
+                if (fp_dict)
+                {
+                    PyObject* pos_type = PyDict_GetItemString(fp_dict,
+                        "position_type");
+                    if (pos_type)
+                        config->rtk.base.fixed_position.position_type =
+                            (jp_gnss_fixed_position_type_t)
+                                PyLong_AsLong(pos_type);
+
+                    if (config->rtk.base.fixed_position.position_type ==
+                        JP_GNSS_FIXED_POSITION_ECEF)
+                    {
+                        PyObject* ecef_dict = PyDict_GetItemString(
+                            fp_dict, "ecef");
+                        if (ecef_dict)
+                        {
+                            PyObject* x = PyDict_GetItemString(
+                                ecef_dict, "x_m");
+                            if (x) config->rtk.base.fixed_position
+                                .ecef.x_m = PyFloat_AsDouble(x);
+
+                            PyObject* y = PyDict_GetItemString(
+                                ecef_dict, "y_m");
+                            if (y) config->rtk.base.fixed_position
+                                .ecef.y_m = PyFloat_AsDouble(y);
+
+                            PyObject* z = PyDict_GetItemString(
+                                ecef_dict, "z_m");
+                            if (z) config->rtk.base.fixed_position
+                                .ecef.z_m = PyFloat_AsDouble(z);
+                        }
+                    }
+                    else /* LLA */
+                    {
+                        PyObject* lla_dict = PyDict_GetItemString(
+                            fp_dict, "lla");
+                        if (lla_dict)
+                        {
+                            PyObject* lat = PyDict_GetItemString(
+                                lla_dict, "latitude_deg");
+                            if (lat) config->rtk.base.fixed_position
+                                .lla.latitude_deg =
+                                    PyFloat_AsDouble(lat);
+
+                            PyObject* lon = PyDict_GetItemString(
+                                lla_dict, "longitude_deg");
+                            if (lon) config->rtk.base.fixed_position
+                                .lla.longitude_deg =
+                                    PyFloat_AsDouble(lon);
+
+                            PyObject* h = PyDict_GetItemString(
+                                lla_dict, "height_m");
+                            if (h) config->rtk.base.fixed_position
+                                .lla.height_m = PyFloat_AsDouble(h);
+                        }
+                    }
+
+                    PyObject* pos_acc = PyDict_GetItemString(fp_dict,
+                        "position_accuracy_m");
+                    if (pos_acc)
+                    {
+                        if (PyFloat_Check(pos_acc))
+                            config->rtk.base.fixed_position
+                                .position_accuracy_m =
+                                    PyFloat_AsDouble(pos_acc);
+                        else if (PyLong_Check(pos_acc))
+                            config->rtk.base.fixed_position
+                                .position_accuracy_m =
+                                    PyLong_AsDouble(pos_acc);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -2648,6 +2941,24 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
         {"OFF",       JP_GNSS_ANTENNA_POWER_OFF},
         {"ON",        JP_GNSS_ANTENNA_POWER_ON},
         {"DONT_KNOW", JP_GNSS_ANTENNA_POWER_DONT_KNOW}
+    );
+
+    /* ── RtkMode ────────────────────────────────────────────────────── */
+    MAKE_ENUM("RtkMode",
+        {"BASE",  JP_GNSS_RTK_MODE_BASE},
+        {"ROVER", JP_GNSS_RTK_MODE_ROVER}
+    );
+
+    /* ── BaseMode ───────────────────────────────────────────────────── */
+    MAKE_ENUM("BaseMode",
+        {"SURVEY_IN",      JP_GNSS_BASE_MODE_SURVEY_IN},
+        {"FIXED_POSITION", JP_GNSS_BASE_MODE_FIXED_POSITION}
+    );
+
+    /* ── FixedPositionType ──────────────────────────────────────────── */
+    MAKE_ENUM("FixedPositionType",
+        {"ECEF", JP_GNSS_FIXED_POSITION_ECEF},
+        {"LLA",  JP_GNSS_FIXED_POSITION_LLA}
     );
 
     #undef MAKE_ENUM

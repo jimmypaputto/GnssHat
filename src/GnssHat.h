@@ -242,6 +242,66 @@ typedef struct
     jp_gnss_pio_pin_polarity_t pin_polarity;
 } jp_gnss_geofencing_config_t;
 
+typedef enum
+{
+    JP_GNSS_RTK_MODE_BASE  = 0x00,
+    JP_GNSS_RTK_MODE_ROVER = 0x01
+} jp_gnss_rtk_mode_t;
+
+typedef enum
+{
+    JP_GNSS_BASE_MODE_SURVEY_IN      = 0x00,
+    JP_GNSS_BASE_MODE_FIXED_POSITION = 0x01
+} jp_gnss_base_mode_t;
+
+typedef enum
+{
+    JP_GNSS_FIXED_POSITION_ECEF = 0x00,
+    JP_GNSS_FIXED_POSITION_LLA  = 0x01
+} jp_gnss_fixed_position_type_t;
+
+typedef struct
+{
+    uint32_t minimum_observation_time_s;
+    double required_position_accuracy_m;
+} jp_gnss_survey_in_t;
+
+typedef struct
+{
+    double x_m;
+    double y_m;
+    double z_m;
+} jp_gnss_ecef_position_t;
+
+typedef struct
+{
+    double latitude_deg;
+    double longitude_deg;
+    double height_m;
+} jp_gnss_lla_position_t;
+
+typedef struct
+{
+    jp_gnss_fixed_position_type_t position_type;
+    jp_gnss_ecef_position_t ecef;
+    jp_gnss_lla_position_t lla;
+    double position_accuracy_m;
+} jp_gnss_fixed_position_t;
+
+typedef struct
+{
+    jp_gnss_base_mode_t base_mode;
+    jp_gnss_survey_in_t survey_in;
+    jp_gnss_fixed_position_t fixed_position;
+} jp_gnss_base_config_t;
+
+typedef struct
+{
+    jp_gnss_rtk_mode_t mode;
+    bool has_base_config;
+    jp_gnss_base_config_t base;
+} jp_gnss_rtk_config_t;
+
 typedef struct
 {
     uint16_t measurement_rate_hz;
@@ -249,6 +309,8 @@ typedef struct
     jp_gnss_timepulse_pin_config_t timepulse_pin_config;
     bool has_geofencing;
     jp_gnss_geofencing_config_t geofencing;
+    bool has_rtk;
+    jp_gnss_rtk_config_t rtk;
 } jp_gnss_gnss_config_t;
 
 typedef struct

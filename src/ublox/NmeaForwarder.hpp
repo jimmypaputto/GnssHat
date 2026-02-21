@@ -38,7 +38,7 @@ public:
     bool isRunning() const { return forwardingEnabled_.load(); }
 
 private:
-    void forwardingThread(const Gnss& gnss);
+    void forwardingThread(const Gnss& gnss, std::stop_token stoken);
     std::string generateNmeaGGA(const Navigation& navigation);
     std::string generateNmeaRMC(const Navigation& navigation);
     std::string generateNmeaGSA(const Navigation& navigation);
@@ -52,7 +52,7 @@ private:
     int slaveFd_;
     std::string devicePath_;
     std::atomic<bool> forwardingEnabled_{false};
-    std::thread forwardingThread_;
+    std::jthread forwardingThread_;
 
     std::chrono::milliseconds updateInterval_{1000};
 };

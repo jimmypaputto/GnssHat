@@ -23,8 +23,6 @@ NmeaForwarder::NmeaForwarder()
 NmeaForwarder::~NmeaForwarder()
 {
     stopForwarding();
-    if (forwardingThread_.joinable())
-        forwardingThread_.detach();
 
     if (masterFd_ >= 0)
         close(masterFd_);
@@ -163,8 +161,10 @@ void NmeaForwarder::startForwarding(const Gnss& gnss)
     }
 
     forwardingEnabled_.store(true);
-    forwardingThread_ = std::thread(
-        &NmeaForwarder::forwardingThread, this, std::ref(gnss)
+    forwardingThread_ = std::jthread(
+        [this, &gnss](std::stop_token stoken) {
+            forwardingThread(gnss, stoken);
+        }
     );
 }
 
@@ -185,9 +185,9 @@ void NmeaForwarder::joinForwarding()
         forwardingThread_.join();
 }
 
-void NmeaForwarder::forwardingThread(const Gnss& gnss)
+void NmeaForwarder::forwardingThread(const Gnss& gnss, std::stop_token stoken)
 {    
-    while (forwardingEnabled_.load())
+    while (!stoken.stop_requested() && forwardingEnabled_.load())
     {
         if (!gnss.lock())
             continue;

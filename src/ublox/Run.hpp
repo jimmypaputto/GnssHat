@@ -76,8 +76,7 @@ private:
     std::unique_ptr<ICommDriver> uartDriver_;
     Rtcm3Parser rtcm3Parser_;
     Rtcm3Store& rtcm3Store_;
-    std::atomic<bool> shouldWork_;
-    std::thread uart_;
+    std::jthread uart_;
 
     static constexpr uint32_t uartBuffSize = 2048;
     std::vector<uint8_t> uartBuff_;

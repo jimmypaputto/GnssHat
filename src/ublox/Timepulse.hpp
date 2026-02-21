@@ -134,7 +134,7 @@ public:
 
     ~Timepulse()
     {
-        threadRunning_ = false;
+        interruptHandler_.request_stop();
         if (interruptHandler_.joinable())
             interruptHandler_.join();
 #if LIBGPIO_VERSION >= 2
@@ -147,17 +147,19 @@ public:
 
     void run()
     {
-        interruptHandler_ = std::thread(&Timepulse::interruptHandler, this);
+        interruptHandler_ = std::jthread([this](std::stop_token stoken) {
+            interruptHandler(stoken);
+        });
     }
 
 private:
-    void interruptHandler()
+    void interruptHandler(std::stop_token stoken)
     {
         int ret;
 #if LIBGPIO_VERSION >= 2
         struct gpiod_edge_event_buffer *eventBuffer = gpiod_edge_event_buffer_new(1);
 #endif
-        while (threadRunning_)
+        while (!stoken.stop_requested())
         {
 #if LIBGPIO_VERSION >= 2
             int64_t timeout_ns = 0;
@@ -223,8 +225,7 @@ private:
     struct gpiod_line *line;
     struct gpiod_line_request *lineReq;
     Notifier& notifier_;
-    std::thread interruptHandler_;
-    std::atomic<bool> threadRunning_{true};
+    std::jthread interruptHandler_;
 };
 
 }  // JimmyPaputto

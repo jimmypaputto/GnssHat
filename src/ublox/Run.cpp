@@ -92,7 +92,6 @@ F9PRun::F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
     uartDriver_(std::make_unique<UartDriver>()),
     rtcm3Parser_(rtcm3Store),
     rtcm3Store_(rtcm3Store),
-    shouldWork_(true),
     uartBuff_(uartBuffSize),
     uartBuffOffset_(0)
 {
@@ -103,8 +102,8 @@ F9PRun::F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
     if (rtkConfig.mode == ERtkMode::Base && rtkConfig.base.has_value())
     {
         unfinishedFrameBuff_.reserve(unfinishedFrameBuffMaxSize);
-        uart_ = std::thread([this] () {
-            while (shouldWork_)
+        uart_ = std::jthread([this] (std::stop_token stoken) {
+            while (!stoken.stop_requested())
             {
                 executeUartBase();
             }
@@ -112,8 +111,8 @@ F9PRun::F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
     }
     else if (rtkConfig.mode == ERtkMode::Rover)
     {
-        uart_ = std::thread([this] () {
-            while (shouldWork_)
+        uart_ = std::jthread([this](std::stop_token stoken) {
+            while (!stoken.stop_requested())
             {
                 executeUartRover();
             }
@@ -123,7 +122,7 @@ F9PRun::F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
 
 F9PRun::~F9PRun()
 {
-    shouldWork_ = false;
+    uart_.request_stop();
     if (uart_.joinable())
         uart_.join();
 }

@@ -113,8 +113,7 @@ protected:
     GnssConfig config_;
     const EUbxPrt portId_;
 
-    std::thread ubloxThread_;
-    std::atomic<bool> ubloxThreadRunning_{true};
+    std::jthread ubloxThread_;
     std::atomic<bool> timepulseEnabled_{false};
 };
 
@@ -330,8 +329,8 @@ bool GnssHat::start(const GnssConfig& config)
         txReady_->run();
     }
 
-    ubloxThread_ = std::thread([this](){
-        while (ubloxThreadRunning_)
+    ubloxThread_ = std::jthread([this](std::stop_token stoken){
+        while (!stoken.stop_requested())
         {
             ublox_->run();
         }
@@ -484,7 +483,7 @@ std::string GnssHat::getGpsdDevicePath() const
 
 void GnssHat::stopUbloxThread()
 {
-    ubloxThreadRunning_ = false;
+    ubloxThread_.request_stop();
     if (ubloxThread_.joinable())
         ubloxThread_.join();
 }

@@ -1432,8 +1432,16 @@ static void populate_config_from_dict(PyObject* config_dict, jp_gnss_gnss_config
     }
 }
 
+#define CHECK_HAT(self) do { \
+    if (!(self)->hat) { \
+        PyErr_SetString(PyExc_RuntimeError, "GNSS HAT not initialized"); \
+        return NULL; \
+    } \
+} while (0)
+
 static PyObject* GnssHat_start(GnssHat* self, PyObject* args, PyObject* kwargs)
 {
+    CHECK_HAT(self);
     PyObject* config_dict = NULL;
 
     static char* kwlist[] = {"config", NULL};
@@ -1741,6 +1749,7 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
 
 static PyObject* GnssHat_get_navigation(GnssHat* self, PyObject* args)
 {
+    CHECK_HAT(self);
     jp_gnss_navigation_t nav;
     bool result;
 
@@ -1759,6 +1768,7 @@ static PyObject* GnssHat_get_navigation(GnssHat* self, PyObject* args)
 
 static PyObject* GnssHat_wait_and_get_fresh_navigation(GnssHat* self, PyObject* args)
 {
+    CHECK_HAT(self);
     jp_gnss_navigation_t nav;
     bool result;
 
@@ -1780,6 +1790,7 @@ static PyObject* GnssHat_wait_and_get_fresh_navigation(GnssHat* self, PyObject* 
 
 static PyObject* GnssHat_enable_timepulse(GnssHat* self, PyObject* args)
 {
+    CHECK_HAT(self);
     bool result = jp_gnss_hat_enable_timepulse(self->hat);
     if (!result)
     {
@@ -1791,12 +1802,14 @@ static PyObject* GnssHat_enable_timepulse(GnssHat* self, PyObject* args)
 
 static PyObject* GnssHat_disable_timepulse(GnssHat* self, PyObject* args)
 {
+    CHECK_HAT(self);
     jp_gnss_hat_disable_timepulse(self->hat);
     Py_RETURN_NONE;
 }
 
 static PyObject* GnssHat_start_forward_for_gpsd(GnssHat* self, PyObject* args)
 {
+    CHECK_HAT(self);
     bool result = jp_gnss_hat_start_forward_for_gpsd(self->hat);
     if (!result)
     {
@@ -1808,12 +1821,14 @@ static PyObject* GnssHat_start_forward_for_gpsd(GnssHat* self, PyObject* args)
 
 static PyObject* GnssHat_stop_forward_for_gpsd(GnssHat* self, PyObject* args)
 {
+    CHECK_HAT(self);
     jp_gnss_hat_stop_forward_for_gpsd(self->hat);
     Py_RETURN_NONE;
 }
 
 static PyObject* GnssHat_join_forward_for_gpsd(GnssHat* self, PyObject* args)
 {
+    CHECK_HAT(self);
     Py_BEGIN_ALLOW_THREADS
     jp_gnss_hat_join_forward_for_gpsd(self->hat);
     Py_END_ALLOW_THREADS
@@ -1822,6 +1837,7 @@ static PyObject* GnssHat_join_forward_for_gpsd(GnssHat* self, PyObject* args)
 
 static PyObject* GnssHat_get_gpsd_device_path(GnssHat* self, PyObject* args)
 {
+    CHECK_HAT(self);
     const char* path = jp_gnss_hat_get_gpsd_device_path(self->hat);
     if (!path)
         Py_RETURN_NONE;
@@ -1831,23 +1847,21 @@ static PyObject* GnssHat_get_gpsd_device_path(GnssHat* self, PyObject* args)
 
 static PyObject* GnssHat_hard_reset_cold_start(GnssHat* self, PyObject* args)
 {
+    CHECK_HAT(self);
     jp_gnss_hat_hard_reset_cold_start(self->hat);
     Py_RETURN_NONE;
 }
 
 static PyObject* GnssHat_soft_reset_hot_start(GnssHat* self, PyObject* args)
 {
+    CHECK_HAT(self);
     jp_gnss_hat_soft_reset_hot_start(self->hat);
     Py_RETURN_NONE;
 }
 
 static PyObject* GnssHat_timepulse(GnssHat* self, PyObject* args)
 {
-    if (!self->hat)
-    {
-        PyErr_SetString(PyExc_RuntimeError, "GNSS HAT not initialized");
-        return NULL;
-    }
+    CHECK_HAT(self);
 
     Py_BEGIN_ALLOW_THREADS
     jp_gnss_hat_timepulse(self->hat);
@@ -1859,11 +1873,7 @@ static PyObject* GnssHat_timepulse(GnssHat* self, PyObject* args)
 static PyObject* GnssHat_rtk_get_full_corrections(GnssHat* self,
     PyObject* args)
 {
-    if (!self->hat)
-    {
-        PyErr_SetString(PyExc_RuntimeError, "GNSS HAT not initialized");
-        return NULL;
-    }
+    CHECK_HAT(self);
 
     jp_gnss_rtk_corrections_t* corrections;
 
@@ -1907,11 +1917,7 @@ static PyObject* GnssHat_rtk_get_full_corrections(GnssHat* self,
 static PyObject* GnssHat_rtk_get_tiny_corrections(GnssHat* self,
     PyObject* args)
 {
-    if (!self->hat)
-    {
-        PyErr_SetString(PyExc_RuntimeError, "GNSS HAT not initialized");
-        return NULL;
-    }
+    CHECK_HAT(self);
 
     jp_gnss_rtk_corrections_t* corrections;
 
@@ -1954,11 +1960,7 @@ static PyObject* GnssHat_rtk_get_tiny_corrections(GnssHat* self,
 
 static PyObject* GnssHat_rtk_get_rtcm3_frame(GnssHat* self, PyObject* args)
 {
-    if (!self->hat)
-    {
-        PyErr_SetString(PyExc_RuntimeError, "GNSS HAT not initialized");
-        return NULL;
-    }
+    CHECK_HAT(self);
 
     int frame_id;
     if (!PyArg_ParseTuple(args, "i", &frame_id))
@@ -1987,11 +1989,7 @@ static PyObject* GnssHat_rtk_get_rtcm3_frame(GnssHat* self, PyObject* args)
 
 static PyObject* GnssHat_rtk_apply_corrections(GnssHat* self, PyObject* args)
 {
-    if (!self->hat)
-    {
-        PyErr_SetString(PyExc_RuntimeError, "GNSS HAT not initialized");
-        return NULL;
-    }
+    CHECK_HAT(self);
 
     PyObject* corrections_list;
     if (!PyArg_ParseTuple(args, "O", &corrections_list))
@@ -2063,8 +2061,11 @@ static PyObject* GnssHat_enter(GnssHat* self, PyObject* args)
 
 static PyObject* GnssHat_exit(GnssHat* self, PyObject* args)
 {
-    jp_gnss_hat_stop_forward_for_gpsd(self->hat);
-    jp_gnss_hat_disable_timepulse(self->hat);
+    if (self->hat)
+    {
+        jp_gnss_hat_stop_forward_for_gpsd(self->hat);
+        jp_gnss_hat_disable_timepulse(self->hat);
+    }
     Py_RETURN_NONE;
 }
 
@@ -2204,12 +2205,9 @@ static PyObject* Navigation_new(PyTypeObject* type, PyObject* args,
     Navigation* self = (Navigation*)type->tp_alloc(type, 0);
     if (self)
     {
-        self->dop = PyObject_CallObject(
-            (PyObject*)&DilutionOverPrecisionType, NULL);
-        self->pvt = PyObject_CallObject(
-            (PyObject*)&PositionVelocityTimeType, NULL);
-        self->geofencing = PyObject_CallObject(
-            (PyObject*)&GeofencingType, NULL);
+        self->dop = (PyObject*)DOP_alloc();
+        self->pvt = (PyObject*)PVT_alloc();
+        self->geofencing = (PyObject*)Geofencing_alloc();
         self->rf_blocks = PyList_New(0);
     }
     return (PyObject*)self;
@@ -2258,34 +2256,47 @@ static PyMemberDef Navigation_members[] = {
 
 static PyObject* Navigation_str(Navigation* self)
 {
-    /* Build sub-object strings */
+    /* Build sub-object strings — always own a reference for cleanup */
     PyObject* pvt_str = NULL;
     PyObject* dop_str = NULL;
-    PyObject* rf_str = NULL;
 
     if (self->pvt)
         pvt_str = PyObject_Str(self->pvt);
+    if (!pvt_str)
+        pvt_str = PyUnicode_FromString("N/A");
+
     if (self->dop)
         dop_str = PyObject_Str(self->dop);
+    if (!dop_str)
+        dop_str = PyUnicode_FromString("N/A");
 
-    /* Build RF blocks string */
+    /* Build RF blocks string (safe against concat failures) */
     PyObject* rf_parts = PyUnicode_FromString("");
-    if (self->rf_blocks && PyList_Check(self->rf_blocks))
+    if (rf_parts && self->rf_blocks && PyList_Check(self->rf_blocks))
     {
         Py_ssize_t n = PyList_Size(self->rf_blocks);
         for (Py_ssize_t i = 0; i < n; i++)
         {
             PyObject* item = PyList_GetItem(self->rf_blocks, i);
             PyObject* item_str = PyObject_Str(item);
-            if (item_str)
+            if (!item_str)
+                break;
+
+            PyObject* prefix = PyUnicode_FromFormat("\n  [%zd] ", i);
+            if (!prefix) { Py_DECREF(item_str); break; }
+
+            PyObject* tmp = PyUnicode_Concat(rf_parts, prefix);
+            Py_DECREF(prefix);
+            if (!tmp) { Py_DECREF(item_str); break; }
+
+            Py_DECREF(rf_parts);
+            rf_parts = PyUnicode_Concat(tmp, item_str);
+            Py_DECREF(tmp);
+            Py_DECREF(item_str);
+            if (!rf_parts)
             {
-                PyObject* prefix = PyUnicode_FromFormat("\n  [%zd] ", i);
-                PyObject* tmp = PyUnicode_Concat(rf_parts, prefix);
-                Py_DECREF(prefix);
-                Py_DECREF(rf_parts);
-                rf_parts = PyUnicode_Concat(tmp, item_str);
-                Py_DECREF(tmp);
-                Py_DECREF(item_str);
+                rf_parts = PyUnicode_FromString("(error)");
+                break;
             }
         }
     }
@@ -2317,8 +2328,8 @@ static PyObject* Navigation_str(Navigation* self)
         "\n--- Geofencing ---\n%U\n"
         "\n--- RF Blocks ---%U\n"
         "=======================",
-        pvt_str ? pvt_str : PyUnicode_FromString("N/A"),
-        dop_str ? dop_str : PyUnicode_FromString("N/A"),
+        pvt_str,
+        dop_str,
         geo_str,
         rf_parts
     );
@@ -2402,6 +2413,12 @@ static PyObject* utc_time_iso8601(PyObject* self, PyObject* args)
     }
 
     const char* iso_str = jp_gnss_utc_time_iso8601(&c_pvt);
+    if (!iso_str)
+    {
+        PyErr_SetString(PyExc_RuntimeError,
+            "Failed to format UTC time as ISO 8601");
+        return NULL;
+    }
     return PyUnicode_FromString(iso_str);
 }
 

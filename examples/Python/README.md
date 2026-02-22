@@ -98,3 +98,15 @@ RTK Rover example demonstrating:
 ```bash
 python rtk_rover.py
 ```
+
+### 9. print_satellites.py
+Satellite visibility and signal quality example demonstrating:
+- Per-satellite GNSS data from UBX-NAV-SAT
+- Constellation identification (GPS, Galileo, GLONASS, BeiDou, SBAS, QZSS)
+- Signal quality, C/N0, elevation, azimuth per satellite
+- Used-in-fix and health status
+- Ephemeris, almanac, and DGPS availability counters
+
+```bash
+python print_satellites.py
+```

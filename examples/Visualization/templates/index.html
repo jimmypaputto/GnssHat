@@ -43,6 +43,10 @@
                         <button class="map-tab" data-tab="skyview">🛰️ Sky View</button>
                         {% endif %}
                     </div>
+                </div>
+                
+                <!-- Relative Canvas Map -->
+                <div id="relative-map" class="map-view active">
                     <div class="map-info">
                         <span id="scale-info">Scale: ±20.0m</span>
                         <div class="scale-slider-container">
@@ -51,10 +55,6 @@
                             <span id="scale-value">20m</span>
                         </div>
                     </div>
-                </div>
-                
-                <!-- Relative Canvas Map -->
-                <div id="relative-map" class="map-view active">
                     <div class="canvas-wrapper">
                         <canvas id="gps-map"></canvas>
                     </div>
@@ -82,6 +82,17 @@
                     <div class="skyview-layout">
                         <div class="skyview-plot-wrap">
                             <canvas id="sky-canvas"></canvas>
+                            <div class="skyview-legend">
+                                <span class="legend-item"><span class="legend-dot" style="background:#4fc3f7"></span>GPS</span>
+                                <span class="legend-item"><span class="legend-dot" style="background:#81c784"></span>Galileo</span>
+                                <span class="legend-item"><span class="legend-dot" style="background:#e57373"></span>GLONASS</span>
+                                <span class="legend-item"><span class="legend-dot" style="background:#ffb74d"></span>BeiDou</span>
+                                <span class="legend-item"><span class="legend-dot" style="background:#ce93d8"></span>SBAS</span>
+                                <span class="legend-item"><span class="legend-dot" style="background:#fff176"></span>QZSS</span>
+                                <span class="legend-sep">|</span>
+                                <span class="legend-item"><span class="legend-dot legend-dot-filled"></span>Used</span>
+                                <span class="legend-item"><span class="legend-dot legend-dot-outline"></span>Not used</span>
+                            </div>
                         </div>
                         <div class="skyview-table-wrap">
                             <div class="skyview-summary">

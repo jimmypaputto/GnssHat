@@ -145,8 +145,18 @@
             <!-- Right side: Data panel -->
             <div class="data-container">
                 <div class="data-header">
-                    <h2>{% if mode == 'native' %}Navigation Data{% else %}GPS Data (PVT){% endif %}</h2>
+                    {% if mode == 'native' %}
+                    <div class="data-tabs">
+                        <button class="data-tab active" data-dtab="navdata">📊 Navigation Data</button>
+                        <button class="data-tab" data-dtab="config">⚙️ Configuration</button>
+                    </div>
+                    {% else %}
+                    <h2>GPS Data (PVT)</h2>
+                    {% endif %}
                 </div>
+
+                <!-- Navigation Data pane -->
+                <div id="navdata-pane" class="data-pane active">
                 <div class="data-content {% if mode == 'native' %}two-columns{% endif %}">
                     <!-- Column 1: PVT -->
                     <div class="data-column">
@@ -308,6 +318,130 @@
                     </div>
                     {% endif %}
                 </div>
+                </div><!-- end navdata-pane -->
+
+                {% if mode == 'native' %}
+                <!-- Configuration pane -->
+                <div id="config-pane" class="data-pane" style="display:none;">
+                    <div class="config-form">
+
+                        <!-- Progress overlay -->
+                        <div id="config-progress" class="config-progress" style="display:none;">
+                            <div class="config-progress-inner">
+                                <div class="config-progress-bar-wrap">
+                                    <div id="config-progress-bar" class="config-progress-bar"></div>
+                                </div>
+                                <p id="config-progress-msg" class="config-progress-msg">Initializing...</p>
+                            </div>
+                        </div>
+
+                        <!-- Status banner -->
+                        <div id="config-status" class="config-status" style="display:none;"></div>
+
+                        <!-- Measurement Rate -->
+                        <fieldset class="cfg-section">
+                            <legend>📏 Measurement Rate</legend>
+                            <div class="cfg-row">
+                                <label for="cfg-rate">Rate (Hz)</label>
+                                <input type="number" id="cfg-rate" min="1" max="25" value="1" class="cfg-input cfg-input-sm">
+                            </div>
+                        </fieldset>
+
+                        <!-- Dynamic Model -->
+                        <fieldset class="cfg-section">
+                            <legend>🚗 Dynamic Model</legend>
+                            <div class="cfg-row">
+                                <label for="cfg-dynmodel">Model</label>
+                                <select id="cfg-dynmodel" class="cfg-input">
+                                    <option value="0">Portable</option>
+                                    <option value="2" selected>Stationary</option>
+                                    <option value="3">Pedestrian</option>
+                                    <option value="4">Automotive</option>
+                                    <option value="5">Sea</option>
+                                    <option value="6">Airborne 1G</option>
+                                    <option value="7">Airborne 2G</option>
+                                    <option value="8">Airborne 4G</option>
+                                    <option value="9">Wrist</option>
+                                    <option value="10">Bike</option>
+                                    <option value="11">Mower</option>
+                                    <option value="12">E-Scooter</option>
+                                </select>
+                            </div>
+                        </fieldset>
+
+                        <!-- Timepulse -->
+                        <fieldset class="cfg-section">
+                            <legend>⏱️ Timepulse Pin</legend>
+                            <div class="cfg-row">
+                                <label for="cfg-tp-active">Active</label>
+                                <input type="checkbox" id="cfg-tp-active" checked class="cfg-checkbox">
+                            </div>
+                            <div id="cfg-tp-details">
+                                <div class="cfg-row">
+                                    <label for="cfg-tp-freq">Frequency (Hz)</label>
+                                    <input type="number" id="cfg-tp-freq" min="1" max="24000000" value="1" class="cfg-input cfg-input-sm">
+                                </div>
+                                <div class="cfg-row">
+                                    <label for="cfg-tp-pw">Pulse Width (0-0.99)</label>
+                                    <input type="number" id="cfg-tp-pw" min="0" max="0.99" step="0.01" value="0.1" class="cfg-input cfg-input-sm">
+                                </div>
+                                <div class="cfg-row">
+                                    <label for="cfg-tp-polarity">Polarity</label>
+                                    <select id="cfg-tp-polarity" class="cfg-input">
+                                        <option value="0">Falling Edge</option>
+                                        <option value="1" selected>Rising Edge</option>
+                                    </select>
+                                </div>
+                                <div class="cfg-row">
+                                    <label>
+                                        <input type="checkbox" id="cfg-tp-nofix-en" class="cfg-checkbox">
+                                        Pulse When No Fix
+                                    </label>
+                                </div>
+                                <div id="cfg-tp-nofix-details" style="display:none;">
+                                    <div class="cfg-row">
+                                        <label for="cfg-tp-nofix-freq">No-Fix Freq (Hz)</label>
+                                        <input type="number" id="cfg-tp-nofix-freq" min="1" max="24000000" value="1" class="cfg-input cfg-input-sm">
+                                    </div>
+                                    <div class="cfg-row">
+                                        <label for="cfg-tp-nofix-pw">No-Fix Pulse Width</label>
+                                        <input type="number" id="cfg-tp-nofix-pw" min="0" max="0.99" step="0.01" value="0.1" class="cfg-input cfg-input-sm">
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <!-- Geofencing -->
+                        <fieldset class="cfg-section">
+                            <legend>🔲 Geofencing</legend>
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-geo-en" class="cfg-checkbox">
+                                    Enable Geofencing
+                                </label>
+                            </div>
+                            <div id="cfg-geo-details" style="display:none;">
+                                <div class="cfg-row">
+                                    <label for="cfg-geo-conf">Confidence Level (0-5)</label>
+                                    <input type="number" id="cfg-geo-conf" min="0" max="5" value="3" class="cfg-input cfg-input-sm">
+                                </div>
+                                <div id="cfg-geo-fences">
+                                    <!-- Fence rows added dynamically -->
+                                </div>
+                                <button type="button" id="cfg-geo-add" class="cfg-btn cfg-btn-sm">+ Add Geofence</button>
+                            </div>
+                        </fieldset>
+
+                        <!-- Action buttons -->
+                        <div class="cfg-actions">
+                            <button type="button" id="cfg-load-btn" class="cfg-btn cfg-btn-secondary">📥 Load Config</button>
+                            <button type="button" id="cfg-send-btn" class="cfg-btn cfg-btn-primary">🚀 Send Config</button>
+                        </div>
+
+                    </div>
+                </div>
+                {% endif %}
+
             </div>
         </div>
 

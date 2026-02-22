@@ -8,6 +8,7 @@ import os
 import argparse
 import threading
 import time
+import json
 
 # Ensure GnssHat Python bindings are findable when running as root (sudo)
 # The module is installed in the pi user's site-packages
@@ -15,7 +16,7 @@ _pi_user_site = '/home/pi/.local/lib/python3.13/site-packages'
 if _pi_user_site not in sys.path and os.path.isdir(_pi_user_site):
     sys.path.insert(0, _pi_user_site)
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 from geopy.distance import geodesic
 
@@ -42,6 +43,8 @@ gps_state = {
     'last_rmc': None,  # Last RMC sentence
     'last_gsa': None,  # Last GSA sentence
     'last_gsv': None,  # Last GSV sentences
+    'current_config': None,  # Current GnssHat config dict
+    'config_lock': threading.Lock(),  # Lock for config changes
 }
 
 
@@ -539,6 +542,175 @@ def handle_reset_reference():
         emit('reference_reset', {'position': gps_state['reference_position']}, broadcast=True)
 
 
+# ─── Configuration API (native mode only) ───────────────────────────────────
+
+def config_to_json_safe(config):
+    """Convert config dict (with IntEnum values) to plain JSON-serializable dict"""
+    def convert(obj):
+        if isinstance(obj, dict):
+            return {k: convert(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [convert(i) for i in obj]
+        elif isinstance(obj, int):
+            return int(obj)
+        elif isinstance(obj, float):
+            return float(obj)
+        elif isinstance(obj, bool):
+            return bool(obj)
+        elif obj is None:
+            return None
+        else:
+            return obj
+    return convert(config)
+
+
+def json_to_native_config(data):
+    """Convert JSON config from frontend to config dict with proper IntEnum types"""
+    from jimmypaputto import gnsshat
+
+    config = {
+        'measurement_rate_hz': int(data['measurement_rate_hz']),
+        'dynamic_model': int(data['dynamic_model']),
+    }
+
+    # Timepulse
+    tp = data.get('timepulse_pin_config')
+    if tp and tp.get('active'):
+        config['timepulse_pin_config'] = {
+            'active': True,
+            'fixed_pulse': {
+                'frequency': int(tp['fixed_pulse']['frequency']),
+                'pulse_width': float(tp['fixed_pulse']['pulse_width']),
+            },
+            'polarity': int(tp.get('polarity', 1)),
+        }
+        if tp.get('pulse_when_no_fix') and tp['pulse_when_no_fix'].get('frequency') is not None:
+            config['timepulse_pin_config']['pulse_when_no_fix'] = {
+                'frequency': int(tp['pulse_when_no_fix']['frequency']),
+                'pulse_width': float(tp['pulse_when_no_fix']['pulse_width']),
+            }
+    else:
+        config['timepulse_pin_config'] = None
+
+    # Geofencing
+    geo = data.get('geofencing')
+    if geo and geo.get('geofences') and len(geo['geofences']) > 0:
+        fences = []
+        for f in geo['geofences'][:4]:
+            if f.get('lat') is not None and f.get('lon') is not None and f.get('radius') is not None:
+                fences.append({
+                    'lat': float(f['lat']),
+                    'lon': float(f['lon']),
+                    'radius': float(f['radius']),
+                })
+        if fences:
+            config['geofencing'] = {
+                'geofences': fences,
+                'confidence_level': int(geo.get('confidence_level', 3)),
+            }
+        else:
+            config['geofencing'] = None
+    else:
+        config['geofencing'] = None
+
+    return config
+
+
+@app.route('/api/config', methods=['GET'])
+def api_get_config():
+    """Get current GnssHat configuration"""
+    if RUN_MODE != 'native':
+        return jsonify({'error': 'Configuration only available in native mode'}), 400
+    if gps_state['current_config']:
+        return jsonify(config_to_json_safe(gps_state['current_config']))
+    return jsonify({'error': 'No config loaded'}), 404
+
+
+@app.route('/api/config', methods=['POST'])
+def api_set_config():
+    """Apply new GnssHat configuration — stops reader, destroys hat, creates new one"""
+    if RUN_MODE != 'native':
+        return jsonify({'error': 'Configuration only available in native mode'}), 400
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON body'}), 400
+
+    with gps_state['config_lock']:
+        try:
+            # 1. Stop reader thread
+            socketio.emit('config_progress', {'step': 'stop', 'message': 'Stopping reader...'}, namespace='/')
+            gps_state['running'] = False
+            if gps_state['thread']:
+                gps_state['thread'].join(timeout=5)
+                gps_state['thread'] = None
+
+            # 2. Destroy old hat
+            socketio.emit('config_progress', {'step': 'destroy', 'message': 'Destroying old GnssHat...'}, namespace='/')
+            if gps_state['hat']:
+                del gps_state['hat']
+                gps_state['hat'] = None
+            time.sleep(1)
+
+            # 3. Create new hat
+            socketio.emit('config_progress', {'step': 'create', 'message': 'Creating new GnssHat...'}, namespace='/')
+            from jimmypaputto import gnsshat
+            hat = gnsshat.GnssHat()
+
+            # 4. Soft hot reset
+            socketio.emit('config_progress', {'step': 'reset', 'message': 'Resetting module (cold start)...'}, namespace='/')
+            hat.soft_reset_hot_start()
+            time.sleep(1)
+
+            # 5. Convert and apply config
+            socketio.emit('config_progress', {'step': 'config', 'message': 'Applying configuration...'}, namespace='/')
+            config = json_to_native_config(data)
+
+            if not hat.start(config):
+                del hat
+                socketio.emit('config_progress', {'step': 'error', 'message': 'hat.start() failed!'}, namespace='/')
+                # Try to restart with old config
+                try:
+                    start_gps_native()
+                except Exception:
+                    pass
+                return jsonify({'error': 'hat.start() returned False — configuration rejected by module'}), 500
+
+            # 6. Success — save state and restart reader
+            socketio.emit('config_progress', {'step': 'reader', 'message': 'Starting reader thread...'}, namespace='/')
+            gps_state['hat'] = hat
+            gps_state['current_config'] = config
+            gps_state['running'] = True
+            gps_state['thread'] = threading.Thread(target=native_reader_thread, daemon=True)
+            gps_state['thread'].start()
+
+            socketio.emit('config_progress', {'step': 'done', 'message': 'Configuration applied successfully!'}, namespace='/')
+            return jsonify({'success': True, 'config': config_to_json_safe(config)})
+
+        except Exception as e:
+            socketio.emit('config_progress', {'step': 'error', 'message': f'Error: {str(e)}'}, namespace='/')
+            # Try to restart with previous config using cold reset
+            try:
+                if not gps_state['hat'] and not gps_state['running']:
+                    from jimmypaputto import gnsshat as gs
+                    hat = gs.GnssHat()
+                    hat.hard_reset_cold_start()
+                    time.sleep(5)
+                    old_cfg = gps_state['current_config'] or create_default_config()
+                    if hat.start(old_cfg):
+                        gps_state['hat'] = hat
+                        gps_state['running'] = True
+                        gps_state['thread'] = threading.Thread(target=native_reader_thread, daemon=True)
+                        gps_state['thread'].start()
+                        print("Recovery: restarted with previous config")
+                    else:
+                        del hat
+                        print("Recovery: failed to restart")
+            except Exception as recovery_err:
+                print(f"Recovery failed: {recovery_err}")
+            return jsonify({'error': str(e)}), 500
+
+
 def start_gps():
     """Initialize and start GPS data source based on RUN_MODE"""
     if RUN_MODE == 'native':
@@ -562,6 +734,7 @@ def start_gps_native():
 
         print("GnssHat started successfully!")
         gps_state['hat'] = hat
+        gps_state['current_config'] = config
         gps_state['running'] = True
         gps_state['thread'] = threading.Thread(target=native_reader_thread, daemon=True)
         gps_state['thread'].start()

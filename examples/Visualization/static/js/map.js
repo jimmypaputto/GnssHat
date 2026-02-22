@@ -348,6 +348,11 @@ function initializeSocket() {
         console.log('Reference position reset:', data);
         map.resetOrigin();
     });
+
+    // Config progress events (native mode)
+    socket.on('config_progress', function(data) {
+        handleConfigProgress(data);
+    });
 }
 
 function setupUIHandlers() {
@@ -837,7 +842,340 @@ function setupTabs() {
     });
 }
 
+
+// ─── Data Panel Tabs (Navigation / Configuration) ──────────────────────────
+
+function setupDataTabs() {
+    const tabs = document.querySelectorAll('.data-tab');
+    if (!tabs.length) return;
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const tabName = tab.dataset.dtab;
+
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+
+            document.querySelectorAll('.data-pane').forEach(p => {
+                p.classList.remove('active');
+                p.style.display = 'none';
+            });
+
+            const pane = document.getElementById(`${tabName}-pane`);
+            if (pane) {
+                pane.classList.add('active');
+                pane.style.display = 'block';
+            }
+        });
+    });
+}
+
+
+// ─── Configuration Panel Logic ─────────────────────────────────────────────
+
+function setupConfigPanel() {
+    if (window.APP_MODE !== 'native') return;
+
+    const tpActive = document.getElementById('cfg-tp-active');
+    const tpDetails = document.getElementById('cfg-tp-details');
+    const tpNofixEn = document.getElementById('cfg-tp-nofix-en');
+    const tpNofixDetails = document.getElementById('cfg-tp-nofix-details');
+    const geoEn = document.getElementById('cfg-geo-en');
+    const geoDetails = document.getElementById('cfg-geo-details');
+
+    if (!tpActive) return; // config panel not in DOM
+
+    // Toggle timepulse details
+    tpActive.addEventListener('change', () => {
+        tpDetails.style.display = tpActive.checked ? '' : 'none';
+    });
+
+    // Toggle no-fix pulse details
+    tpNofixEn.addEventListener('change', () => {
+        tpNofixDetails.style.display = tpNofixEn.checked ? '' : 'none';
+    });
+
+    // Toggle geofencing details
+    geoEn.addEventListener('change', () => {
+        geoDetails.style.display = geoEn.checked ? '' : 'none';
+    });
+
+    // Add geofence button
+    document.getElementById('cfg-geo-add').addEventListener('click', () => {
+        addGeofenceRow();
+    });
+
+    // Load config button
+    document.getElementById('cfg-load-btn').addEventListener('click', loadConfig);
+
+    // Send config button
+    document.getElementById('cfg-send-btn').addEventListener('click', sendConfig);
+}
+
+let geoFenceCount = 0;
+
+function addGeofenceRow(lat, lon, radius) {
+    if (geoFenceCount >= 4) return;
+    geoFenceCount++;
+
+    const container = document.getElementById('cfg-geo-fences');
+
+    // Add labels row if first fence
+    if (geoFenceCount === 1) {
+        const labels = document.createElement('div');
+        labels.className = 'cfg-geo-labels';
+        labels.innerHTML = '<span>Lat (°)</span><span>Lon (°)</span><span>Radius (m)</span><span></span>';
+        container.prepend(labels);
+    }
+
+    const row = document.createElement('div');
+    row.className = 'cfg-geo-fence';
+    row.innerHTML = `
+        <input type="number" step="0.000001" min="-90" max="90" value="${lat ?? ''}" placeholder="Lat">
+        <input type="number" step="0.000001" min="-180" max="180" value="${lon ?? ''}" placeholder="Lon">
+        <input type="number" step="1" min="1" value="${radius ?? ''}" placeholder="Radius">
+        <button class="cfg-fence-remove" title="Remove">✕</button>
+    `;
+
+    row.querySelector('.cfg-fence-remove').addEventListener('click', () => {
+        row.remove();
+        geoFenceCount--;
+        // Remove labels if no fences left
+        if (geoFenceCount === 0) {
+            const labels = container.querySelector('.cfg-geo-labels');
+            if (labels) labels.remove();
+        }
+        updateAddFenceBtn();
+    });
+
+    container.appendChild(row);
+    updateAddFenceBtn();
+}
+
+function updateAddFenceBtn() {
+    const btn = document.getElementById('cfg-geo-add');
+    btn.disabled = geoFenceCount >= 4;
+    btn.textContent = geoFenceCount >= 4 ? 'Max 4 geofences' : '+ Add Geofence';
+}
+
+function clearGeofenceRows() {
+    const container = document.getElementById('cfg-geo-fences');
+    container.innerHTML = '';
+    geoFenceCount = 0;
+}
+
+function populateFormFromConfig(config) {
+    // Rate
+    document.getElementById('cfg-rate').value = config.measurement_rate_hz || 1;
+
+    // Dynamic model
+    document.getElementById('cfg-dynmodel').value = config.dynamic_model ?? 2;
+
+    // Timepulse
+    const tp = config.timepulse_pin_config;
+    const tpActive = document.getElementById('cfg-tp-active');
+    if (tp && tp.active !== false) {
+        tpActive.checked = true;
+        document.getElementById('cfg-tp-details').style.display = '';
+        if (tp.fixed_pulse) {
+            document.getElementById('cfg-tp-freq').value = tp.fixed_pulse.frequency || 1;
+            document.getElementById('cfg-tp-pw').value = tp.fixed_pulse.pulse_width ?? 0.1;
+        }
+        document.getElementById('cfg-tp-polarity').value = tp.polarity ?? 1;
+
+        const nofixEn = document.getElementById('cfg-tp-nofix-en');
+        if (tp.pulse_when_no_fix) {
+            nofixEn.checked = true;
+            document.getElementById('cfg-tp-nofix-details').style.display = '';
+            document.getElementById('cfg-tp-nofix-freq').value = tp.pulse_when_no_fix.frequency || 1;
+            document.getElementById('cfg-tp-nofix-pw').value = tp.pulse_when_no_fix.pulse_width ?? 0.1;
+        } else {
+            nofixEn.checked = false;
+            document.getElementById('cfg-tp-nofix-details').style.display = 'none';
+        }
+    } else {
+        tpActive.checked = false;
+        document.getElementById('cfg-tp-details').style.display = 'none';
+    }
+
+    // Geofencing
+    const geo = config.geofencing;
+    const geoEn = document.getElementById('cfg-geo-en');
+    clearGeofenceRows();
+    if (geo && geo.geofences && geo.geofences.length > 0) {
+        geoEn.checked = true;
+        document.getElementById('cfg-geo-details').style.display = '';
+        document.getElementById('cfg-geo-conf').value = geo.confidence_level ?? 3;
+        for (const f of geo.geofences) {
+            addGeofenceRow(f.lat, f.lon, f.radius);
+        }
+    } else {
+        geoEn.checked = false;
+        document.getElementById('cfg-geo-details').style.display = 'none';
+    }
+}
+
+function buildConfigFromForm() {
+    const config = {
+        measurement_rate_hz: parseInt(document.getElementById('cfg-rate').value) || 1,
+        dynamic_model: parseInt(document.getElementById('cfg-dynmodel').value) || 2,
+    };
+
+    // Timepulse
+    if (document.getElementById('cfg-tp-active').checked) {
+        config.timepulse_pin_config = {
+            active: true,
+            fixed_pulse: {
+                frequency: parseInt(document.getElementById('cfg-tp-freq').value) || 1,
+                pulse_width: parseFloat(document.getElementById('cfg-tp-pw').value) || 0.1,
+            },
+            polarity: parseInt(document.getElementById('cfg-tp-polarity').value) || 1,
+        };
+
+        if (document.getElementById('cfg-tp-nofix-en').checked) {
+            config.timepulse_pin_config.pulse_when_no_fix = {
+                frequency: parseInt(document.getElementById('cfg-tp-nofix-freq').value) || 1,
+                pulse_width: parseFloat(document.getElementById('cfg-tp-nofix-pw').value) || 0.1,
+            };
+        }
+    } else {
+        config.timepulse_pin_config = null;
+    }
+
+    // Geofencing
+    if (document.getElementById('cfg-geo-en').checked) {
+        const fenceRows = document.querySelectorAll('.cfg-geo-fence');
+        const fences = [];
+        fenceRows.forEach(row => {
+            const inputs = row.querySelectorAll('input[type="number"]');
+            const lat = parseFloat(inputs[0].value);
+            const lon = parseFloat(inputs[1].value);
+            const radius = parseFloat(inputs[2].value);
+            if (!isNaN(lat) && !isNaN(lon) && !isNaN(radius) && radius > 0) {
+                fences.push({ lat, lon, radius });
+            }
+        });
+        if (fences.length > 0) {
+            config.geofencing = {
+                geofences: fences,
+                confidence_level: parseInt(document.getElementById('cfg-geo-conf').value) || 3,
+            };
+        } else {
+            config.geofencing = null;
+        }
+    } else {
+        config.geofencing = null;
+    }
+
+    return config;
+}
+
+function showConfigStatus(message, isError) {
+    const el = document.getElementById('config-status');
+    el.textContent = message;
+    el.className = 'config-status ' + (isError ? 'error' : 'success');
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 8000);
+}
+
+const PROGRESS_STEPS = {
+    'stop':    15,
+    'destroy': 30,
+    'create':  45,
+    'reset':   60,
+    'config':  80,
+    'reader':  95,
+    'done':    100,
+    'error':   100,
+};
+
+function handleConfigProgress(data) {
+    const bar = document.getElementById('config-progress-bar');
+    const msg = document.getElementById('config-progress-msg');
+    const overlay = document.getElementById('config-progress');
+
+    overlay.style.display = 'flex';
+    bar.style.width = (PROGRESS_STEPS[data.step] || 0) + '%';
+    msg.textContent = data.message;
+
+    if (data.step === 'done') {
+        bar.style.background = 'linear-gradient(90deg, var(--accent-cyan), var(--accent-green))';
+        setTimeout(() => {
+            overlay.style.display = 'none';
+            bar.style.width = '0%';
+            showConfigStatus(data.message, false);
+            document.getElementById('cfg-send-btn').disabled = false;
+        }, 1200);
+    } else if (data.step === 'error') {
+        bar.style.background = '#e57373';
+        setTimeout(() => {
+            overlay.style.display = 'none';
+            bar.style.width = '0%';
+            bar.style.background = '';
+            showConfigStatus(data.message, true);
+            document.getElementById('cfg-send-btn').disabled = false;
+        }, 2000);
+    }
+}
+
+async function loadConfig() {
+    try {
+        const resp = await fetch('/api/config');
+        if (!resp.ok) {
+            const err = await resp.json();
+            showConfigStatus('Load failed: ' + (err.error || resp.statusText), true);
+            return;
+        }
+        const config = await resp.json();
+        populateFormFromConfig(config);
+        showConfigStatus('Configuration loaded from device', false);
+    } catch (e) {
+        showConfigStatus('Load failed: ' + e.message, true);
+    }
+}
+
+async function sendConfig() {
+    const config = buildConfigFromForm();
+
+    // Basic validation
+    if (config.measurement_rate_hz < 1 || config.measurement_rate_hz > 25) {
+        showConfigStatus('Measurement rate must be 1-25 Hz', true);
+        return;
+    }
+
+    document.getElementById('cfg-send-btn').disabled = true;
+    const overlay = document.getElementById('config-progress');
+    const bar = document.getElementById('config-progress-bar');
+    const msg = document.getElementById('config-progress-msg');
+    overlay.style.display = 'flex';
+    bar.style.width = '5%';
+    bar.style.background = '';
+    msg.textContent = 'Sending configuration...';
+
+    try {
+        const resp = await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config),
+        });
+
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            // Progress handler will show error via socket
+            if (!err.error) {
+                handleConfigProgress({ step: 'error', message: 'Server error: ' + resp.statusText });
+            }
+        }
+        // Success path handled by socket config_progress events
+    } catch (e) {
+        handleConfigProgress({ step: 'error', message: 'Network error: ' + e.message });
+    }
+}
+
+
 // Initialize tabs on page load
 window.addEventListener('DOMContentLoaded', () => {
     setupTabs();
+    setupDataTabs();
+    setupConfigPanel();
 });

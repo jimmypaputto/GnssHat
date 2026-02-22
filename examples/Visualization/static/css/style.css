@@ -651,6 +651,282 @@ header h1 {
     font-size: 1.2rem;
 }
 
+/* ─── Data Panel Tabs ──────────────────────────────────── */
+.data-tabs {
+    display: flex;
+    gap: 8px;
+}
+
+.data-tab {
+    padding: 8px 16px;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.data-tab:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+.data-tab.active {
+    background: linear-gradient(135deg, var(--accent-green), var(--accent-cyan));
+    color: var(--bg-primary);
+    border-color: var(--accent-green);
+}
+
+.data-pane {
+    display: none;
+}
+
+.data-pane.active {
+    display: block;
+}
+
+/* ─── Config Form ──────────────────────────────────────── */
+.config-form {
+    position: relative;
+}
+
+.cfg-section {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: var(--bg-card);
+}
+
+.cfg-section legend {
+    color: var(--accent-cyan);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 0 6px;
+}
+
+.cfg-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.cfg-row:last-child {
+    margin-bottom: 0;
+}
+
+.cfg-row label {
+    color: var(--text-secondary);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.cfg-input {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: monospace;
+    transition: border-color 0.2s;
+}
+
+.cfg-input:focus {
+    border-color: var(--accent-cyan);
+    outline: none;
+}
+
+.cfg-input-sm {
+    width: 100px;
+}
+
+.cfg-checkbox {
+    accent-color: var(--accent-cyan);
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+/* Geofence row */
+.cfg-geo-fence {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+    padding: 6px 8px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.cfg-geo-fence input {
+    width: 100%;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+    font-family: monospace;
+}
+
+.cfg-geo-fence input:focus {
+    border-color: var(--accent-cyan);
+    outline: none;
+}
+
+.cfg-geo-fence .cfg-fence-remove {
+    background: none;
+    border: none;
+    color: var(--accent-red, #e57373);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.cfg-geo-fence .cfg-fence-remove:hover {
+    background: rgba(229, 115, 115, 0.15);
+}
+
+.cfg-geo-labels {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 6px;
+    padding: 0 8px 4px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+/* Action buttons */
+.cfg-actions {
+    display: flex;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+    margin-top: 4px;
+}
+
+.cfg-btn {
+    padding: 8px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+}
+
+.cfg-btn:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+.cfg-btn-sm {
+    padding: 4px 12px;
+    font-size: 12px;
+    margin-top: 6px;
+}
+
+.cfg-btn-primary {
+    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-green));
+    color: var(--bg-primary);
+    border-color: var(--accent-cyan);
+    flex: 1;
+}
+
+.cfg-btn-primary:hover {
+    filter: brightness(1.1);
+}
+
+.cfg-btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: none;
+}
+
+.cfg-btn-secondary {
+    flex: 1;
+}
+
+/* Progress overlay */
+.config-progress {
+    position: absolute;
+    inset: 0;
+    background: rgba(13, 17, 23, 0.92);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+}
+
+.config-progress-inner {
+    width: 80%;
+    max-width: 320px;
+    text-align: center;
+}
+
+.config-progress-bar-wrap {
+    width: 100%;
+    height: 6px;
+    background: var(--border-color);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.config-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green));
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.config-progress-msg {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin: 0;
+}
+
+/* Status banner */
+.config-status {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 12px;
+    animation: fadeInStatus 0.3s ease;
+}
+
+.config-status.success {
+    background: rgba(0, 255, 136, 0.1);
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    color: var(--accent-green);
+}
+
+.config-status.error {
+    background: rgba(229, 115, 115, 0.1);
+    border: 1px solid rgba(229, 115, 115, 0.3);
+    color: #e57373;
+}
+
+@keyframes fadeInStatus {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 .data-content {
     width: 100%;
 }

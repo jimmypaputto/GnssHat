@@ -18,6 +18,7 @@ static PyTypeObject GeofencingCfgType;
 static PyTypeObject GeofencingNavType;
 static PyTypeObject GeofenceType;
 static PyTypeObject RfBlockType;
+static PyTypeObject SatelliteInfoType;
 static PyTypeObject PulseType;
 static PyTypeObject TimepulsePinConfigType;
 static PyTypeObject UtcTimeType;
@@ -89,6 +90,7 @@ typedef struct
     PyObject* pvt;
     PyObject* geofencing;
     PyObject* rf_blocks;
+    PyObject* satellites;
 } Navigation;
 
 typedef struct
@@ -139,6 +141,22 @@ typedef struct
     PyObject* cfg;
     PyObject* nav;
 } Geofencing;
+
+typedef struct
+{
+    PyObject_HEAD
+    int gnss_id;
+    uint8_t sv_id;
+    uint8_t cno;
+    int8_t elevation;
+    int16_t azimuth;
+    int quality;
+    PyObject* used_in_fix;
+    PyObject* healthy;
+    PyObject* diff_corr;
+    PyObject* eph_avail;
+    PyObject* alm_avail;
+} SatelliteInfo;
 
 typedef struct
 {
@@ -478,6 +496,173 @@ static PyTypeObject RfBlockType = {
     .tp_str = (reprfunc)RfBlock_str,
     .tp_repr = (reprfunc)RfBlock_str,
     .tp_members = RfBlock_members,
+};
+
+/* ---- SatelliteInfo ---- */
+
+static PyObject* SatelliteInfo_new(PyTypeObject* type, PyObject* args,
+    PyObject* kwds)
+{
+    SatelliteInfo* self = (SatelliteInfo*)type->tp_alloc(type, 0);
+    if (self)
+    {
+        self->gnss_id = 0;
+        self->sv_id = 0;
+        self->cno = 0;
+        self->elevation = 0;
+        self->azimuth = 0;
+        self->quality = 0;
+        self->used_in_fix = Py_False;
+        Py_INCREF(Py_False);
+        self->healthy = Py_False;
+        Py_INCREF(Py_False);
+        self->diff_corr = Py_False;
+        Py_INCREF(Py_False);
+        self->eph_avail = Py_False;
+        Py_INCREF(Py_False);
+        self->alm_avail = Py_False;
+        Py_INCREF(Py_False);
+    }
+    return (PyObject*)self;
+}
+
+static void SatelliteInfo_dealloc(SatelliteInfo* self)
+{
+    Py_XDECREF(self->used_in_fix);
+    Py_XDECREF(self->healthy);
+    Py_XDECREF(self->diff_corr);
+    Py_XDECREF(self->eph_avail);
+    Py_XDECREF(self->alm_avail);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject* SatelliteInfo_str(SatelliteInfo* self)
+{
+    char buffer[512];
+    snprintf(
+        buffer,
+        sizeof(buffer),
+        "SatelliteInfo(\n"
+        "    gnss_id=%d\n"
+        "    sv_id=%u\n"
+        "    cno=%u\n"
+        "    elevation=%d\n"
+        "    azimuth=%d\n"
+        "    quality=%d\n"
+        "    used_in_fix=%s\n"
+        "    healthy=%s\n"
+        "    diff_corr=%s\n"
+        "    eph_avail=%s\n"
+        "    alm_avail=%s\n"
+        ")",
+        self->gnss_id,
+        self->sv_id,
+        self->cno,
+        self->elevation,
+        self->azimuth,
+        self->quality,
+        PyObject_IsTrue(self->used_in_fix) ? "True" : "False",
+        PyObject_IsTrue(self->healthy) ? "True" : "False",
+        PyObject_IsTrue(self->diff_corr) ? "True" : "False",
+        PyObject_IsTrue(self->eph_avail) ? "True" : "False",
+        PyObject_IsTrue(self->alm_avail) ? "True" : "False"
+    );
+    return PyUnicode_FromString(buffer);
+}
+
+static PyMemberDef SatelliteInfo_members[] = {
+    {
+        "gnss_id",
+        T_INT,
+        offsetof(SatelliteInfo, gnss_id),
+        0,
+        "GNSS constellation ID (use GnssId IntEnum to interpret)"
+    },
+    {
+        "sv_id",
+        T_UBYTE,
+        offsetof(SatelliteInfo, sv_id),
+        0,
+        "Satellite vehicle ID"
+    },
+    {
+        "cno",
+        T_UBYTE,
+        offsetof(SatelliteInfo, cno),
+        0,
+        "Carrier-to-noise ratio (dBHz)"
+    },
+    {
+        "elevation",
+        T_BYTE,
+        offsetof(SatelliteInfo, elevation),
+        0,
+        "Elevation in degrees (-90..90)"
+    },
+    {
+        "azimuth",
+        T_SHORT,
+        offsetof(SatelliteInfo, azimuth),
+        0,
+        "Azimuth in degrees (0..360)"
+    },
+    {
+        "quality",
+        T_INT,
+        offsetof(SatelliteInfo, quality),
+        0,
+        "Signal quality indicator (use SvQuality IntEnum to interpret)"
+    },
+    {
+        "used_in_fix",
+        T_OBJECT_EX,
+        offsetof(SatelliteInfo, used_in_fix),
+        0,
+        "Whether satellite is used in navigation fix"
+    },
+    {
+        "healthy",
+        T_OBJECT_EX,
+        offsetof(SatelliteInfo, healthy),
+        0,
+        "Satellite health flag"
+    },
+    {
+        "diff_corr",
+        T_OBJECT_EX,
+        offsetof(SatelliteInfo, diff_corr),
+        0,
+        "Differential correction available"
+    },
+    {
+        "eph_avail",
+        T_OBJECT_EX,
+        offsetof(SatelliteInfo, eph_avail),
+        0,
+        "Ephemeris data available"
+    },
+    {
+        "alm_avail",
+        T_OBJECT_EX,
+        offsetof(SatelliteInfo, alm_avail),
+        0,
+        "Almanac data available"
+    },
+    {NULL}
+};
+
+static PyTypeObject SatelliteInfoType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "jimmypaputto.gnsshat.SatelliteInfo",
+    .tp_doc = "Satellite information from NAV-SAT",
+    .tp_basicsize = sizeof(SatelliteInfo),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_new = SatelliteInfo_new,
+    .tp_dealloc = (destructor)SatelliteInfo_dealloc,
+    .tp_str = (reprfunc)SatelliteInfo_str,
+    .tp_repr = (reprfunc)SatelliteInfo_str,
+    .tp_members = SatelliteInfo_members,
 };
 
 /* ---- DilutionOverPrecision ---- */
@@ -1825,6 +2010,21 @@ static inline RfBlock* RfBlock_alloc(void)
     return (RfBlock*)RfBlockType.tp_alloc(&RfBlockType, 0);
 }
 
+static inline SatelliteInfo* SatelliteInfo_alloc(void)
+{
+    SatelliteInfo* self =
+        (SatelliteInfo*)SatelliteInfoType.tp_alloc(&SatelliteInfoType, 0);
+    if (self)
+    {
+        self->used_in_fix = Py_False; Py_INCREF(Py_False);
+        self->healthy = Py_False; Py_INCREF(Py_False);
+        self->diff_corr = Py_False; Py_INCREF(Py_False);
+        self->eph_avail = Py_False; Py_INCREF(Py_False);
+        self->alm_avail = Py_False; Py_INCREF(Py_False);
+    }
+    return self;
+}
+
 static inline Navigation* Navigation_alloc(void)
 {
     Navigation* self =
@@ -1835,6 +2035,7 @@ static inline Navigation* Navigation_alloc(void)
         self->pvt = NULL;
         self->geofencing = NULL;
         self->rf_blocks = NULL;
+        self->satellites = NULL;
     }
     return self;
 }
@@ -2039,6 +2240,56 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
     }
 
     nav_obj->rf_blocks = rf_blocks_list;
+
+    /* Convert satellite data */
+    PyObject* satellites_list = PyList_New(nav->num_satellites);
+    if (!satellites_list)
+    {
+        Py_DECREF(nav_obj);
+        return NULL;
+    }
+
+    for (int i = 0; i < nav->num_satellites; i++)
+    {
+        SatelliteInfo* sat = SatelliteInfo_alloc();
+        if (!sat)
+        {
+            Py_DECREF(nav_obj);
+            Py_DECREF(satellites_list);
+            return NULL;
+        }
+
+        sat->gnss_id = nav->satellites[i].gnss_id;
+        sat->sv_id = nav->satellites[i].sv_id;
+        sat->cno = nav->satellites[i].cno;
+        sat->elevation = nav->satellites[i].elevation;
+        sat->azimuth = nav->satellites[i].azimuth;
+        sat->quality = nav->satellites[i].quality;
+
+        Py_DECREF(sat->used_in_fix);
+        sat->used_in_fix = nav->satellites[i].used_in_fix ? Py_True : Py_False;
+        Py_INCREF(sat->used_in_fix);
+
+        Py_DECREF(sat->healthy);
+        sat->healthy = nav->satellites[i].healthy ? Py_True : Py_False;
+        Py_INCREF(sat->healthy);
+
+        Py_DECREF(sat->diff_corr);
+        sat->diff_corr = nav->satellites[i].diff_corr ? Py_True : Py_False;
+        Py_INCREF(sat->diff_corr);
+
+        Py_DECREF(sat->eph_avail);
+        sat->eph_avail = nav->satellites[i].eph_avail ? Py_True : Py_False;
+        Py_INCREF(sat->eph_avail);
+
+        Py_DECREF(sat->alm_avail);
+        sat->alm_avail = nav->satellites[i].alm_avail ? Py_True : Py_False;
+        Py_INCREF(sat->alm_avail);
+
+        PyList_SetItem(satellites_list, i, (PyObject*)sat);
+    }
+
+    nav_obj->satellites = satellites_list;
 
     return (PyObject*)nav_obj;
 }
@@ -2505,6 +2756,7 @@ static PyObject* Navigation_new(PyTypeObject* type, PyObject* args,
         self->pvt = (PyObject*)PVT_alloc();
         self->geofencing = (PyObject*)Geofencing_alloc();
         self->rf_blocks = PyList_New(0);
+        self->satellites = PyList_New(0);
     }
     return (PyObject*)self;
 }
@@ -2515,6 +2767,7 @@ static void Navigation_dealloc(Navigation* self)
     Py_XDECREF(self->pvt);
     Py_XDECREF(self->geofencing);
     Py_XDECREF(self->rf_blocks);
+    Py_XDECREF(self->satellites);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -2546,6 +2799,13 @@ static PyMemberDef Navigation_members[] = {
         offsetof(Navigation, rf_blocks),
         0,
         "RF blocks information"
+    },
+    {
+        "satellites",
+        T_OBJECT_EX,
+        offsetof(Navigation, satellites),
+        0,
+        "Satellite information from NAV-SAT"
     },
     {NULL}
 };
@@ -2617,23 +2877,59 @@ static PyObject* Navigation_str(Navigation* self)
         }
     }
 
+    /* Build satellites string */
+    PyObject* sat_parts = PyUnicode_FromString("");
+    if (sat_parts && self->satellites && PyList_Check(self->satellites))
+    {
+        Py_ssize_t n = PyList_Size(self->satellites);
+        for (Py_ssize_t i = 0; i < n; i++)
+        {
+            PyObject* item = PyList_GetItem(self->satellites, i);
+            PyObject* item_str = PyObject_Str(item);
+            if (!item_str)
+                break;
+
+            PyObject* prefix = PyUnicode_FromFormat("\n  [%zd] ", i);
+            if (!prefix) { Py_DECREF(item_str); break; }
+
+            PyObject* tmp = PyUnicode_Concat(sat_parts, prefix);
+            Py_DECREF(prefix);
+            if (!tmp) { Py_DECREF(item_str); break; }
+
+            Py_DECREF(sat_parts);
+            sat_parts = PyUnicode_Concat(tmp, item_str);
+            Py_DECREF(tmp);
+            Py_DECREF(item_str);
+            if (!sat_parts)
+            {
+                sat_parts = PyUnicode_FromString("(error)");
+                break;
+            }
+        }
+    }
+
     PyObject* result = PyUnicode_FromFormat(
         "===== Navigation =====\n"
         "\n--- PVT ---\n%U\n"
         "\n--- DOP ---\n%U\n"
         "\n--- Geofencing ---\n%U\n"
         "\n--- RF Blocks ---%U\n"
+        "\n--- Satellites (%zd) ---%U\n"
         "=======================",
         pvt_str,
         dop_str,
         geo_str,
-        rf_parts
+        rf_parts,
+        self->satellites && PyList_Check(self->satellites)
+            ? PyList_Size(self->satellites) : 0,
+        sat_parts
     );
 
     Py_XDECREF(pvt_str);
     Py_XDECREF(dop_str);
     Py_DECREF(geo_str);
     Py_DECREF(rf_parts);
+    Py_DECREF(sat_parts);
 
     return result;
 }
@@ -2759,6 +3055,8 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
         return NULL;
     if (PyType_Ready(&RfBlockType) < 0)
         return NULL;
+    if (PyType_Ready(&SatelliteInfoType) < 0)
+        return NULL;
     if (PyType_Ready(&GeofencingCfgType) < 0)
         return NULL;
     if (PyType_Ready(&GeofencingNavType) < 0)
@@ -2794,6 +3092,10 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
 
     Py_INCREF(&RfBlockType);
     PyModule_AddObject(m, "RfBlock", (PyObject*)&RfBlockType);
+
+    Py_INCREF(&SatelliteInfoType);
+    PyModule_AddObject(m, "SatelliteInfo",
+        (PyObject*)&SatelliteInfoType);
 
     Py_INCREF(&PulseType);
     PyModule_AddObject(m, "Pulse", (PyObject*)&PulseType);
@@ -2961,12 +3263,36 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
         {"LLA",  JP_GNSS_FIXED_POSITION_LLA}
     );
 
+    /* ── GnssId ─────────────────────────────────────────────────────── */
+    MAKE_ENUM("GnssId",
+        {"GPS",     JP_GNSS_GNSS_ID_GPS},
+        {"SBAS",    JP_GNSS_GNSS_ID_SBAS},
+        {"GALILEO", JP_GNSS_GNSS_ID_GALILEO},
+        {"BEIDOU",  JP_GNSS_GNSS_ID_BEIDOU},
+        {"IMES",    JP_GNSS_GNSS_ID_IMES},
+        {"QZSS",    JP_GNSS_GNSS_ID_QZSS},
+        {"GLONASS", JP_GNSS_GNSS_ID_GLONASS}
+    );
+
+    /* ── SvQuality ──────────────────────────────────────────────────── */
+    MAKE_ENUM("SvQuality",
+        {"NO_SIGNAL",                        JP_GNSS_SV_QUALITY_NO_SIGNAL},
+        {"SEARCHING",                        JP_GNSS_SV_QUALITY_SEARCHING},
+        {"SIGNAL_ACQUIRED",                  JP_GNSS_SV_QUALITY_SIGNAL_ACQUIRED},
+        {"SIGNAL_DETECTED_BUT_UNUSABLE",     JP_GNSS_SV_QUALITY_SIGNAL_DETECTED_BUT_UNUSABLE},
+        {"CODE_LOCKED_AND_TIME_SYNCHRONIZED", JP_GNSS_SV_QUALITY_CODE_LOCKED_AND_TIME_SYNCHRONIZED},
+        {"CODE_AND_CARRIER_LOCKED_1",        JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_1},
+        {"CODE_AND_CARRIER_LOCKED_2",        JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_2},
+        {"CODE_AND_CARRIER_LOCKED_3",        JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_3}
+    );
+
     #undef MAKE_ENUM
     Py_DECREF(IntEnum);
 
     /* ── Hardware limits ────────────────────────────────────────────── */
     PyModule_AddIntConstant(m, "MAX_GEOFENCES", UBLOX_MAX_GEOFENCES);
     PyModule_AddIntConstant(m, "MAX_RF_BLOCKS", UBLOX_MAX_RF_BLOCKS);
+    PyModule_AddIntConstant(m, "MAX_SATELLITES", UBLOX_MAX_SATELLITES);
 
     return m;
 }

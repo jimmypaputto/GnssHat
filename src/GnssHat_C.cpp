@@ -74,6 +74,25 @@ static_assert(static_cast<int>(EAntennaPower::Off) == JP_GNSS_ANTENNA_POWER_OFF)
 static_assert(static_cast<int>(EAntennaPower::On) == JP_GNSS_ANTENNA_POWER_ON);
 static_assert(static_cast<int>(EAntennaPower::DontKnow) == JP_GNSS_ANTENNA_POWER_DONT_KNOW);
 
+static_assert(static_cast<int>(EGnssId::GPS) == JP_GNSS_GNSS_ID_GPS);
+static_assert(static_cast<int>(EGnssId::SBAS) == JP_GNSS_GNSS_ID_SBAS);
+static_assert(static_cast<int>(EGnssId::Galileo) == JP_GNSS_GNSS_ID_GALILEO);
+static_assert(static_cast<int>(EGnssId::BeiDou) == JP_GNSS_GNSS_ID_BEIDOU);
+static_assert(static_cast<int>(EGnssId::IMES) == JP_GNSS_GNSS_ID_IMES);
+static_assert(static_cast<int>(EGnssId::QZSS) == JP_GNSS_GNSS_ID_QZSS);
+static_assert(static_cast<int>(EGnssId::GLONASS) == JP_GNSS_GNSS_ID_GLONASS);
+
+static_assert(static_cast<int>(ESvQuality::NoSignal) == JP_GNSS_SV_QUALITY_NO_SIGNAL);
+static_assert(static_cast<int>(ESvQuality::Searching) == JP_GNSS_SV_QUALITY_SEARCHING);
+static_assert(static_cast<int>(ESvQuality::SignalAcquired) == JP_GNSS_SV_QUALITY_SIGNAL_ACQUIRED);
+static_assert(static_cast<int>(ESvQuality::SignalDetectedButUnusable) == JP_GNSS_SV_QUALITY_SIGNAL_DETECTED_BUT_UNUSABLE);
+static_assert(static_cast<int>(ESvQuality::CodeLockedAndTimeSynchronized) == JP_GNSS_SV_QUALITY_CODE_LOCKED_AND_TIME_SYNCHRONIZED);
+static_assert(static_cast<int>(ESvQuality::CodeAndCarrierLocked1) == JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_1);
+static_assert(static_cast<int>(ESvQuality::CodeAndCarrierLocked2) == JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_2);
+static_assert(static_cast<int>(ESvQuality::CodeAndCarrierLocked3) == JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_3);
+
+static_assert(SatelliteInfo::maxNumberOfSatellites == UBLOX_MAX_SATELLITES);
+
 static_assert(static_cast<int>(ERtkMode::Base) == JP_GNSS_RTK_MODE_BASE);
 static_assert(static_cast<int>(ERtkMode::Rover) == JP_GNSS_RTK_MODE_ROVER);
 
@@ -189,6 +208,16 @@ EAntennaPower convert_antenna_power(jp_gnss_antenna_power_t power)
 jp_gnss_antenna_power_t convert_antenna_power(EAntennaPower power)
 {
     return static_cast<jp_gnss_antenna_power_t>(power);
+}
+
+jp_gnss_gnss_id_t convert_gnss_id(EGnssId id)
+{
+    return static_cast<jp_gnss_gnss_id_t>(id);
+}
+
+jp_gnss_sv_quality_t convert_sv_quality(ESvQuality quality)
+{
+    return static_cast<jp_gnss_sv_quality_t>(quality);
 }
 
 TimepulsePinConfig convert_timepulse_config(
@@ -406,6 +435,30 @@ jp_gnss_navigation_t convert_navigation(const Navigation& cpp_nav)
         c_nav.rf_blocks[i].mag_i = cpp_nav.rfBlocks[i].magI;
         c_nav.rf_blocks[i].ofs_q = cpp_nav.rfBlocks[i].ofsQ;
         c_nav.rf_blocks[i].mag_q = cpp_nav.rfBlocks[i].magQ;
+    }
+
+    c_nav.num_satellites = static_cast<uint8_t>(
+        std::min(cpp_nav.satellites.size(),
+            static_cast<size_t>(UBLOX_MAX_SATELLITES)));
+
+    for (
+        size_t i = 0;
+        i < cpp_nav.satellites.size() && i < UBLOX_MAX_SATELLITES;
+        i++)
+    {
+        c_nav.satellites[i].gnss_id = convert_gnss_id(
+            cpp_nav.satellites[i].gnssId);
+        c_nav.satellites[i].sv_id = cpp_nav.satellites[i].svId;
+        c_nav.satellites[i].cno = cpp_nav.satellites[i].cno;
+        c_nav.satellites[i].elevation = cpp_nav.satellites[i].elevation;
+        c_nav.satellites[i].azimuth = cpp_nav.satellites[i].azimuth;
+        c_nav.satellites[i].quality = convert_sv_quality(
+            cpp_nav.satellites[i].quality);
+        c_nav.satellites[i].used_in_fix = cpp_nav.satellites[i].usedInFix;
+        c_nav.satellites[i].healthy = cpp_nav.satellites[i].healthy;
+        c_nav.satellites[i].diff_corr = cpp_nav.satellites[i].diffCorr;
+        c_nav.satellites[i].eph_avail = cpp_nav.satellites[i].ephAvail;
+        c_nav.satellites[i].alm_avail = cpp_nav.satellites[i].almAvail;
     }
 
     return c_nav;
@@ -655,6 +708,46 @@ const char* jp_gnss_geofence_status_to_string(jp_gnss_geofence_status_t status)
     thread_local std::string result;
     result = Utils::geofenceStatus2string(convert_geofence_status(status));
     return result.c_str();
+}
+
+const char* jp_gnss_gnss_id_to_string(jp_gnss_gnss_id_t id)
+{
+    switch (id)
+    {
+        case JP_GNSS_GNSS_ID_GPS:     return "GPS";
+        case JP_GNSS_GNSS_ID_SBAS:    return "SBAS";
+        case JP_GNSS_GNSS_ID_GALILEO: return "Galileo";
+        case JP_GNSS_GNSS_ID_BEIDOU:  return "BeiDou";
+        case JP_GNSS_GNSS_ID_IMES:    return "IMES";
+        case JP_GNSS_GNSS_ID_QZSS:    return "QZSS";
+        case JP_GNSS_GNSS_ID_GLONASS: return "GLONASS";
+        default:                       return "Unknown";
+    }
+}
+
+const char* jp_gnss_sv_quality_to_string(jp_gnss_sv_quality_t quality)
+{
+    switch (quality)
+    {
+        case JP_GNSS_SV_QUALITY_NO_SIGNAL:
+            return "No signal";
+        case JP_GNSS_SV_QUALITY_SEARCHING:
+            return "Searching";
+        case JP_GNSS_SV_QUALITY_SIGNAL_ACQUIRED:
+            return "Signal acquired";
+        case JP_GNSS_SV_QUALITY_SIGNAL_DETECTED_BUT_UNUSABLE:
+            return "Signal detected but unusable";
+        case JP_GNSS_SV_QUALITY_CODE_LOCKED_AND_TIME_SYNCHRONIZED:
+            return "Code locked and time synchronized";
+        case JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_1:
+            return "Code and carrier locked (1)";
+        case JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_2:
+            return "Code and carrier locked (2)";
+        case JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_3:
+            return "Code and carrier locked (3)";
+        default:
+            return "Unknown";
+    }
 }
 
 void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)

@@ -14,8 +14,9 @@
 extern "C" {
 #endif
 
-#define UBLOX_MAX_GEOFENCES 4
-#define UBLOX_MAX_RF_BLOCKS 2
+#define UBLOX_MAX_GEOFENCES  4
+#define UBLOX_MAX_RF_BLOCKS  2
+#define UBLOX_MAX_SATELLITES 64
 
 typedef enum
 {
@@ -114,6 +115,29 @@ typedef enum
     JP_GNSS_ANTENNA_POWER_ON        = 0x01,
     JP_GNSS_ANTENNA_POWER_DONT_KNOW = 0x02
 } jp_gnss_antenna_power_t;
+
+typedef enum
+{
+    JP_GNSS_GNSS_ID_GPS     = 0,
+    JP_GNSS_GNSS_ID_SBAS    = 1,
+    JP_GNSS_GNSS_ID_GALILEO = 2,
+    JP_GNSS_GNSS_ID_BEIDOU  = 3,
+    JP_GNSS_GNSS_ID_IMES    = 4,
+    JP_GNSS_GNSS_ID_QZSS    = 5,
+    JP_GNSS_GNSS_ID_GLONASS = 6
+} jp_gnss_gnss_id_t;
+
+typedef enum
+{
+    JP_GNSS_SV_QUALITY_NO_SIGNAL                        = 0,
+    JP_GNSS_SV_QUALITY_SEARCHING                        = 1,
+    JP_GNSS_SV_QUALITY_SIGNAL_ACQUIRED                  = 2,
+    JP_GNSS_SV_QUALITY_SIGNAL_DETECTED_BUT_UNUSABLE     = 3,
+    JP_GNSS_SV_QUALITY_CODE_LOCKED_AND_TIME_SYNCHRONIZED = 4,
+    JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_1        = 5,
+    JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_2        = 6,
+    JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_3        = 7
+} jp_gnss_sv_quality_t;
 
 typedef struct
 {
@@ -315,11 +339,28 @@ typedef struct
 
 typedef struct
 {
+    jp_gnss_gnss_id_t gnss_id;
+    uint8_t sv_id;
+    uint8_t cno;
+    int8_t elevation;
+    int16_t azimuth;
+    jp_gnss_sv_quality_t quality;
+    bool used_in_fix;
+    bool healthy;
+    bool diff_corr;
+    bool eph_avail;
+    bool alm_avail;
+} jp_gnss_satellite_info_t;
+
+typedef struct
+{
     jp_gnss_dilution_over_precision_t dop;
     jp_gnss_position_velocity_time_t pvt;
     jp_gnss_geofencing_t geofencing;
     uint8_t num_rf_blocks;
     jp_gnss_rf_block_t rf_blocks[UBLOX_MAX_RF_BLOCKS];
+    uint8_t num_satellites;
+    jp_gnss_satellite_info_t satellites[UBLOX_MAX_SATELLITES];
 } jp_gnss_navigation_t;
 
 typedef struct
@@ -379,6 +420,8 @@ const char* jp_gnss_rf_band_to_string(jp_gnss_rf_band_t band);
 const char* jp_gnss_geofencing_status_to_string(
     jp_gnss_geofencing_status_t status);
 const char* jp_gnss_geofence_status_to_string(jp_gnss_geofence_status_t status);
+const char* jp_gnss_gnss_id_to_string(jp_gnss_gnss_id_t id);
+const char* jp_gnss_sv_quality_to_string(jp_gnss_sv_quality_t quality);
 
 const char* jp_gnss_utc_time_iso8601(
     const jp_gnss_position_velocity_time_t* pvt);

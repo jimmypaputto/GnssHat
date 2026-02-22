@@ -22,6 +22,7 @@
 #include "ublox/ubxmsg/UBX_NAV_DOP.hpp"
 #include "ublox/ubxmsg/UBX_NAV_GEOFENCE.hpp"
 #include "ublox/ubxmsg/UBX_NAV_PVT.hpp"
+#include "ublox/ubxmsg/UBX_NAV_SAT.hpp"
 
 
 namespace JimmyPaputto
@@ -383,6 +384,18 @@ bool M9NStartup::execute()
     if (!result)
     {
         fprintf(stderr, "[Startup] UBX_NAV_PVT configuration failed\r\n");
+        return false;
+    }
+
+    commDriver_.transmitReceive(flusher, rxBuff_);
+    commDriver_.transmitReceive(flusher, rxBuff_);
+
+    result = try3times([this]() {
+        return configureUbxMsgSendrate<ubxmsg::UBX_NAV_SAT, EUbxMsg::UBX_NAV_SAT>();
+    });
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] UBX_NAV_SAT configuration failed\r\n");
         return false;
     }
 

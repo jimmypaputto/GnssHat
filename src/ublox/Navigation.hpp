@@ -9,6 +9,7 @@
 #include "Geofencing.hpp"
 #include "PositionVelocityTime.hpp"
 #include "RFBlock.hpp"
+#include "SatelliteInfo.hpp"
 
 
 namespace JimmyPaputto
@@ -20,6 +21,7 @@ struct Navigation
     PositionVelocityTime pvt;
     Geofencing geofencing;
     std::vector<RfBlock> rfBlocks;
+    std::vector<SatelliteInfo> satellites;
 };
 
 }  // JimmyPaputto

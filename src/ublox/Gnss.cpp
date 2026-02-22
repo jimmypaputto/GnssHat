@@ -61,6 +61,15 @@ void Gnss::rfBlocks(const std::vector<RfBlock>& rfBlocks)
     }
 }
 
+void Gnss::satellites(const std::vector<SatelliteInfo>& satellites)
+{
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        navigation_.satellites = satellites;
+        xSemaphore_.releaseResource();
+    }
+}
+
 bool Gnss::lock() const
 {
     return xSemaphore_.takeResource(SEMAPHORE_TIMEOUT);

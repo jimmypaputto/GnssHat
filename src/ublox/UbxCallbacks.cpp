@@ -21,6 +21,7 @@
 #include "ubxmsg/UBX_NAV_DOP.hpp"
 #include "ubxmsg/UBX_NAV_GEOFENCE.hpp"
 #include "ubxmsg/UBX_NAV_PVT.hpp"
+#include "ubxmsg/UBX_NAV_SAT.hpp"
 
 
 namespace JimmyPaputto
@@ -124,6 +125,11 @@ UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
         Gnss::instance().pvt(ubxNavPvt.pvt());
         if (callbackNotificationEnabled_)
             navigationNotifier_.notify();
+    };
+
+    callbacks_[to_underlying(UBX_NAV_SAT)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
+        const auto& ubxNavSat = static_cast<ubxmsg::UBX_NAV_SAT&>(ubxMsg);
+        Gnss::instance().satellites(ubxNavSat.satellites());
     };
 }
 

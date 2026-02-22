@@ -39,6 +39,7 @@ public:
         ubxClassMsgIdMap_[to_underlying(UBX_NAV_DOP)] = { 0x01, 0x04 };
         ubxClassMsgIdMap_[to_underlying(UBX_NAV_GEOFENCE)] = { 0x01, 0x39 };
         ubxClassMsgIdMap_[to_underlying(UBX_NAV_PVT)] = { 0x01, 0x07 };
+        ubxClassMsgIdMap_[to_underlying(UBX_NAV_SAT)] = { 0x01, 0x35 };
     }
 
     std::pair<uint8_t, uint8_t> translate(const EUbxMsg& eUbxMsg) const

@@ -30,7 +30,7 @@ UbxParser::UbxParser(IUbloxConfigRegistry& configRegistry,
     configRegistry_(configRegistry),
     ubxCallbacks_(configRegistry, navigationNotifier, callbackNotificationEnabled)
 {
-    constexpr uint16_t maxFrameSize = 256;
+    constexpr uint16_t maxFrameSize = 1024;
     unfinishedFrameFromBuffer_.reserve(maxFrameSize);
     for (auto& frame: frames_)
     {

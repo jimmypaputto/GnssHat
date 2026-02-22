@@ -10,6 +10,7 @@
 #include "ublox/ubxmsg/UBX_NAV_DOP.hpp"
 #include "ublox/ubxmsg/UBX_NAV_GEOFENCE.hpp"
 #include "ublox/ubxmsg/UBX_NAV_PVT.hpp"
+#include "ublox/ubxmsg/UBX_NAV_SAT.hpp"
 
 
 namespace JimmyPaputto
@@ -45,6 +46,11 @@ UbloxConfigRegistry::UbloxConfigRegistry(const GnssConfig& config,
         else if (static_cast<EUbxMsg>(i) == EUbxMsg::UBX_NAV_PVT)
         {
             cfgMsgs_[i] = std::make_unique<ubxmsg::UBX_CFG_MSG>(EUbxMsg::UBX_NAV_PVT,
+                cfgMsg);
+        }
+        else if (static_cast<EUbxMsg>(i) == EUbxMsg::UBX_NAV_SAT)
+        {
+            cfgMsgs_[i] = std::make_unique<ubxmsg::UBX_CFG_MSG>(EUbxMsg::UBX_NAV_SAT,
                 cfgMsg);
         }
         else

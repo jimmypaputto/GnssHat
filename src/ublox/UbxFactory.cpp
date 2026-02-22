@@ -19,6 +19,7 @@
 #include "ubxmsg/UBX_NAV_DOP.hpp"
 #include "ubxmsg/UBX_NAV_GEOFENCE.hpp"
 #include "ubxmsg/UBX_NAV_PVT.hpp"
+#include "ubxmsg/UBX_NAV_SAT.hpp"
 
 
 namespace JimmyPaputto
@@ -66,6 +67,8 @@ UbxFactory::UbxFactory()
     create_[to_underlying(UBX_NAV_GEOFENCE)] = &nav_geofence;
     static ubxmsg::UBX_NAV_PVT nav_pvt;
     create_[to_underlying(UBX_NAV_PVT)] = &nav_pvt;
+    static ubxmsg::UBX_NAV_SAT nav_sat;
+    create_[to_underlying(UBX_NAV_SAT)] = &nav_sat;
 }
 
 }  // JimmyPaputto

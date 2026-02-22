@@ -73,10 +73,19 @@ class GPSMap {
         this.trail.push({ x, y });
     }
     
+    getGridSpacing() {
+        if (this.scale <= 1)       return 0.25;
+        else if (this.scale <= 2)  return 0.5;
+        else if (this.scale <= 5)  return 1;
+        else                       return 5;
+    }
+    
     updateScaleDisplay() {
         const scaleInfo = document.getElementById('scale-info');
         if (scaleInfo) {
-            scaleInfo.textContent = `Scale: ±${this.scale.toFixed(1)}m`;
+            const grid = this.getGridSpacing();
+            const gridLabel = grid < 1 ? `${(grid * 100).toFixed(0)}cm` : `${grid}m`;
+            scaleInfo.textContent = `Scale: ±${this.scale.toFixed(1)}m  |  Grid: ${gridLabel}`;
         }
     }
     
@@ -118,24 +127,36 @@ class GPSMap {
         this.ctx.strokeStyle = '#e0e0e0';
         this.ctx.lineWidth = 1;
         
-        // Grid spacing: 5m (fixed scale ±20m)
-        const gridSpacing = 5; // meters
-        const halfSize = Math.min(this.width, this.height) / 2;
+        // Dynamic grid spacing based on current scale
+        const gridSpacing = this.getGridSpacing();
         
-        for (let i = -this.scale; i <= this.scale; i += gridSpacing) {
+        // Draw grid lines symmetrically from center (0,0 always has a crossing)
+        for (let i = 0; i <= this.scale; i += gridSpacing) {
             const offset = this.metersToPixels(i);
             
-            // Vertical lines (X-axis)
+            // Positive side: vertical line at +i, horizontal line at +i
             this.ctx.beginPath();
             this.ctx.moveTo(centerX + offset, 0);
             this.ctx.lineTo(centerX + offset, this.height);
             this.ctx.stroke();
             
-            // Horizontal lines (Y-axis)
             this.ctx.beginPath();
-            this.ctx.moveTo(0, centerY + offset);
-            this.ctx.lineTo(this.width, centerY + offset);
+            this.ctx.moveTo(0, centerY - offset);
+            this.ctx.lineTo(this.width, centerY - offset);
             this.ctx.stroke();
+            
+            // Negative side (skip 0 to avoid double-drawing)
+            if (i > 0) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(centerX - offset, 0);
+                this.ctx.lineTo(centerX - offset, this.height);
+                this.ctx.stroke();
+                
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, centerY + offset);
+                this.ctx.lineTo(this.width, centerY + offset);
+                this.ctx.stroke();
+            }
         }
     }
     

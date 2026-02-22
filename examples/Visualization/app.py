@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 # Jimmy Paputto 2025
-# GPS Visualization Web Application - NMEA Serial Reader
+# GPS Visualization Web Application
+# Modes: native (GnssHat library) or external_tty (NMEA serial)
 
 import sys
 import os
+import argparse
 import threading
 import time
-import serial
-import pynmea2
+
+# Ensure GnssHat Python bindings are findable when running as root (sudo)
+# The module is installed in the pi user's site-packages
+_pi_user_site = '/home/pi/.local/lib/python3.13/site-packages'
+if _pi_user_site not in sys.path and os.path.isdir(_pi_user_site):
+    sys.path.insert(0, _pi_user_site)
+
 from flask import Flask, render_template, jsonify
 from flask_socketio import SocketIO, emit
 from geopy.distance import geodesic
@@ -16,13 +23,17 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'gnss-visualization-secret'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# Serial port configuration
+# Serial port configuration (external_tty mode)
 SERIAL_PORT = '/dev/jimmypaputto/gnss'
 BAUD_RATE = 9600
+
+# Operating mode: 'native' or 'external_tty'
+RUN_MODE = 'native'
 
 # Global state
 gps_state = {
     'serial_port': None,
+    'hat': None,           # GnssHat object (native mode)
     'running': False,
     'thread': None,
     'reference_position': None,  # (lat, lon) of starting position
@@ -145,8 +156,139 @@ def parse_nmea_data():
     }
 
 
+# ─── Native mode: GnssHat reader thread ─────────────────────────────────────
+
+def create_default_config():
+    """Create default GnssHat configuration"""
+    from jimmypaputto import gnsshat
+    return {
+        'measurement_rate_hz': 1,
+        'dynamic_model': gnsshat.DynamicModel.STATIONARY,
+        'timepulse_pin_config': {
+            'active': True,
+            'fixed_pulse': {
+                'frequency': 1,
+                'pulse_width': 0.1
+            },
+            'polarity': gnsshat.TimepulsePolarity.RISING_EDGE
+        },
+        'geofencing': None
+    }
+
+
+def nav_to_pvt_data(nav):
+    """Convert Navigation object from GnssHat to pvt data dict for the frontend"""
+    from jimmypaputto import gnsshat
+
+    pvt = nav.pvt
+    dop = nav.dop
+
+    fix_quality_map = {
+        int(gnsshat.FixQuality.INVALID): "Invalid",
+        int(gnsshat.FixQuality.GPS_FIX_2D_3D): "GPS Fix",
+        int(gnsshat.FixQuality.DGNSS): "DGPS Fix",
+        int(gnsshat.FixQuality.PPS_FIX): "PPS Fix",
+        int(gnsshat.FixQuality.FIXED_RTK): "RTK Fixed",
+        int(gnsshat.FixQuality.FLOAT_RTK): "RTK Float",
+        int(gnsshat.FixQuality.DEAD_RECKONING): "Dead Reckoning",
+    }
+
+    fix_status_map = {
+        int(gnsshat.FixStatus.VOID): "Void",
+        int(gnsshat.FixStatus.ACTIVE): "Active",
+    }
+
+    fix_type_map = {
+        int(gnsshat.FixType.NO_FIX): "No Fix",
+        int(gnsshat.FixType.DEAD_RECKONING_ONLY): "Dead Reckoning",
+        int(gnsshat.FixType.FIX_2D): "2D Fix",
+        int(gnsshat.FixType.FIX_3D): "3D Fix",
+        int(gnsshat.FixType.GNSS_WITH_DEAD_RECKONING): "GNSS+DR",
+        int(gnsshat.FixType.TIME_ONLY_FIX): "Time Only",
+    }
+
+    utc_time = "N/A"
+    if pvt.utc_time and pvt.utc_time.valid:
+        utc_time = f"{pvt.utc_time.hours:02d}:{pvt.utc_time.minutes:02d}:{pvt.utc_time.seconds:02d}"
+
+    date = "N/A"
+    if pvt.date and pvt.date.valid:
+        date = f"{pvt.date.year:04d}-{pvt.date.month:02d}-{pvt.date.day:02d}"
+
+    return {
+        'latitude': float(pvt.latitude),
+        'longitude': float(pvt.longitude),
+        'altitude_msl': float(pvt.altitude_msl),
+        'speed_over_ground': float(pvt.speed_over_ground),
+        'heading': float(pvt.heading),
+        'visible_satellites': int(pvt.visible_satellites),
+        'hdop': float(dop.horizontal),
+        'fix_quality': fix_quality_map.get(pvt.fix_quality, "Unknown"),
+        'fix_status': fix_status_map.get(pvt.fix_status, "Void"),
+        'fix_type': fix_type_map.get(pvt.fix_type, "Unknown"),
+        'utc_time': utc_time,
+        'date': date,
+        'horizontal_accuracy': float(pvt.horizontal_accuracy),
+        'vertical_accuracy': float(pvt.vertical_accuracy),
+        'speed_accuracy': float(pvt.speed_accuracy),
+        'heading_accuracy': float(pvt.heading_accuracy),
+    }
+
+
+def native_reader_thread():
+    """Background thread that reads navigation data from GnssHat (blocking)"""
+    print("Native GnssHat reader thread started")
+
+    hat = gps_state['hat']
+    while gps_state['running']:
+        try:
+            nav = hat.wait_and_get_fresh_navigation()
+            pvt_data = nav_to_pvt_data(nav)
+
+            if not pvt_data:
+                continue
+
+            # Set reference position on first valid fix
+            if gps_state['reference_position'] is None:
+                if pvt_data['fix_status'] == 'Active':
+                    gps_state['reference_position'] = (
+                        pvt_data['latitude'],
+                        pvt_data['longitude']
+                    )
+                    print(f"Reference position set: {gps_state['reference_position']}")
+
+            # Calculate offset from reference
+            current_pos = (pvt_data['latitude'], pvt_data['longitude'])
+            x_offset, y_offset = calculate_offset_meters(
+                gps_state['reference_position'],
+                current_pos
+            )
+
+            data = {
+                'pvt': pvt_data,
+                'offset_x': x_offset,
+                'offset_y': y_offset,
+                'has_reference': gps_state['reference_position'] is not None
+            }
+
+            gps_state['current_data'] = data
+            socketio.emit('gps_update', data, namespace='/')
+
+        except Exception as e:
+            print(f"Error in native reader thread: {e}")
+            if gps_state['running']:
+                time.sleep(1)
+
+    print("Native GnssHat reader thread stopped")
+
+
+# ─── External TTY mode: NMEA serial reader thread ───────────────────────────
+
 def gps_reader_thread():
     """Background thread that reads NMEA sentences from serial port"""
+    import serial
+    import pynmea2
+
     print("GPS NMEA reader thread started")
     
     while gps_state['running']:
@@ -287,11 +429,45 @@ def handle_reset_reference():
 
 
 def start_gps():
-    """Initialize and start GPS serial port reading"""
+    """Initialize and start GPS data source based on RUN_MODE"""
+    if RUN_MODE == 'native':
+        return start_gps_native()
+    else:
+        return start_gps_external_tty()
+
+
+def start_gps_native():
+    """Initialize GnssHat and start native reader thread"""
+    from jimmypaputto import gnsshat
+
+    print("Starting GnssHat in native mode...")
+    try:
+        hat = gnsshat.GnssHat()
+        hat.soft_reset_hot_start()
+        config = create_default_config()
+        if not hat.start(config):
+            print("Failed to start GnssHat")
+            return False
+
+        print("GnssHat started successfully!")
+        gps_state['hat'] = hat
+        gps_state['running'] = True
+        gps_state['thread'] = threading.Thread(target=native_reader_thread, daemon=True)
+        gps_state['thread'].start()
+        return True
+
+    except Exception as e:
+        print(f"Error starting GnssHat: {e}")
+        return False
+
+
+def start_gps_external_tty():
+    """Initialize and start GPS serial port reading (NMEA)"""
+    import serial
+
     print(f"Opening serial port: {SERIAL_PORT} at {BAUD_RATE} baud...")
     
     try:
-        # Open serial port
         gps_state['serial_port'] = serial.Serial(
             port=SERIAL_PORT,
             baudrate=BAUD_RATE,
@@ -307,23 +483,19 @@ def start_gps():
         
         print(f"Serial port {SERIAL_PORT} opened successfully!")
         
-        # Start reader thread
         gps_state['running'] = True
         gps_state['thread'] = threading.Thread(target=gps_reader_thread, daemon=True)
         gps_state['thread'].start()
         
         return True
         
-    except serial.SerialException as e:
-        print(f"Error opening serial port: {e}")
-        return False
     except Exception as e:
-        print(f"Error starting GPS: {e}")
+        print(f"Error opening serial port: {e}")
         return False
 
 
 def stop_gps():
-    """Stop GPS serial port reading"""
+    """Stop GPS data source"""
     print("Stopping GPS...")
     gps_state['running'] = False
     
@@ -334,6 +506,7 @@ def stop_gps():
         gps_state['serial_port'].close()
     
     gps_state['serial_port'] = None
+    gps_state['hat'] = None
     gps_state['reference_position'] = None
     gps_state['current_data'] = None
     gps_state['last_gga'] = None
@@ -345,9 +518,24 @@ def stop_gps():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='GPS Visualization Server')
+    parser.add_argument(
+        'mode',
+        choices=['native', 'external_tty'],
+        nargs='?',
+        default='native',
+        help='Data source mode: native (GnssHat library) or external_tty (NMEA serial). Default: native'
+    )
+    args = parser.parse_args()
+    RUN_MODE = args.mode
+
     print("=" * 60)
-    print("GPS Visualization Server (NMEA) - Jimmy Paputto 2025")
-    print(f"Reading from: {SERIAL_PORT} @ {BAUD_RATE} baud")
+    print("GPS Visualization Server - Jimmy Paputto 2025")
+    print(f"Mode: {RUN_MODE}")
+    if RUN_MODE == 'external_tty':
+        print(f"Reading from: {SERIAL_PORT} @ {BAUD_RATE} baud")
+    else:
+        print("Using GnssHat native library")
     print("=" * 60)
     
     if not start_gps():

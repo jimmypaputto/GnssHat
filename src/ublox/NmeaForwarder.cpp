@@ -4,8 +4,10 @@
 
 #include "ublox/NmeaForwarder.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <iomanip>
+#include <map>
 #include <sstream>
 #include <cstring>
 #include <chrono>
@@ -13,6 +15,48 @@
 
 namespace JimmyPaputto
 {
+
+namespace
+{
+
+const char* gnssIdToGsvTalkerId(EGnssId id)
+{
+    switch (id)
+    {
+        case EGnssId::GPS:
+        case EGnssId::SBAS:    return "GP";
+        case EGnssId::GLONASS: return "GL";
+        case EGnssId::Galileo: return "GA";
+        case EGnssId::BeiDou:  return "GB";
+        case EGnssId::QZSS:    return "GQ";
+        default:               return "GP";
+    }
+}
+
+uint8_t gnssIdToNmeaSystemId(EGnssId id)
+{
+    switch (id)
+    {
+        case EGnssId::GPS:
+        case EGnssId::SBAS:    return 1;
+        case EGnssId::GLONASS: return 2;
+        case EGnssId::Galileo: return 3;
+        case EGnssId::BeiDou:  return 4;
+        case EGnssId::QZSS:    return 5;
+        default:               return 1;
+    }
+}
+
+int satelliteToNmeaPrn(const SatelliteInfo& sat)
+{
+    switch (sat.gnssId)
+    {
+        case EGnssId::GLONASS: return sat.svId + 64;
+        default:               return sat.svId;
+    }
+}
+
+}  // anonymous namespace
 
 NmeaForwarder::NmeaForwarder()
 :   masterFd_(-1),
@@ -196,10 +240,12 @@ void NmeaForwarder::forwardingThread(const Gnss& gnss, std::stop_token stoken)
         gnss.unlock();
 
         const std::string gga = generateNmeaGGA(nav);
-        const std::string rmc = generateNmeaRMC(nav);
         const std::string gsa = generateNmeaGSA(nav);
+        const std::string gsv = generateNmeaGSV(nav);
+        const std::string rmc = generateNmeaRMC(nav);
+        const std::string zda = generateNmeaZDA(nav);
 
-        const std::string combined = gga + rmc + gsa;
+        const std::string combined = gga + gsa + gsv + rmc + zda;
 
         if (masterFd_ >= 0)
         {
@@ -233,7 +279,7 @@ std::string NmeaForwarder::generateNmeaGGA(const Navigation& navigation)
 {
     std::ostringstream oss;
     
-    std::string sentence = "GPGGA,";
+    std::string sentence = "GNGGA,";
     
     sentence += formatTime(navigation) + ",";
     
@@ -269,7 +315,7 @@ std::string NmeaForwarder::generateNmeaRMC(const Navigation& navigation)
 {
     std::ostringstream oss;
 
-    std::string sentence = "GPRMC,";
+    std::string sentence = "GNRMC,";
 
     sentence += formatTime(navigation) + ",";
     sentence += (navigation.pvt.fixStatus == EFixStatus::Active ? "A," : "V,");
@@ -301,34 +347,147 @@ std::string NmeaForwarder::generateNmeaRMC(const Navigation& navigation)
 
 std::string NmeaForwarder::generateNmeaGSA(const Navigation& navigation)
 {
-    std::string sentence = "GPGSA,A,";
-    
     int fixType = 1;
     switch (navigation.pvt.fixType)
     {
         case EFixType::Fix2D: fixType = 2; break;
-        case EFixType::Fix3D: 
+        case EFixType::Fix3D:
         case EFixType::GnssWithDeadReckoning: fixType = 3; break;
         default: fixType = 1; break;
     }
-    sentence += std::to_string(fixType) + ",";
 
-    sentence += ",,,,,,,,,,,,,";
+    std::map<uint8_t, std::vector<int>> usedPrnsBySystem;
 
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(1) << navigation.dop.position;
-    sentence += oss.str() + ",";
+    for (const auto& sat : navigation.satellites)
+    {
+        if (!sat.usedInFix)
+            continue;
 
-    oss.str("");
-    oss << std::fixed << std::setprecision(1) << navigation.dop.horizontal;
-    sentence += oss.str() + ",";
+        if (sat.gnssId == EGnssId::IMES)
+            continue;
 
-    oss.str("");
-    oss << std::fixed << std::setprecision(1) << navigation.dop.vertical;
-    sentence += oss.str();
+        const uint8_t sysId = gnssIdToNmeaSystemId(sat.gnssId);
+        const int prn = satelliteToNmeaPrn(sat);
+        usedPrnsBySystem[sysId].push_back(prn);
+    }
 
-    const std::string checksum = calculateNmeaChecksum(sentence);
-    return "$" + sentence + "*" + checksum + "\r\n";
+    std::ostringstream ossPdop, ossHdop, ossVdop;
+    ossPdop << std::fixed << std::setprecision(1) << navigation.dop.position;
+    ossHdop << std::fixed << std::setprecision(1) << navigation.dop.horizontal;
+    ossVdop << std::fixed << std::setprecision(1) << navigation.dop.vertical;
+
+    std::string result;
+
+    if (usedPrnsBySystem.empty())
+    {
+        std::string sentence = "GNGSA,A,"
+            + std::to_string(fixType) + ",";
+
+        for (int i = 0; i < 12; i++)
+            sentence += ",";
+
+        sentence += ossPdop.str() + ","
+                  + ossHdop.str() + ","
+                  + ossVdop.str() + ",1";
+
+        result += "$" + sentence + "*"
+               + calculateNmeaChecksum(sentence) + "\r\n";
+    }
+    else
+    {
+        for (const auto& [sysId, prns] : usedPrnsBySystem)
+        {
+            std::string sentence = "GNGSA,A,"
+                + std::to_string(fixType) + ",";
+
+            for (int i = 0; i < 12; i++)
+            {
+                if (i < static_cast<int>(prns.size()))
+                    sentence += std::to_string(prns[i]);
+                sentence += ",";
+            }
+
+            sentence += ossPdop.str() + ","
+                      + ossHdop.str() + ","
+                      + ossVdop.str() + ","
+                      + std::to_string(sysId);
+
+            result += "$" + sentence + "*"
+                   + calculateNmeaChecksum(sentence) + "\r\n";
+        }
+    }
+
+    return result;
+}
+
+std::string NmeaForwarder::generateNmeaGSV(const Navigation& navigation)
+{
+    std::map<uint8_t, std::vector<const SatelliteInfo*>> groups;
+
+    for (const auto& sat : navigation.satellites)
+    {
+        if (sat.gnssId == EGnssId::IMES)
+            continue;
+
+        const uint8_t sysId = gnssIdToNmeaSystemId(sat.gnssId);
+        groups[sysId].push_back(&sat);
+    }
+
+    std::string result;
+
+    for (const auto& [sysId, sats] : groups)
+    {
+        if (sats.empty())
+            continue;
+
+        const char* talkerId = gnssIdToGsvTalkerId(sats[0]->gnssId);
+        const int totalSvs = static_cast<int>(sats.size());
+        const int totalMsgs = (totalSvs + 3) / 4;
+
+        for (int msgNum = 1; msgNum <= totalMsgs; msgNum++)
+        {
+            std::string sentence = std::string(talkerId) + "GSV,"
+                + std::to_string(totalMsgs) + ","
+                + std::to_string(msgNum) + ","
+                + std::to_string(totalSvs);
+
+            const int startIdx = (msgNum - 1) * 4;
+            const int endIdx = std::min(startIdx + 4, totalSvs);
+
+            for (int i = startIdx; i < endIdx; i++)
+            {
+                const auto& sat = *sats[i];
+                const int prn = satelliteToNmeaPrn(sat);
+
+                std::ostringstream oss;
+                oss << std::setfill('0') << std::setw(2) << prn;
+                sentence += "," + oss.str();
+
+                sentence += "," + std::to_string(
+                    static_cast<int>(sat.elevation));
+
+                oss.str("");
+                oss << std::setfill('0') << std::setw(3)
+                    << sat.azimuth;
+                sentence += "," + oss.str();
+
+                sentence += ",";
+                if (sat.cno > 0)
+                {
+                    oss.str("");
+                    oss << std::setfill('0') << std::setw(2)
+                        << static_cast<int>(sat.cno);
+                    sentence += oss.str();
+                }
+            }
+
+            const std::string checksum =
+                calculateNmeaChecksum(sentence);
+            result += "$" + sentence + "*" + checksum + "\r\n";
+        }
+    }
+
+    return result;
 }
 
 std::string NmeaForwarder::calculateNmeaChecksum(const std::string& sentence)
@@ -367,6 +526,38 @@ std::string NmeaForwarder::formatLongitude(double lon)
     oss << std::fixed << std::setprecision(5) << std::setfill('0')
         << std::setw(8) << minutes;
     return oss.str();
+}
+
+std::string NmeaForwarder::generateNmeaZDA(const Navigation& navigation)
+{
+    const auto& date = navigation.pvt.date;
+
+    std::string sentence = "GNZDA,";
+
+    sentence += formatTime(navigation) + ",";
+
+    if (date.valid)
+    {
+        std::ostringstream oss;
+        oss << std::setfill('0') << std::setw(2) << (int)date.day;
+        sentence += oss.str() + ",";
+
+        oss.str("");
+        oss << std::setfill('0') << std::setw(2) << (int)date.month;
+        sentence += oss.str() + ",";
+
+        sentence += std::to_string(date.year) + ",";
+    }
+    else
+    {
+        sentence += ",,,,";
+    }
+
+    // Local zone hours and minutes (UTC = 00,00)
+    sentence += "00,00";
+
+    const std::string checksum = calculateNmeaChecksum(sentence);
+    return "$" + sentence + "*" + checksum + "\r\n";
 }
 
 std::string NmeaForwarder::formatTime(const Navigation& navigation)

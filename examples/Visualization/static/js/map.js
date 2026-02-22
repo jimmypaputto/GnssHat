@@ -408,9 +408,97 @@ function updateGPSData(data) {
     updateDataField('data-latitude', `${pvt.latitude.toFixed(7)}°`);
     updateDataField('data-longitude', `${pvt.longitude.toFixed(7)}°`);
     updateDataField('data-altitude-msl', `${pvt.altitude_msl.toFixed(1)} m`);
-    updateDataField('data-hdop', `${pvt.hdop.toFixed(2)}`);
     updateDataField('data-speed', `${pvt.speed_over_ground.toFixed(2)} m/s`);
     updateDataField('data-heading', `${pvt.heading.toFixed(1)}°`);
+
+    // Native mode: extra fields
+    if (window.APP_MODE === 'native') {
+        // HDOP from DOP object (not pvt)
+        if (data.dop) {
+            updateDataField('data-hdop', data.dop.horizontal.toFixed(2));
+            updateDataField('data-gdop', data.dop.geometric.toFixed(2));
+            updateDataField('data-pdop', data.dop.position.toFixed(2));
+            updateDataField('data-vdop', data.dop.vertical.toFixed(2));
+            updateDataField('data-tdop', data.dop.time.toFixed(2));
+            updateDataField('data-ndop', data.dop.northing.toFixed(2));
+            updateDataField('data-edop', data.dop.easting.toFixed(2));
+        }
+
+        // Altitude WGS84
+        if (pvt.altitude !== undefined) {
+            updateDataField('data-altitude', `${pvt.altitude.toFixed(1)} m`);
+        }
+
+        // Accuracy
+        if (pvt.horizontal_accuracy !== undefined) {
+            updateDataField('data-hacc', `${pvt.horizontal_accuracy.toFixed(2)} m`);
+            updateDataField('data-vacc', `${pvt.vertical_accuracy.toFixed(2)} m`);
+            updateDataField('data-sacc', `${pvt.speed_accuracy.toFixed(2)} m/s`);
+            updateDataField('data-headacc', `${pvt.heading_accuracy.toFixed(1)}°`);
+        }
+
+        // Geofencing
+        if (data.geofencing) {
+            updateDataField('data-geo-status', data.geofencing.status);
+            updateDataField('data-geo-count', data.geofencing.number_of_geofences);
+        }
+
+        // RF Blocks
+        if (data.rf_blocks) {
+            updateRfBlocks(data.rf_blocks);
+        }
+    } else {
+        // TTY mode: HDOP from pvt
+        updateDataField('data-hdop', `${pvt.hdop.toFixed(2)}`);
+    }
+}
+
+function updateRfBlocks(rfBlocks) {
+    const container = document.getElementById('rf-blocks-container');
+    if (!container) return;
+
+    if (!rfBlocks || rfBlocks.length === 0) {
+        container.innerHTML = '<p class="rf-no-data">No RF data</p>';
+        return;
+    }
+
+    let html = '';
+    for (const rf of rfBlocks) {
+        const jammingClass = rf.jamming_state === 'OK' ? 'jamming-ok'
+            : rf.jamming_state === 'Warning' ? 'jamming-warning'
+            : rf.jamming_state === 'Critical' ? 'jamming-critical'
+            : 'jamming-unknown';
+
+        html += `
+        <div class="rf-block-card">
+            <div class="rf-block-header">Band: ${rf.band}</div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">Jamming</span>
+                <span class="rf-block-value ${jammingClass}">${rf.jamming_state}</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">Antenna</span>
+                <span class="rf-block-value">${rf.antenna_status}</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">Power</span>
+                <span class="rf-block-value">${rf.antenna_power}</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">Noise/ms</span>
+                <span class="rf-block-value">${rf.noise_per_ms}</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">AGC</span>
+                <span class="rf-block-value">${rf.agc_monitor.toFixed(1)}%</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">CW Supp.</span>
+                <span class="rf-block-value">${rf.cw_suppression.toFixed(1)} dB</span>
+            </div>
+        </div>`;
+    }
+    container.innerHTML = html;
 }
 
 function updateDataField(id, value) {

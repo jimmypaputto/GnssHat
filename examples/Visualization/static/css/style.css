@@ -150,7 +150,7 @@ header h1 {
 /* Main Content */
 .main-content {
     display: grid;
-    grid-template-columns: 2fr 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 20px;
 }
 
@@ -441,13 +441,77 @@ header h1 {
     border-radius: 12px;
     box-shadow: 0 4px 20px var(--shadow);
     border: 1px solid var(--border-color);
-    max-height: 600px;
+    max-height: 85vh;
     overflow-y: auto;
 }
 
 .data-header {
     margin-bottom: 15px;
 }
+
+/* Two-column layout for native mode */
+.data-content.two-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+}
+
+.data-column {
+    min-width: 0;
+}
+
+/* RF Block cards */
+.rf-block-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+}
+
+.rf-block-card:last-child {
+    margin-bottom: 0;
+}
+
+.rf-block-header {
+    color: var(--accent-cyan);
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.rf-block-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    font-size: 13px;
+}
+
+.rf-block-label {
+    color: var(--text-secondary);
+}
+
+.rf-block-value {
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+}
+
+.rf-no-data {
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding: 8px 0;
+    font-style: italic;
+}
+
+/* Jamming state colors */
+.jamming-ok { color: var(--accent-green); }
+.jamming-warning { color: var(--accent-yellow); }
+.jamming-critical { color: var(--accent-red); }
+.jamming-unknown { color: var(--text-secondary); }
 
 .data-header h2 {
     color: var(--accent-green);

@@ -95,15 +95,16 @@
                 </div>
             </div>
 
-            <!-- Right side: Data table -->
+            <!-- Right side: Data panel -->
             <div class="data-container">
                 <div class="data-header">
-                    <h2>GPS Data (PVT)</h2>
+                    <h2>{% if mode == 'native' %}Navigation Data{% else %}GPS Data (PVT){% endif %}</h2>
                 </div>
-                <div class="data-content">
+                <div class="data-content {% if mode == 'native' %}two-columns{% endif %}">
+                    <!-- Column 1: PVT -->
+                    <div class="data-column">
                     <table class="data-table">
                         <tbody>
-                            <!-- Time & Date -->
                             <tr class="section-header">
                                 <td colspan="2">⏰ Time & Date</td>
                             </tr>
@@ -116,7 +117,6 @@
                                 <td class="data-value" id="data-date">----/--/--</td>
                             </tr>
 
-                            <!-- Fix Information -->
                             <tr class="section-header">
                                 <td colspan="2">🔧 Fix Information</td>
                             </tr>
@@ -137,7 +137,6 @@
                                 <td class="data-value" id="data-satellites">0</td>
                             </tr>
 
-                            <!-- Position -->
                             <tr class="section-header">
                                 <td colspan="2">📍 Position</td>
                             </tr>
@@ -153,12 +152,18 @@
                                 <td class="data-label">Altitude (MSL)</td>
                                 <td class="data-value" id="data-altitude-msl">0.0 m</td>
                             </tr>
+                            {% if mode == 'native' %}
+                            <tr>
+                                <td class="data-label">Altitude (WGS84)</td>
+                                <td class="data-value" id="data-altitude">0.0 m</td>
+                            </tr>
+                            {% else %}
                             <tr>
                                 <td class="data-label">HDOP</td>
                                 <td class="data-value" id="data-hdop">0.0</td>
                             </tr>
+                            {% endif %}
 
-                            <!-- Velocity -->
                             <tr class="section-header">
                                 <td colspan="2">🚀 Velocity</td>
                             </tr>
@@ -170,8 +175,91 @@
                                 <td class="data-label">Heading</td>
                                 <td class="data-value" id="data-heading">0.0°</td>
                             </tr>
+
+                            {% if mode == 'native' %}
+                            <tr class="section-header">
+                                <td colspan="2">🎯 Accuracy</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Horizontal</td>
+                                <td class="data-value" id="data-hacc">- m</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Vertical</td>
+                                <td class="data-value" id="data-vacc">- m</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Speed</td>
+                                <td class="data-value" id="data-sacc">- m/s</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Heading</td>
+                                <td class="data-value" id="data-headacc">-°</td>
+                            </tr>
+                            {% endif %}
                         </tbody>
                     </table>
+                    </div>
+
+                    {% if mode == 'native' %}
+                    <!-- Column 2: DOP + Geofencing + RF -->
+                    <div class="data-column">
+                    <table class="data-table">
+                        <tbody>
+                            <tr class="section-header">
+                                <td colspan="2">📊 Dilution of Precision</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Geometric</td>
+                                <td class="data-value" id="data-gdop">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Position</td>
+                                <td class="data-value" id="data-pdop">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Horizontal</td>
+                                <td class="data-value" id="data-hdop">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Vertical</td>
+                                <td class="data-value" id="data-vdop">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Time</td>
+                                <td class="data-value" id="data-tdop">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Northing</td>
+                                <td class="data-value" id="data-ndop">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Easting</td>
+                                <td class="data-value" id="data-edop">-</td>
+                            </tr>
+
+                            <tr class="section-header">
+                                <td colspan="2">🔲 Geofencing</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Status</td>
+                                <td class="data-value" id="data-geo-status">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Geofences</td>
+                                <td class="data-value" id="data-geo-count">0</td>
+                            </tr>
+
+                            <tr class="section-header">
+                                <td colspan="2">📡 RF / Antenna</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div id="rf-blocks-container">
+                        <p class="rf-no-data">Waiting for data...</p>
+                    </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -181,6 +269,9 @@
         </footer>
     </div>
 
+    <script>
+        window.APP_MODE = '{{ mode }}';
+    </script>
     <script src="{{ url_for('static', filename='js/map.js') }}"></script>
 </body>
 </html>

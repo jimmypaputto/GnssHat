@@ -215,9 +215,10 @@ def nav_to_pvt_data(nav):
     if pvt.date and pvt.date.valid:
         date = f"{pvt.date.year:04d}-{pvt.date.month:02d}-{pvt.date.day:02d}"
 
-    return {
+    pvt_data = {
         'latitude': float(pvt.latitude),
         'longitude': float(pvt.longitude),
+        'altitude': float(pvt.altitude),
         'altitude_msl': float(pvt.altitude_msl),
         'speed_over_ground': float(pvt.speed_over_ground),
         'heading': float(pvt.heading),
@@ -232,6 +233,75 @@ def nav_to_pvt_data(nav):
         'vertical_accuracy': float(pvt.vertical_accuracy),
         'speed_accuracy': float(pvt.speed_accuracy),
         'heading_accuracy': float(pvt.heading_accuracy),
+    }
+
+    return pvt_data
+
+
+def nav_to_full_data(nav):
+    """Serialize full Navigation object (DOP, Geofencing, RF Blocks) for native mode"""
+    from jimmypaputto import gnsshat
+
+    dop = nav.dop
+    dop_data = {
+        'geometric': float(dop.geometric),
+        'position': float(dop.position),
+        'time': float(dop.time),
+        'vertical': float(dop.vertical),
+        'horizontal': float(dop.horizontal),
+        'northing': float(dop.northing),
+        'easting': float(dop.easting),
+    }
+
+    geofencing_nav = nav.geofencing.nav
+    geofencing_status_map = {
+        int(gnsshat.GeofencingStatus.NOT_AVAILABLE): "Not Available",
+        int(gnsshat.GeofencingStatus.ACTIVE): "Active",
+    }
+    geofencing_data = {
+        'status': geofencing_status_map.get(geofencing_nav.status, "Unknown"),
+        'number_of_geofences': int(geofencing_nav.number_of_geofences),
+    }
+
+    jamming_map = {
+        int(gnsshat.JammingState.UNKNOWN): "Unknown",
+        int(gnsshat.JammingState.OK_NO_SIGNIFICANT_JAMMING): "OK",
+        int(gnsshat.JammingState.WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK): "Warning",
+        int(gnsshat.JammingState.CRITICAL_INTERFERENCE_VISIBLE_AND_NO_FIX): "Critical",
+    }
+    antenna_status_map = {
+        int(gnsshat.AntennaStatus.INIT): "Init",
+        int(gnsshat.AntennaStatus.DONT_KNOW): "Unknown",
+        int(gnsshat.AntennaStatus.OK): "OK",
+        int(gnsshat.AntennaStatus.SHORT): "Short",
+        int(gnsshat.AntennaStatus.OPEN): "Open",
+    }
+    antenna_power_map = {
+        int(gnsshat.AntennaPower.OFF): "Off",
+        int(gnsshat.AntennaPower.ON): "On",
+        int(gnsshat.AntennaPower.DONT_KNOW): "Unknown",
+    }
+    band_map = {
+        int(gnsshat.RfBand.L1): "L1",
+        int(gnsshat.RfBand.L2_OR_L5): "L2/L5",
+    }
+
+    rf_blocks_data = []
+    for rf in nav.rf_blocks:
+        rf_blocks_data.append({
+            'band': band_map.get(rf.id, "Unknown"),
+            'jamming_state': jamming_map.get(rf.jamming_state, "Unknown"),
+            'antenna_status': antenna_status_map.get(rf.antenna_status, "Unknown"),
+            'antenna_power': antenna_power_map.get(rf.antenna_power, "Unknown"),
+            'noise_per_ms': int(rf.noise_per_ms),
+            'agc_monitor': float(rf.agc_monitor),
+            'cw_suppression': float(rf.cw_interference_suppression_level),
+        })
+
+    return {
+        'dop': dop_data,
+        'geofencing': geofencing_data,
+        'rf_blocks': rf_blocks_data,
     }
 
 
@@ -270,6 +340,13 @@ def native_reader_thread():
                 'offset_y': y_offset,
                 'has_reference': gps_state['reference_position'] is not None
             }
+
+            # Add full navigation data (DOP, Geofencing, RF) for native mode
+            try:
+                extra = nav_to_full_data(nav)
+                data.update(extra)
+            except Exception as e:
+                print(f"Error serializing extra nav data: {e}")
 
             gps_state['current_data'] = data
             socketio.emit('gps_update', data, namespace='/')
@@ -380,7 +457,7 @@ def gps_reader_thread():
 @app.route('/')
 def index():
     """Serve main page"""
-    return render_template('index.html')
+    return render_template('index.html', mode=RUN_MODE)
 
 
 @app.route('/api/status')

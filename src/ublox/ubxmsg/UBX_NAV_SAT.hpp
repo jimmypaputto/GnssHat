@@ -1,5 +1,5 @@
 /*
- * Jimmy Paputto 2025
+ * Jimmy Paputto 2026
  */
 
 #ifndef UBX_NAV_SAT_HPP_
@@ -32,26 +32,6 @@ public:
 
     void deserialize(std::span<const uint8_t> serialized) override
     {
-        // UBX-NAV-SAT payload starts at offset 6
-        // Byte 6+0: iTOW (U4) - GPS time of week
-        // Byte 6+4: version (U1)
-        // Byte 6+5: numSvs (U1)
-        // Byte 6+6: reserved1 (U2)
-        // Repeated block starts at offset 6+8, each block is 12 bytes
-        //   +0: gnssId (U1)
-        //   +1: svId (U1)
-        //   +2: cno (U1)
-        //   +3: elev (I1)
-        //   +4: azim (I2)
-        //   +6: prRes (I2) - pseudorange residual (x0.1 m)
-        //   +8: flags (X4)
-        //     bits 2..0: qualityInd
-        //     bit 3: svUsed
-        //     bits 5..4: health (0=unknown, 1=healthy, 2=unhealthy)
-        //     bit 6: diffCorr
-        //     bit 8: ephAvail
-        //     bit 9: almAvail
-
         const uint8_t numSvs = serialized[11];
 
         satellites_.clear();

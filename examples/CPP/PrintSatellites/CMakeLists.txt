@@ -1,0 +1,9 @@
+cmake_minimum_required(VERSION 3.10)
+
+project(PrintSatellites)
+
+add_executable(PrintSatellitesBasic src/PrintSatellitesBasic.cpp)
+target_link_libraries(PrintSatellitesBasic GnssHat)
+
+add_executable(PrintSatellitesAdvanced src/PrintSatellitesAdvanced.cpp)
+target_link_libraries(PrintSatellitesAdvanced GnssHat)

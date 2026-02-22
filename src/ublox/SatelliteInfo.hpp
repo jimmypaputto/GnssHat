@@ -1,5 +1,5 @@
 /*
- * Jimmy Paputto 2025
+ * Jimmy Paputto 2026
  */
 
 #ifndef SATELLITE_INFO_HPP_

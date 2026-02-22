@@ -39,6 +39,9 @@
                     <div class="map-tabs">
                         <button class="map-tab active" data-tab="relative">📐 Relative Map</button>
                         <button class="map-tab" data-tab="terrain">🗺️ Terrain Map</button>
+                        {% if mode == 'native' %}
+                        <button class="map-tab" data-tab="skyview">🛰️ Sky View</button>
+                        {% endif %}
                     </div>
                     <div class="map-info">
                         <span id="scale-info">Scale: ±20.0m</span>
@@ -73,6 +76,39 @@
                     </div>
                 </div>
                 
+                {% if mode == 'native' %}
+                <!-- Sky View - Satellite polar plot -->
+                <div id="skyview-map" class="map-view" style="display: none;">
+                    <div class="skyview-layout">
+                        <div class="skyview-plot-wrap">
+                            <canvas id="sky-canvas"></canvas>
+                        </div>
+                        <div class="skyview-table-wrap">
+                            <div class="skyview-summary">
+                                <span id="sky-total">0</span> tracked &nbsp;|&nbsp;
+                                <span id="sky-used">0</span> used in fix
+                            </div>
+                            <div class="skyview-table-scroll">
+                                <table class="data-table sat-table" id="sat-table">
+                                    <thead>
+                                        <tr>
+                                            <th>GNSS</th>
+                                            <th>SV</th>
+                                            <th>C/N₀</th>
+                                            <th>El°</th>
+                                            <th>Az°</th>
+                                            <th>Used</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="sat-table-body">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- OpenStreetMap Terrain Map -->
                 <div id="terrain-map" class="map-view" style="display: none;">
                     <div id="osm-map" class="osm-map-wrapper"></div>

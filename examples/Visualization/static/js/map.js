@@ -447,6 +447,11 @@ function updateGPSData(data) {
         if (data.rf_blocks) {
             updateRfBlocks(data.rf_blocks);
         }
+
+        // Satellites → sky view
+        if (data.satellites) {
+            updateSkyView(data.satellites);
+        }
     } else {
         // TTY mode: HDOP from pvt
         updateDataField('data-hdop', `${pvt.hdop.toFixed(2)}`);
@@ -506,6 +511,181 @@ function updateDataField(id, value) {
     if (element) {
         element.textContent = value;
     }
+}
+
+// =======================
+// Sky View - Polar Satellite Plot
+// =======================
+
+const GNSS_COLORS = {
+    'GPS':     '#4fc3f7',
+    'Galileo': '#81c784',
+    'GLONASS': '#e57373',
+    'BeiDou':  '#ffb74d',
+    'SBAS':    '#ce93d8',
+    'QZSS':    '#fff176',
+};
+
+function getGnssColor(gnssId) {
+    return GNSS_COLORS[gnssId] || '#888888';
+}
+
+function getGnssCssClass(gnssId) {
+    const map = {
+        'GPS': 'sat-gnss-gps', 'Galileo': 'sat-gnss-galileo',
+        'GLONASS': 'sat-gnss-glonass', 'BeiDou': 'sat-gnss-beidou',
+        'SBAS': 'sat-gnss-sbas', 'QZSS': 'sat-gnss-qzss',
+    };
+    return map[gnssId] || 'sat-gnss-other';
+}
+
+function drawSkyPlot(satellites) {
+    const canvas = document.getElementById('sky-canvas');
+    if (!canvas) return;
+
+    const container = canvas.parentElement;
+    const rect = container.getBoundingClientRect();
+    const size = Math.min(rect.width, rect.height);
+    if (size < 10) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+    canvas.style.width = size + 'px';
+    canvas.style.height = size + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const cx = size / 2;
+    const cy = size / 2;
+    const maxR = size / 2 * 0.88;
+
+    // Background
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(0, 0, size, size);
+
+    // Elevation rings (90° center, 0° edge)
+    ctx.strokeStyle = '#2a2a3e';
+    ctx.lineWidth = 1;
+    for (let el = 0; el <= 90; el += 30) {
+        const r = maxR * (1 - el / 90);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+        // Label
+        if (el > 0 && el < 90) {
+            ctx.fillStyle = '#555';
+            ctx.font = '11px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${el}°`, cx, cy - r + 13);
+        }
+    }
+
+    // Compass lines (N/E/S/W)
+    const dirs = [
+        { label: 'N', angle: -90 },
+        { label: 'E', angle: 0 },
+        { label: 'S', angle: 90 },
+        { label: 'W', angle: 180 },
+    ];
+    ctx.strokeStyle = '#2a2a3e';
+    ctx.lineWidth = 1;
+    for (const d of dirs) {
+        const rad = d.angle * Math.PI / 180;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(rad) * maxR, cy + Math.sin(rad) * maxR);
+        ctx.stroke();
+        // Label
+        ctx.fillStyle = '#888';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const lr = maxR + 14;
+        ctx.fillText(d.label, cx + Math.cos(rad) * lr, cy + Math.sin(rad) * lr);
+    }
+
+    // Draw satellites
+    for (const sat of satellites) {
+        if (sat.elevation < 0) continue;
+
+        const r = maxR * (1 - sat.elevation / 90);
+        // Azimuth: 0° = North (up), clockwise → canvas: -90° offset
+        const aRad = (sat.azimuth - 90) * Math.PI / 180;
+        const sx = cx + Math.cos(aRad) * r;
+        const sy = cy + Math.sin(aRad) * r;
+
+        const color = getGnssColor(sat.gnss_id);
+
+        // Dot
+        const dotR = sat.used_in_fix ? 7 : 5;
+        ctx.beginPath();
+        ctx.arc(sx, sy, dotR, 0, Math.PI * 2);
+        if (sat.used_in_fix) {
+            ctx.fillStyle = color;
+            ctx.fill();
+        } else {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        // SV label
+        ctx.fillStyle = color;
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`${sat.sv_id}`, sx, sy - dotR - 2);
+    }
+
+    // Center dot
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+}
+
+function updateSatTable(satellites) {
+    const tbody = document.getElementById('sat-table-body');
+    if (!tbody) return;
+
+    // Sort: used first, then by C/N0 descending
+    const sorted = [...satellites].sort((a, b) => {
+        if (a.used_in_fix !== b.used_in_fix) return b.used_in_fix ? 1 : -1;
+        return b.cno - a.cno;
+    });
+
+    let html = '';
+    for (const sat of sorted) {
+        if (sat.cno === 0 && !sat.used_in_fix) continue; // skip silent sats
+        const cls = getGnssCssClass(sat.gnss_id);
+        const rowCls = sat.used_in_fix ? 'sat-used' : '';
+        const cnoColor = sat.cno >= 35 ? '#00ff88' : sat.cno >= 20 ? '#ffaa00' : '#ff4444';
+        const cnoWidth = Math.min(sat.cno, 55) / 55 * 40;
+        html += `<tr class="${rowCls}">
+            <td class="${cls}">${sat.gnss_id}</td>
+            <td>${sat.sv_id}</td>
+            <td><span class="sat-cno-bar" style="width:${cnoWidth}px;background:${cnoColor}"></span>${sat.cno}</td>
+            <td>${sat.elevation}°</td>
+            <td>${sat.azimuth}°</td>
+            <td>${sat.used_in_fix ? '✓' : ''}</td>
+        </tr>`;
+    }
+    tbody.innerHTML = html;
+
+    // Summary
+    const total = satellites.filter(s => s.cno > 0).length;
+    const used = satellites.filter(s => s.used_in_fix).length;
+    const elTotal = document.getElementById('sky-total');
+    const elUsed = document.getElementById('sky-used');
+    if (elTotal) elTotal.textContent = total;
+    if (elUsed) elUsed.textContent = used;
+}
+
+function updateSkyView(satellites) {
+    drawSkyPlot(satellites);
+    updateSatTable(satellites);
 }
 
 // =======================
@@ -646,6 +826,11 @@ function setupTabs() {
                 // Invalidate Leaflet map size when switching to terrain
                 if (tabName === 'terrain' && osmMap) {
                     setTimeout(() => osmMap.invalidateSize(), 100);
+                }
+
+                // Re-draw sky plot when switching to skyview (canvas needs resize)
+                if (tabName === 'skyview' && window.lastGPSData && window.lastGPSData.satellites) {
+                    setTimeout(() => updateSkyView(window.lastGPSData.satellites), 50);
                 }
             }
         });

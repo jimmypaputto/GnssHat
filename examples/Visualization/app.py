@@ -99,7 +99,7 @@ def parse_nmea_data():
     gps_qual = int(gga.gps_qual) if gga and hasattr(gga, 'gps_qual') else 0
     fix_quality_map = {
         0: "Invalid",
-        1: "GPS Fix",
+        1: "2D3DFix",
         2: "DGPS Fix",
         4: "RTK Fixed",
         5: "RTK Float",
@@ -298,10 +298,44 @@ def nav_to_full_data(nav):
             'cw_suppression': float(rf.cw_interference_suppression_level),
         })
 
+    gnss_id_map = {
+        int(gnsshat.GnssId.GPS): "GPS",
+        int(gnsshat.GnssId.SBAS): "SBAS",
+        int(gnsshat.GnssId.GALILEO): "Galileo",
+        int(gnsshat.GnssId.BEIDOU): "BeiDou",
+        int(gnsshat.GnssId.IMES): "IMES",
+        int(gnsshat.GnssId.QZSS): "QZSS",
+        int(gnsshat.GnssId.GLONASS): "GLONASS",
+    }
+    quality_map = {
+        int(gnsshat.SvQuality.NO_SIGNAL): "No Signal",
+        int(gnsshat.SvQuality.SEARCHING): "Searching",
+        int(gnsshat.SvQuality.SIGNAL_ACQUIRED): "Acquired",
+        int(gnsshat.SvQuality.SIGNAL_DETECTED_BUT_UNUSABLE): "Unusable",
+        int(gnsshat.SvQuality.CODE_LOCKED_AND_TIME_SYNCHRONIZED): "Code Locked",
+        int(gnsshat.SvQuality.CODE_AND_CARRIER_LOCKED_1): "Carrier Lock 1",
+        int(gnsshat.SvQuality.CODE_AND_CARRIER_LOCKED_2): "Carrier Lock 2",
+        int(gnsshat.SvQuality.CODE_AND_CARRIER_LOCKED_3): "Carrier Lock 3",
+    }
+
+    satellites_data = []
+    for sat in nav.satellites:
+        satellites_data.append({
+            'gnss_id': gnss_id_map.get(sat.gnss_id, "Unknown"),
+            'sv_id': int(sat.sv_id),
+            'cno': int(sat.cno),
+            'elevation': int(sat.elevation),
+            'azimuth': int(sat.azimuth),
+            'quality': quality_map.get(sat.quality, "Unknown"),
+            'used_in_fix': bool(sat.used_in_fix),
+            'healthy': bool(sat.healthy),
+        })
+
     return {
         'dop': dop_data,
         'geofencing': geofencing_data,
         'rf_blocks': rf_blocks_data,
+        'satellites': satellites_data,
     }
 
 

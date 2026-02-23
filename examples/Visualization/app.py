@@ -355,13 +355,11 @@ def native_reader_thread():
             if not pvt_data:
                 continue
 
-            # Set reference position on first valid fix
+            # Set reference position on first valid position (non-zero lat/lon)
             if gps_state['reference_position'] is None:
-                if pvt_data['fix_status'] == 'Active':
-                    gps_state['reference_position'] = (
-                        pvt_data['latitude'],
-                        pvt_data['longitude']
-                    )
+                lat, lon = pvt_data['latitude'], pvt_data['longitude']
+                if lat != 0.0 and lon != 0.0:
+                    gps_state['reference_position'] = (lat, lon)
                     print(f"Reference position set: {gps_state['reference_position']}")
 
             # Calculate offset from reference
@@ -657,8 +655,8 @@ def api_set_config():
             from jimmypaputto import gnsshat
             hat = gnsshat.GnssHat()
 
-            # 4. Soft hot reset
-            socketio.emit('config_progress', {'step': 'reset', 'message': 'Resetting module (cold start)...'}, namespace='/')
+            # 4. Soft hot reset — preserves almanac/ephemeris for fast re-lock
+            socketio.emit('config_progress', {'step': 'reset', 'message': 'Resetting module (hot start)...'}, namespace='/')
             hat.soft_reset_hot_start()
             time.sleep(1)
 
@@ -680,6 +678,7 @@ def api_set_config():
             socketio.emit('config_progress', {'step': 'reader', 'message': 'Starting reader thread...'}, namespace='/')
             gps_state['hat'] = hat
             gps_state['current_config'] = config
+            gps_state['reference_position'] = None  # Reset so map re-calibrates
             gps_state['running'] = True
             gps_state['thread'] = threading.Thread(target=native_reader_thread, daemon=True)
             gps_state['thread'].start()
@@ -689,13 +688,13 @@ def api_set_config():
 
         except Exception as e:
             socketio.emit('config_progress', {'step': 'error', 'message': f'Error: {str(e)}'}, namespace='/')
-            # Try to restart with previous config using cold reset
+            # Try to restart with previous config using hot start
             try:
                 if not gps_state['hat'] and not gps_state['running']:
                     from jimmypaputto import gnsshat as gs
                     hat = gs.GnssHat()
-                    hat.hard_reset_cold_start()
-                    time.sleep(5)
+                    hat.soft_reset_hot_start()
+                    time.sleep(1)
                     old_cfg = gps_state['current_config'] or create_default_config()
                     if hat.start(old_cfg):
                         gps_state['hat'] = hat

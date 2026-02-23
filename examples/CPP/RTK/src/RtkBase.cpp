@@ -126,7 +126,8 @@ auto main() -> int
         return -1;
     }
 
-    ubxHat->softResetUbloxSom_HotStart();
+    // ubxHat->softResetUbloxSom_HotStart();
+    ubxHat->hardResetUbloxSom_ColdStart();
     const bool isStartupDone = ubxHat->start(createSurveyInConfig());
     if (!isStartupDone)
     {

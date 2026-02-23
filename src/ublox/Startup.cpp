@@ -282,22 +282,37 @@ bool M9NStartup::execute()
         for (auto& b : a) b = 0xFF;
         return a;
     }();
-    commDriver_.transmitReceive(flusher, rxBuff_);
 
-    result = configurePorts(
-        ubxmsg::UBX_CFG_PRT::poll<EUbxPrt::UBX_SPI>(),
-        SpiDriver::portConfig().serialize()
-    );
+    constexpr std::array<uint32_t, 5> spiKeys = {
+        UbxCfgKeys::CFG_SPI_MAXFF,
+        UbxCfgKeys::CFG_SPI_CPOLARITY,
+        UbxCfgKeys::CFG_SPI_CPHASE,
+        UbxCfgKeys::CFG_SPI_EXTENDEDTIMEOUT,
+        UbxCfgKeys::CFG_SPI_ENABLED
+    };
+    result = configure(spiKeys);
     if (!result)
     {
         result = reconfigureCommPort();
-
         if (!result)
-        {
-            fprintf(stderr, "[Startup] Port configuration failed\r\n");
             return false;
-        }
     }
+    // commDriver_.transmitReceive(flusher, rxBuff_);
+
+    // result = configurePorts(
+    //     ubxmsg::UBX_CFG_PRT::poll<EUbxPrt::UBX_SPI>(),
+    //     SpiDriver::portConfig().serialize()
+    // );
+    // if (!result)
+    // {
+    //     result = reconfigureCommPort();
+
+    //     if (!result)
+    //     {
+    //         fprintf(stderr, "[Startup] Port configuration failed\r\n");
+    //         return false;
+    //     }
+    // }
 
     commDriver_.transmitReceive(flusher, rxBuff_);
     commDriver_.transmitReceive(flusher, rxBuff_);
@@ -433,26 +448,22 @@ bool M9NStartup::reconfigureCommPort()
 
     auto& spiDriver = static_cast<SpiDriver&>(commDriver_);
 
+    constexpr std::array<uint32_t, 5> spiKeys = {
+        UbxCfgKeys::CFG_SPI_MAXFF,
+        UbxCfgKeys::CFG_SPI_CPOLARITY,
+        UbxCfgKeys::CFG_SPI_CPHASE,
+        UbxCfgKeys::CFG_SPI_EXTENDEDTIMEOUT,
+        UbxCfgKeys::CFG_SPI_ENABLED
+    };
+
     for (const auto& spiMode : spiModesToCheck)
     {
         spiDriver.reinit(spiMode);
-        try3times([this](){
-            return configurePorts(
-                ubxmsg::UBX_CFG_PRT::poll<EUbxPrt::UBX_SPI>(),
-                SpiDriver::portConfig().serialize()
-            );
-        });
+        try3times([this, &spiKeys](){ return configure(spiKeys); });
         spiDriver.reinit(SpiDriver::expectedSpiMode);
-        result = try3times([this](){
-            return configurePorts(
-                ubxmsg::UBX_CFG_PRT::poll<EUbxPrt::UBX_SPI>(),
-                SpiDriver::portConfig().serialize()
-            );
-        });
+        result = try3times([this, &spiKeys](){ return configure(spiKeys); });
         if (result)
-        {
             break;
-        }
     }
 
     return result;
@@ -492,6 +503,21 @@ enum class CFG_TMODE_MODE : uint8_t
 };
 
 std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigValues_ = {
+    {UbxCfgKeys::CFG_SPI_MAXFF,           {0x3F}},  // 63
+    {UbxCfgKeys::CFG_SPI_CPOLARITY,       {0x00}},
+    {UbxCfgKeys::CFG_SPI_CPHASE,          {0x00}},
+    {UbxCfgKeys::CFG_SPI_EXTENDEDTIMEOUT, {0x00}},
+    {UbxCfgKeys::CFG_SPI_ENABLED,         {0x01}},
+
+    {UbxCfgKeys::CFG_SPIINPROT_UBX,    {0x01}},
+    {UbxCfgKeys::CFG_SPIINPROT_NMEA,   {0x00}},
+    {UbxCfgKeys::CFG_SPIINPROT_RTCM3X, {0x00}},
+    {UbxCfgKeys::CFG_SPIINPROT_SPARTN, {0x00}},
+
+    {UbxCfgKeys::CFG_SPIOUTPROT_UBX,    {0x01}},
+    {UbxCfgKeys::CFG_SPIOUTPROT_NMEA,   {0x00}},
+    {UbxCfgKeys::CFG_SPIOUTPROT_RTCM3X, {0x00}},
+
     {UbxCfgKeys::CFG_UART1_ENABLED,  {0x01}},
     {UbxCfgKeys::CFG_UART1_BAUDRATE, {0x00, 0xC2, 0x01, 0x00}},  // 115200
     {UbxCfgKeys::CFG_UART1_DATABITS, {static_cast<uint8_t>(CFG_UART1_DATABITS::EIGHT)}},
@@ -597,7 +623,8 @@ bool StartupBase::configure(std::span<const uint32_t> keys)
         keysValuesToReconfigure
     ).serialize();
 
-    bool& set_ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_VALSET)];
+    bool& set_ack =
+        configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_VALSET)];
     set_ack = false;
     std::fill(rxBuff_.begin(), rxBuff_.end(), 0);
     commDriver_.transmitReceive(serializedValset, rxBuff_);
@@ -750,9 +777,7 @@ bool F10TStartup::reconfigureCommPort()
             return configure(uart1Keys);
         });
         if (result)
-        {
             break;
-        }
     }
 
     return result;

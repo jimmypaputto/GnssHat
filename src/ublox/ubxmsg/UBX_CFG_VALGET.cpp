@@ -10,6 +10,21 @@ namespace JimmyPaputto::ubxmsg
 {
 
 std::unordered_map<uint32_t, uint8_t> ConfigKeySizeMap::keySizes_ = {
+    {UbxCfgKeys::CFG_SPI_MAXFF,           1}, 
+    {UbxCfgKeys::CFG_SPI_CPOLARITY,       1},
+    {UbxCfgKeys::CFG_SPI_CPHASE,          1},
+    {UbxCfgKeys::CFG_SPI_EXTENDEDTIMEOUT, 1},
+    {UbxCfgKeys::CFG_SPI_ENABLED,         1},
+
+    {UbxCfgKeys::CFG_SPIINPROT_UBX,    1}, 
+    {UbxCfgKeys::CFG_SPIINPROT_NMEA,   4},
+    {UbxCfgKeys::CFG_SPIINPROT_RTCM3X, 1},
+    {UbxCfgKeys::CFG_SPIINPROT_SPARTN, 1},
+
+    {UbxCfgKeys::CFG_SPIOUTPROT_UBX,    1}, 
+    {UbxCfgKeys::CFG_SPIOUTPROT_NMEA,   4},
+    {UbxCfgKeys::CFG_SPIOUTPROT_RTCM3X, 1},
+
     {UbxCfgKeys::CFG_UART1_ENABLED,  1}, 
     {UbxCfgKeys::CFG_UART1_BAUDRATE, 4},
     {UbxCfgKeys::CFG_UART1_DATABITS, 1},
@@ -56,46 +71,6 @@ std::unordered_map<uint32_t, uint8_t> ConfigKeySizeMap::keySizes_ = {
     {UbxCfgKeys::CFG_TMODE_MODE,           1},
     {UbxCfgKeys::CFG_TMODE_SVIN_MIN_DUR,   4},
     {UbxCfgKeys::CFG_TMODE_SVIN_ACC_LIMIT, 4},
-
-    // Protocol Output Configuration (U1)
-    {UbxCfgKeys::CFG_MSGOUT_UBX_SPI, 1},
-    {UbxCfgKeys::CFG_MSGOUT_NMEA_SPI, 1},
-    {UbxCfgKeys::CFG_MSGOUT_RTCM3_SPI, 1},
-    {UbxCfgKeys::CFG_MSGOUT_UBX_UART1, 1},
-    {UbxCfgKeys::CFG_MSGOUT_NMEA_UART1, 1},
-    {UbxCfgKeys::CFG_MSGOUT_RTCM3_UART1, 1},
-    
-    // Protocol Input Configuration (U1)
-    {UbxCfgKeys::CFG_MSGIN_UBX_SPI, 1},
-    {UbxCfgKeys::CFG_MSGIN_NMEA_SPI, 1},
-    {UbxCfgKeys::CFG_MSGIN_RTCM3_SPI, 1},
-    {UbxCfgKeys::CFG_MSGIN_UBX_UART1, 1},
-    {UbxCfgKeys::CFG_MSGIN_NMEA_UART1, 1},
-    {UbxCfgKeys::CFG_MSGIN_RTCM3_UART1, 1},
-    
-    // Rate Configuration (U2)
-    {UbxCfgKeys::CFG_RATE_MEAS, 2},
-    {UbxCfgKeys::CFG_RATE_NAV, 2},  
-    {UbxCfgKeys::CFG_RATE_TIMEREF, 2},
-    
-    // Navigation Configuration (U2)
-    {UbxCfgKeys::CFG_NAVSPG_DYNMODEL, 2},
-    
-    // Timepulse Configuration
-    {UbxCfgKeys::CFG_TP_TP1, 1},                 // U1
-    {UbxCfgKeys::CFG_TP_PULSE_DEF, 2},           // U2
-    {UbxCfgKeys::CFG_TP_PULSE_LENGTH_DEF, 2},    // U2
-    {UbxCfgKeys::CFG_TP_ANT_CABLEDELAY, 2},      // I2
-    {UbxCfgKeys::CFG_TP_PERIOD_TP1, 4},          // U4
-    {UbxCfgKeys::CFG_TP_PERIOD_LOCK_TP1, 4},     // U4
-    {UbxCfgKeys::CFG_TP_LEN_TP1, 4},             // U4
-    {UbxCfgKeys::CFG_TP_LEN_LOCK_TP1, 4},        // U4
-    {UbxCfgKeys::CFG_TP_USER_DELAY_TP1, 4},      // I4
-    {UbxCfgKeys::CFG_TP_SYNC_GNSS_TP1, 1},       // U1
-    {UbxCfgKeys::CFG_TP_USE_LOCKED_TP1, 1},      // U1
-    {UbxCfgKeys::CFG_TP_ALIGN_TO_TOW_TP1, 1},    // U1
-    {UbxCfgKeys::CFG_TP_POL_TP1, 1},             // U1
-    {UbxCfgKeys::CFG_TP_TIMEGRID_TP1, 1},        // U1
 };
 
 }  // JimmyPaputto::ubxmsg

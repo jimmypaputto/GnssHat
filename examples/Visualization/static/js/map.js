@@ -40,6 +40,9 @@ class GPSMap {
         const container = this.canvas.parentElement;
         const rect = container.getBoundingClientRect();
         
+        // Skip if container is hidden (tab not active) — dimensions would be 0
+        if (rect.width < 1 || rect.height < 1) return;
+        
         // Set display size (CSS pixels)
         this.canvas.style.width = '100%';
         this.canvas.style.height = '100%';
@@ -548,6 +551,10 @@ function drawSkyPlot(satellites) {
     const canvas = document.getElementById('sky-canvas');
     if (!canvas) return;
 
+    // Reset inline size so container can grow on window maximize
+    canvas.style.width = '';
+    canvas.style.height = '';
+
     const container = canvas.parentElement;
     const rect = container.getBoundingClientRect();
     const size = Math.min(rect.width, rect.height);
@@ -691,7 +698,25 @@ function updateSatTable(satellites) {
 function updateSkyView(satellites) {
     drawSkyPlot(satellites);
     updateSatTable(satellites);
+
+    // Constrain table height to 99% of sky canvas height
+    const skyCanvas = document.getElementById('sky-canvas');
+    const tableWrap = document.querySelector('.skyview-table-wrap');
+    if (skyCanvas && tableWrap) {
+        const canvasH = skyCanvas.getBoundingClientRect().height;
+        if (canvasH > 50) {
+            tableWrap.style.maxHeight = Math.floor(canvasH * 0.99) + 'px';
+        }
+    }
 }
+
+// Re-draw sky view on window resize so it scales back up
+window.addEventListener('resize', () => {
+    const skyviewEl = document.getElementById('skyview-map');
+    if (skyviewEl && skyviewEl.classList.contains('active') && window.lastGPSData && window.lastGPSData.satellites) {
+        updateSkyView(window.lastGPSData.satellites);
+    }
+});
 
 // =======================
 // OpenStreetMap Integration
@@ -813,8 +838,13 @@ function setupTabs() {
             const activeView = document.getElementById(`${tabName}-map`);
             if (activeView) {
                 activeView.classList.add('active');
-                activeView.style.display = 'block';
+                activeView.style.display = tabName === 'skyview' ? 'flex' : 'block';
                 
+                // Re-setup relative map canvas when switching back
+                if (tabName === 'relative' && map) {
+                    setTimeout(() => map.setupCanvas(), 50);
+                }
+
                 // Initialize OSM map when terrain tab is first opened
                 if (tabName === 'terrain' && !osmMap) {
                     setTimeout(() => {

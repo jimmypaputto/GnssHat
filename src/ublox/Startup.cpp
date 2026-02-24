@@ -618,76 +618,78 @@ bool StartupBase::configure(std::span<const uint32_t> keys)
     if (keys.empty())
         return true;
 
-    configRegistry_.clearStoredConfigValues();
-    const auto serializedPoll = ubxmsg::UBX_CFG_VALGET::poll(keys);
+    return try3times([&]() -> bool {
+        configRegistry_.clearStoredConfigValues();
+        const auto serializedPoll = ubxmsg::UBX_CFG_VALGET::poll(keys);
 
-    if (!awaitAck(serializedPoll, EUbxMsg::UBX_CFG_VALGET))
-    {
-        fprintf(
-            stderr,
-            "[Startup] Poll failed for key group: [0x%08X, ...]\r\n",
-            keys.front()
-        );
-        return false;
-    }
-
-    std::vector<ubxmsg::ConfigKeyValue> mismatches;
-    for (const auto key : keys)
-    {
-        const auto expected = getExpectedValue(key);
-        if (expected.empty())
+        if (!awaitAck(serializedPoll, EUbxMsg::UBX_CFG_VALGET))
         {
             fprintf(
                 stderr,
-                "[Startup] No expected value for keys: [0x%08X, ...]\r\n",
-                key
+                "[Startup] Poll failed for key group: [0x%08X, ...]\r\n",
+                keys.front()
             );
             return false;
         }
 
-        if (configRegistry_.getStoredConfigValue(key) != expected)
+        std::vector<ubxmsg::ConfigKeyValue> mismatches;
+        for (const auto key : keys)
+        {
+            const auto expected = getExpectedValue(key);
+            if (expected.empty())
+            {
+                fprintf(
+                    stderr,
+                    "[Startup] No expected value for keys: [0x%08X, ...]\r\n",
+                    key
+                );
+                return false;
+            }
+
+            if (configRegistry_.getStoredConfigValue(key) != expected)
+            {
+                fprintf(
+                    stderr,
+                    "[Startup] Key 0x%08X value mismatch\r\n",
+                    key
+                );
+                mismatches.push_back({.key = key, .value = expected});
+            }
+        }
+
+        if (mismatches.empty())
+            return true;
+
+        const auto serializedValset = ubxmsg::UBX_CFG_VALSET(
+            0x00,
+            EUbxMemoryLayer::RAM,
+            mismatches
+        ).serialize();
+
+        if (!awaitAck(serializedValset, EUbxMsg::UBX_CFG_VALSET))
         {
             fprintf(
                 stderr,
-                "[Startup] Key 0x%08X value mismatch\r\n",
-                key
+                "[Startup] VALSET failed for key group: [0x%08X, ...]\r\n",
+                keys.front()
             );
-            mismatches.push_back({.key = key, .value = expected});
+            return false;
         }
-    }
 
-    if (mismatches.empty())
-        return true;
+        configRegistry_.clearStoredConfigValues();
 
-    const auto serializedValset = ubxmsg::UBX_CFG_VALSET(
-        0x00,
-        EUbxMemoryLayer::RAM,
-        mismatches
-    ).serialize();
+        if (!awaitAck(serializedPoll, EUbxMsg::UBX_CFG_VALGET))
+        {
+            fprintf(
+                stderr,
+                "[Startup] Verification poll failed for key group: [0x%08X, ...]\r\n",
+                keys.front()
+            );
+            return false;
+        }
 
-    if (!awaitAck(serializedValset, EUbxMsg::UBX_CFG_VALSET))
-    {
-        fprintf(
-            stderr,
-            "[Startup] VALSET failed for key group: [0x%08X, ...]\r\n",
-            keys.front()
-        );
-        return false;
-    }
-
-    configRegistry_.clearStoredConfigValues();
-
-    if (!awaitAck(serializedPoll, EUbxMsg::UBX_CFG_VALGET))
-    {
-        fprintf(
-            stderr,
-            "[Startup] Verification poll failed for key group: [0x%08X, ...]\r\n",
-            keys.front()
-        );
-        return false;
-    }
-
-    return verifyConfig(keys);
+        return verifyConfig(keys);
+    });
 }
 
 bool F10TStartup::execute()

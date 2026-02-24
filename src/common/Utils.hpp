@@ -104,6 +104,23 @@ std::vector<uint8_t> serializeInt2LittleEndian(integer value)
 }
 
 template <typename T>
+std::vector<uint8_t> floatingToLittleEndian(T value)
+{
+    static_assert(
+        std::is_same<T, float>::value || std::is_same<T, double>::value,
+        "Only float or double supported"
+    );
+    std::vector<uint8_t> bytes(sizeof(T));
+    std::memcpy(bytes.data(), &value, sizeof(T));
+
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    std::reverse(bytes.begin(), bytes.end());
+#endif
+
+    return bytes;
+}
+
+template <typename T>
 std::vector<T> operator + (const std::vector<T>& vector1, const std::vector<T>& vector2)
 {
     std::vector<T> output;

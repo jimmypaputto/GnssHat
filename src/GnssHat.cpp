@@ -75,8 +75,7 @@ class GnssHat : public IGnssHat
 {
 public:
     explicit GnssHat(
-        std::unique_ptr<ICommDriver>&& commDriver,
-        const EUbxPrt portId
+        std::unique_ptr<ICommDriver>&& commDriver
     );
     ~GnssHat() override;
 
@@ -112,7 +111,6 @@ protected:
     Notifier timepulseNotifier_;
     Notifier navigationNotifier_;
     GnssConfig config_;
-    const EUbxPrt portId_;
 
     std::jthread ubloxThread_;
     std::atomic<bool> timepulseEnabled_{false};
@@ -123,8 +121,7 @@ class GnssL1Hat : public GnssHat
 public:
     explicit GnssL1Hat()
     :   GnssHat(
-            std::make_unique<SpiDriver>(),
-            EUbxPrt::UBX_SPI
+            std::make_unique<SpiDriver>()
         )
     {}
 
@@ -146,8 +143,7 @@ class GnssL1L5TimeHat : public GnssHat
 public:
     explicit GnssL1L5TimeHat()
     :   GnssHat(
-            std::make_unique<UartDriver>(),
-            EUbxPrt::UBX_UART_1
+            std::make_unique<UartDriver>()
         )
     {}
 
@@ -169,8 +165,7 @@ class GnssL1L5TRtkHat : public GnssHat
 public:
     explicit GnssL1L5TRtkHat()
     :   GnssHat(
-            std::make_unique<SpiDriver>(),
-            EUbxPrt::UBX_SPI
+            std::make_unique<SpiDriver>()
         ),
         rtk_(nullptr)
     {}
@@ -228,8 +223,7 @@ IGnssHat* IGnssHat::create()
     std::terminate();
 }
 
-GnssHat::GnssHat(std::unique_ptr<ICommDriver>&& commDriver,
-    const EUbxPrt portId)
+GnssHat::GnssHat(std::unique_ptr<ICommDriver>&& commDriver)
 :   commDriver_(std::move(commDriver)),
     configRegistry_(nullptr),
     ubxParser_(nullptr),
@@ -238,8 +232,7 @@ GnssHat::GnssHat(std::unique_ptr<ICommDriver>&& commDriver,
     gnss_(Gnss::instance()),
     txReady_(nullptr),
     timepulse_(nullptr),
-    nmeaForwarder_(nullptr),
-    portId_(portId)
+    nmeaForwarder_(nullptr)
 {
 }
 
@@ -288,7 +281,7 @@ bool GnssHat::start(const GnssConfig& config)
     }
 
     config_ = config;
-    configRegistry_ = std::make_unique<UbloxConfigRegistry>(config_, portId_);
+    configRegistry_ = std::make_unique<UbloxConfigRegistry>(config_);
     constexpr bool callbackNotificationEnabled =
         std::is_same_v<RunStrategy, F10TRun>;
     ubxParser_ = std::make_unique<UbxParser>(

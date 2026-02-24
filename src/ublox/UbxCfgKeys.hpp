@@ -17,14 +17,14 @@ constexpr uint32_t CFG_SPI_CPHASE          = 0x10640003;
 constexpr uint32_t CFG_SPI_EXTENDEDTIMEOUT = 0x10640005;
 constexpr uint32_t CFG_SPI_ENABLED         = 0x10640006;
 
-constexpr uint32_t CFG_SPIINPROT_UBX    = 0x10640002;
-constexpr uint32_t CFG_SPIINPROT_NMEA   = 0x10640003;
-constexpr uint32_t CFG_SPIINPROT_RTCM3X = 0x10640005;
-constexpr uint32_t CFG_SPIINPROT_SPARTN = 0x10640006;
+constexpr uint32_t CFG_SPIINPROT_UBX    = 0x10790001;
+constexpr uint32_t CFG_SPIINPROT_NMEA   = 0x10790002;
+constexpr uint32_t CFG_SPIINPROT_RTCM3X = 0x10790004;
+constexpr uint32_t CFG_SPIINPROT_SPARTN = 0x10790005;
 
-constexpr uint32_t CFG_SPIOUTPROT_UBX    = 0x10640002;
-constexpr uint32_t CFG_SPIOUTPROT_NMEA   = 0x10640003;
-constexpr uint32_t CFG_SPIOUTPROT_RTCM3X = 0x10640005;
+constexpr uint32_t CFG_SPIOUTPROT_UBX    = 0x107a0001;
+constexpr uint32_t CFG_SPIOUTPROT_NMEA   = 0x107a0002;
+constexpr uint32_t CFG_SPIOUTPROT_RTCM3X = 0x107a0004;
 
 constexpr uint32_t CFG_UART1_BAUDRATE = 0x40520001;
 constexpr uint32_t CFG_UART1_STOPBITS = 0x20520002;
@@ -53,9 +53,35 @@ constexpr uint32_t CFG_TXREADY_PIN       = 0x20a20003;
 constexpr uint32_t CFG_TXREADY_THRESHOLD = 0x30a20004;
 constexpr uint32_t CFG_TXREADY_INTERFACE = 0x20a20005;
 
+constexpr uint32_t CFG_RATE_MEAS    = 0x30210001;
+constexpr uint32_t CFG_RATE_NAV     = 0x30210002;
+constexpr uint32_t CFG_RATE_TIMEREF = 0x20210003;
+
+constexpr uint32_t CFG_NAVSPG_DYNMODEL = 0x20110021;
+
+constexpr uint32_t CFG_TP_TP1_ENA          = 0x10050007;
+constexpr uint32_t CFG_TP_PULSE_DEF        = 0x20050023;
+constexpr uint32_t CFG_TP_PULSE_LENGTH_DEF = 0x20050030;
+constexpr uint32_t CFG_TP_FREQ_TP1         = 0x40050024;
+constexpr uint32_t CFG_TP_FREQ_LOCK_TP1    = 0x40050025;
+constexpr uint32_t CFG_TP_DUTY_TP1         = 0x5005002a;
+constexpr uint32_t CFG_TP_DUTY_LOCK_TP1    = 0x5005002b;
+constexpr uint32_t CFG_TP_ANT_CABLEDELAY   = 0x30050001;
+constexpr uint32_t CFG_TP_USER_DELAY_TP1   = 0x40050006;
+constexpr uint32_t CFG_TP_POL_TP1          = 0x1005000b;
+constexpr uint32_t CFG_TP_TIMEGRID_TP1     = 0x2005000c;
+
+// CFG-MSGOUT UART1
 constexpr uint32_t CFG_MSGOUT_UBX_MON_RF_UART1  = 0x2091035a;
 constexpr uint32_t CFG_MSGOUT_UBX_NAV_DOP_UART1 = 0x20910039;
 constexpr uint32_t CFG_MSGOUT_UBX_NAV_PVT_UART1 = 0x20910007;
+
+// CFG-MSGOUT SPI
+constexpr uint32_t CFG_MSGOUT_UBX_MON_RF_SPI       = 0x2091035d;
+constexpr uint32_t CFG_MSGOUT_UBX_NAV_DOP_SPI      = 0x2091003c;
+constexpr uint32_t CFG_MSGOUT_UBX_NAV_PVT_SPI      = 0x2091000a;
+constexpr uint32_t CFG_MSGOUT_UBX_NAV_SAT_SPI      = 0x20910019;
+constexpr uint32_t CFG_MSGOUT_UBX_NAV_GEOFENCE_SPI = 0x209100a5;
 
 constexpr uint32_t CFG_MSGOUT_RTCM_3X_TYPE1005_UART2 = 0x209102bf;
 constexpr uint32_t CFG_MSGOUT_RTCM_3X_TYPE1074_UART2 = 0x20910360;
@@ -67,6 +93,28 @@ constexpr uint32_t CFG_MSGOUT_RTCM_3X_TYPE1097_UART2 = 0x2091031a;
 constexpr uint32_t CFG_MSGOUT_RTCM_3X_TYPE1124_UART2 = 0x2091036f;
 constexpr uint32_t CFG_MSGOUT_RTCM_3X_TYPE1127_UART2 = 0x209102d8;
 constexpr uint32_t CFG_MSGOUT_RTCM_3X_TYPE1230_UART2 = 0x20910305;
+
+// CFG-GEOFENCE
+constexpr uint32_t CFG_GEOFENCE_CONFLVL     = 0x20240011;
+constexpr uint32_t CFG_GEOFENCE_USE_PIO     = 0x10240012;
+constexpr uint32_t CFG_GEOFENCE_PINPOL      = 0x20240013;
+constexpr uint32_t CFG_GEOFENCE_PIN         = 0x20240014;
+constexpr uint32_t CFG_GEOFENCE_USE_FENCE1  = 0x10240020;
+constexpr uint32_t CFG_GEOFENCE_FENCE1_LAT  = 0x40240021;
+constexpr uint32_t CFG_GEOFENCE_FENCE1_LON  = 0x40240022;
+constexpr uint32_t CFG_GEOFENCE_FENCE1_RAD  = 0x40240023;
+constexpr uint32_t CFG_GEOFENCE_USE_FENCE2  = 0x10240030;
+constexpr uint32_t CFG_GEOFENCE_FENCE2_LAT  = 0x40240031;
+constexpr uint32_t CFG_GEOFENCE_FENCE2_LON  = 0x40240032;
+constexpr uint32_t CFG_GEOFENCE_FENCE2_RAD  = 0x40240033;
+constexpr uint32_t CFG_GEOFENCE_USE_FENCE3  = 0x10240040;
+constexpr uint32_t CFG_GEOFENCE_FENCE3_LAT  = 0x40240041;
+constexpr uint32_t CFG_GEOFENCE_FENCE3_LON  = 0x40240042;
+constexpr uint32_t CFG_GEOFENCE_FENCE3_RAD  = 0x40240043;
+constexpr uint32_t CFG_GEOFENCE_USE_FENCE4  = 0x10240050;
+constexpr uint32_t CFG_GEOFENCE_FENCE4_LAT  = 0x40240051;
+constexpr uint32_t CFG_GEOFENCE_FENCE4_LON  = 0x40240052;
+constexpr uint32_t CFG_GEOFENCE_FENCE4_RAD  = 0x40240053;
 
 constexpr uint32_t CFG_TMODE_MODE           = 0x20030001;
 constexpr uint32_t CFG_TMODE_POS_TYPE       = 0x20030002;

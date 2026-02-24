@@ -70,23 +70,6 @@ void SpiDriver::getRxBuff(uint8_t* rxBuff, const uint32_t size)
     }
 }
 
-ubxmsg::UBX_CFG_PRT_SPI SpiDriver::portConfig()
-{
-    using namespace ubxmsg;
-    return UBX_CFG_PRT_SPI(
-        TxReady {
-            .enable = true,
-            .polarity = TxReady::HighActive,
-            .pin = 7,
-            .threshold = 24
-        },
-        Mode<EUbxPrt::UBX_SPI> { .spiMode = SpiDriver::expectedSpiMode, .ffCnt = 63 },
-        ProtoMask { .ubx = true, .nmea = false, .rtcm = false, .rtcm3 = false },
-        ProtoMask { .ubx = true, .nmea = false, .rtcm = false, .rtcm3 = false },
-        Flags { .extendedTxTimeout = false }
-    );
-}
-
 void SpiDriver::init(const uint8_t spiMode)
 {
     spiFd_ = open(spiDevice_, O_RDWR);

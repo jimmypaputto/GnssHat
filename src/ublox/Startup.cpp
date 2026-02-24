@@ -4,9 +4,11 @@
 
 #include "ublox/Startup.hpp"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <thread>
 #include <variant>
 
@@ -15,14 +17,8 @@
 #include "ublox/UartDriver.hpp"
 #include "ublox/UbxCfgKeys.hpp"
 #include "ublox/ubxmsg/UBX_CFG_CFG.hpp"
-#include "ublox/ubxmsg/UBX_CFG_NAV5.hpp"
 #include "ublox/ubxmsg/UBX_CFG_VALGET.hpp"
 #include "ublox/ubxmsg/UBX_CFG_VALSET.hpp"
-#include "ublox/ubxmsg/UBX_MON_RF.hpp"
-#include "ublox/ubxmsg/UBX_NAV_DOP.hpp"
-#include "ublox/ubxmsg/UBX_NAV_GEOFENCE.hpp"
-#include "ublox/ubxmsg/UBX_NAV_PVT.hpp"
-#include "ublox/ubxmsg/UBX_NAV_SAT.hpp"
 
 
 namespace JimmyPaputto
@@ -35,227 +31,8 @@ StartupBase::StartupBase(ICommDriver& commDriver,
     ubxParser_(ubxParser),
     rxBuff_(rxBuffSize)
 {
-}
-
-bool StartupBase::configurePorts(std::span<const uint8_t> serializedPoll,
-    std::span<const uint8_t> serializedConfig)
-{
-    const auto configurePortsImpl_ =
-        [this, &serializedPoll, &serializedConfig]() -> bool {
-            if (checkPortsConfig(serializedPoll))
-            {
-                return true;
-            }
-
-            if (!sendPortsConfig(serializedConfig))
-            {
-                return false;
-            }
-
-            return checkPortsConfig(serializedPoll);
-        };
-
-    return try3times(configurePortsImpl_);
-}
-
-bool StartupBase::checkPortsConfig(std::span<const uint8_t> serializedPoll)
-{
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_PRT)];
-    ack = false;
-    commDriver_.transmitReceive(serializedPoll, rxBuff_);
-    ubxParser_.parse(rxBuff_);
-    return ack && configRegistry_.isPortConfigured();  // ogar
-}
-
-bool StartupBase::sendPortsConfig(std::span<const uint8_t> serializedConfig)
-{
-    configRegistry_.shouldSaveConfigToFlash(true);
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_PRT)];
-    ack = false;
-    commDriver_.transmitReceive(serializedConfig, rxBuff_);
-    ubxParser_.parse(rxBuff_);
-    return ack;
-}
-
-bool StartupBase::configureRate()
-{
-    if (checkRateConfig())
-    {
-        return true;
-    }
-
-    if (!sendRateConfig())
-    {
-        return false;
-    }
-
-    return checkRateConfig();
-}
-
-bool StartupBase::checkRateConfig()
-{
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_RATE)];
-    ack = false;
-    commDriver_.transmitReceive(ubxmsg::UBX_CFG_RATE::poll(), rxBuff_);
-    ubxParser_.parse(rxBuff_);
-    return ack && configRegistry_.isRateCorrect();
-}
-
-bool StartupBase::sendRateConfig()
-{
-    configRegistry_.shouldSaveConfigToFlash(true);
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_RATE)];
-    ack = false;
-    const auto& serializedRateConfig =
-        configRegistry_.rateConfig().serialize();
-    commDriver_.transmitReceive(serializedRateConfig, rxBuff_);
-    ubxParser_.parse(rxBuff_);
-    return ack;
-}
-
-bool StartupBase::configureTimepulse()
-{
-    if (checkTimepulseConfig())
-    {
-        return true;
-    }
-
-    if (!sendTimepulseConfig())
-    {
-        return false;
-    }
-
-    return checkTimepulseConfig();
-}
-
-bool StartupBase::checkTimepulseConfig()
-{
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_TP5)];
-    ack = false;
-    commDriver_.transmitReceive(ubxmsg::UBX_CFG_TP5::poll(), rxBuff_);
-    ubxParser_.parse(rxBuff_);
-    return ack && configRegistry_.isTimepulseConfigCorrect();
-}
-
-bool StartupBase::sendTimepulseConfig()
-{
-    configRegistry_.shouldSaveConfigToFlash(true);
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_TP5)];
-    ack = false;
-    const auto& serializedTimepulseConfig =
-        configRegistry_.timepulseConfig().serialize();
-    commDriver_.transmitReceive(serializedTimepulseConfig, rxBuff_);
-    ubxParser_.parse(rxBuff_);
-    return ack;
-}
-
-bool StartupBase::configureGeofences()
-{
-    if (checkGeofencesConfig())
-    {
-        return true;
-    }
-
-    if (!sendGeofencesConfig())
-    {
-        return false;
-    }
-
-    return checkGeofencesConfig();
-}
-
-bool StartupBase::checkGeofencesConfig()
-{
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_GEOFENCE)];
-    ack = false;
-    commDriver_.transmitReceive(ubxmsg::UBX_CFG_GEOFENCE::poll(), rxBuff_);
-    ubxParser_.parse(rxBuff_);
-    return ack && configRegistry_.isGeofencingCorrect();
-}
-
-bool StartupBase::sendGeofencesConfig()
-{
-    configRegistry_.shouldSaveConfigToFlash(true);
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_GEOFENCE)];
-    ack = false;
-    commDriver_.transmitReceive(
-        configRegistry_.geofencingConfig().serialize(), rxBuff_
-    );
-    ubxParser_.parse(rxBuff_);
-    return ack;
-}
-
-bool StartupBase::configureDynamicModel()
-{
-    if (checkDynamicModel())
-    {
-        return true;
-    }
-
-    if (!sendDynamicModel())
-    {
-        return false;
-    }
-
-    return checkDynamicModel();
-}
-
-bool StartupBase::checkDynamicModel()
-{
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_NAV5)];
-    ack = false;
-    commDriver_.transmitReceive(ubxmsg::UBX_CFG_NAV5::poll(), rxBuff_);
-    ubxParser_.parse(rxBuff_);
-    return ack && configRegistry_.isDynamicModelCorrect();
-}
-
-bool StartupBase::sendDynamicModel()
-{
-    configRegistry_.shouldSaveConfigToFlash(true);
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_NAV5)];
-    ack = false;
-    const ubxmsg::UBX_CFG_NAV5 ubxCfgNav5(configRegistry_.dynamicModel());
-    commDriver_.transmitReceive(ubxCfgNav5.serialize(), rxBuff_);
-    ubxParser_.parse(rxBuff_);
-    return ack;
-}
-
-template<typename UbxMsg, EUbxMsg eUbxMsg>
-bool StartupBase::configureUbxMsgSendrate()
-{
-    if (checkUbxMsgSendrate<UbxMsg, eUbxMsg>())
-    {
-        return true;
-    }
-
-    if (!sendUbxMsgSendrate<UbxMsg, eUbxMsg>())
-    {
-        return false;
-    }
-
-    return checkUbxMsgSendrate<UbxMsg, eUbxMsg>();
-}
-
-template<typename UbxMsg, EUbxMsg eUbxMsg>
-bool StartupBase::checkUbxMsgSendrate()
-{
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_MSG)];
-    ack = false;
-    commDriver_.transmitReceive(ubxmsg::UBX_CFG_MSG::poll(eUbxMsg), rxBuff_);
-    ubxParser_.parse(rxBuff_);
-    return ack && configRegistry_.isMsgSendrateCorrect();  // podejrzane, ogar
-}
-
-template<typename UbxMsg, EUbxMsg eUbxMsg>
-bool StartupBase::sendUbxMsgSendrate()
-{
-    configRegistry_.shouldSaveConfigToFlash(true);
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_MSG)];
-    ack = false;
-    const auto& serializedMsgCfg = configRegistry_.cfgMsg(eUbxMsg).serialize();
-    commDriver_.transmitReceive(serializedMsgCfg, rxBuff_);
-    ubxParser_.parse(rxBuff_);
-    return ack;
+    timepulsePinConfigKeys_.reserve(11);
+    timepulsePinConfigKeys_.push_back(UbxCfgKeys::CFG_TP_TP1_ENA);
 }
 
 bool StartupBase::saveCurrentConfigToFlash()
@@ -267,10 +44,204 @@ bool StartupBase::saveCurrentConfigToFlash()
     return ack;
 }
 
+enum class E_CFG_PULSE_DEF : uint8_t
+{
+    PERIOD = 0x00,
+    FREQ   = 0x01
+};
+
+enum class E_CFG_PULSE_LENGTH_DEF : uint8_t
+{
+    RATIO  = 0x00,
+    LENGTH = 0x01
+};
+
+enum class E_CFG_TP_TIMEGRID_TP1 : uint8_t
+{
+    UTC   = 0,
+    GPS   = 1,
+    GLO   = 2,
+    BDS   = 3,
+    GAL   = 4,
+    NAVIC = 5,
+    LOCAL = 15
+};
+
+void StartupBase::timepulsePinConfig2Registers(const TimepulsePinConfig& tpc)
+{
+    using namespace UbxCfgKeys;
+    auto& ecv = StartupBase::expectedConfigValues_;
+
+    if (!tpc.active)
+    {
+        ecv[CFG_TP_TP1_ENA] = {0x00};
+        return;
+    }
+
+    timepulsePinConfigKeys_.insert(
+        timepulsePinConfigKeys_.end(),
+        {
+            CFG_TP_PULSE_DEF,
+            CFG_TP_PULSE_LENGTH_DEF,
+            CFG_TP_FREQ_TP1,
+            CFG_TP_FREQ_LOCK_TP1,
+            CFG_TP_DUTY_TP1,
+            CFG_TP_DUTY_LOCK_TP1,
+            CFG_TP_ANT_CABLEDELAY,
+            CFG_TP_USER_DELAY_TP1,
+            CFG_TP_POL_TP1,
+            CFG_TP_TIMEGRID_TP1
+        }
+    );
+
+    ecv[CFG_TP_TP1_ENA] = {0x01};
+    ecv[CFG_TP_PULSE_DEF] = {to_underlying(E_CFG_PULSE_DEF::FREQ)};
+    ecv[CFG_TP_PULSE_LENGTH_DEF] =
+        {to_underlying(E_CFG_PULSE_LENGTH_DEF::RATIO)};
+    const uint32_t freqNoFix = tpc.pulseWhenNoFix.has_value() ?
+        tpc.pulseWhenNoFix->frequency : 0;
+    ecv[CFG_TP_FREQ_TP1] = serializeInt2LittleEndian<uint32_t>(freqNoFix);
+    ecv[CFG_TP_FREQ_LOCK_TP1] = serializeInt2LittleEndian<uint32_t>(
+        tpc.fixedPulse.frequency
+    );
+    const double pulseWidthNoFix = tpc.pulseWhenNoFix.has_value() ?
+        tpc.pulseWhenNoFix->pulseWidth * 100.0 : 0.0;
+    ecv[CFG_TP_DUTY_TP1] = floatingToLittleEndian<double>(pulseWidthNoFix);
+    ecv[CFG_TP_DUTY_LOCK_TP1] = floatingToLittleEndian<double>(
+        tpc.fixedPulse.pulseWidth * 100.0
+    );
+    ecv[CFG_TP_ANT_CABLEDELAY] = {0x00, 0x00};
+    ecv[CFG_TP_USER_DELAY_TP1] = {0x00, 0x00, 0x00, 0x00};
+    ecv[CFG_TP_POL_TP1] = {to_underlying(tpc.polarity)};
+    ecv[CFG_TP_TIMEGRID_TP1] = {to_underlying(E_CFG_TP_TIMEGRID_TP1::UTC)};
+}
+
+enum class E_CFG_RATE_TIMEREF : uint8_t
+{
+    UTC   = 0,
+    GPS   = 1,
+    GLO   = 2,
+    BDS   = 3,
+    GAL   = 4,
+    NAVIC = 5
+};
+
+void StartupBase::rate2Registers(const uint16_t measurementRate_Hz)
+{
+    using namespace UbxCfgKeys;
+    auto& ecv = StartupBase::expectedConfigValues_;
+
+    const uint16_t measRate_ms = 1000U / measurementRate_Hz;
+    ecv[CFG_RATE_MEAS] = serializeInt2LittleEndian<uint16_t>(measRate_ms);
+    const uint16_t navRate = 1;
+    ecv[CFG_RATE_NAV] = serializeInt2LittleEndian<uint16_t>(navRate);
+    ecv[CFG_RATE_TIMEREF] = {to_underlying(E_CFG_RATE_TIMEREF::UTC)};
+}
+
 M9NStartup::M9NStartup(ICommDriver& commDriver,
     IUbloxConfigRegistry& configRegistry, UbxParser& ubxParser)
 :	StartupBase(commDriver, configRegistry, ubxParser)
 {
+    const auto& config = configRegistry.getGnssConfig();
+    auto& ecv = StartupBase::expectedConfigValues_;
+
+    ecv[UbxCfgKeys::CFG_NAVSPG_DYNMODEL] = {to_underlying(config.dynamicModel)};
+    rate2Registers(config.measurementRate_Hz);
+    timepulsePinConfig2Registers(config.timepulsePinConfig);
+
+    constexpr uint32_t fenceUseKeys[4] = {
+        UbxCfgKeys::CFG_GEOFENCE_USE_FENCE1,
+        UbxCfgKeys::CFG_GEOFENCE_USE_FENCE2,
+        UbxCfgKeys::CFG_GEOFENCE_USE_FENCE3,
+        UbxCfgKeys::CFG_GEOFENCE_USE_FENCE4
+    };
+    constexpr uint32_t fenceLatKeys[4] = {
+        UbxCfgKeys::CFG_GEOFENCE_FENCE1_LAT,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE2_LAT,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE3_LAT,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE4_LAT
+    };
+    constexpr uint32_t fenceLonKeys[4] = {
+        UbxCfgKeys::CFG_GEOFENCE_FENCE1_LON,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE2_LON,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE3_LON,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE4_LON
+    };
+    constexpr uint32_t fenceRadKeys[4] = {
+        UbxCfgKeys::CFG_GEOFENCE_FENCE1_RAD,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE2_RAD,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE3_RAD,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE4_RAD
+    };
+
+    const auto& geo = config.geofencing;
+    if (geo.has_value())
+    {
+        ecv[UbxCfgKeys::CFG_GEOFENCE_CONFLVL] = {geo->confidenceLevel};
+
+        if (geo->pioPinPolarity.has_value())
+        {
+            ecv[UbxCfgKeys::CFG_GEOFENCE_USE_PIO] = {0x01};
+            ecv[UbxCfgKeys::CFG_GEOFENCE_PINPOL] =
+                {static_cast<uint8_t>(geo->pioPinPolarity.value())};
+        }
+        else
+        {
+            ecv[UbxCfgKeys::CFG_GEOFENCE_USE_PIO] = {0x00};
+            ecv[UbxCfgKeys::CFG_GEOFENCE_PINPOL] = {0x00};
+        }
+        ecv[UbxCfgKeys::CFG_GEOFENCE_PIN] = {0x06};  // PIO pin 6
+
+        const auto& fences = geo->geofences;
+        const uint8_t numFences =
+            static_cast<uint8_t>(std::min(fences.size(),
+                static_cast<size_t>(4)));
+
+        for (uint8_t i = 0; i < 4; ++i)
+        {
+            if (i < numFences)
+            {
+                ecv[fenceUseKeys[i]] = {0x01};
+                const int32_t lat_1e7 =
+                    static_cast<int32_t>(fences[i].lat * 1e7);
+                const int32_t lon_1e7 =
+                    static_cast<int32_t>(fences[i].lon * 1e7);
+                const uint32_t rad_cm =
+                    static_cast<uint32_t>(fences[i].radius * 100.0f);
+                ecv[fenceLatKeys[i]] =
+                    serializeInt2LittleEndian<int32_t>(lat_1e7);
+                ecv[fenceLonKeys[i]] =
+                    serializeInt2LittleEndian<int32_t>(lon_1e7);
+                ecv[fenceRadKeys[i]] =
+                    serializeInt2LittleEndian<uint32_t>(rad_cm);
+            }
+            else
+            {
+                ecv[fenceUseKeys[i]] = {0x00};
+                ecv[fenceLatKeys[i]] =
+                    serializeInt2LittleEndian<int32_t>(0);
+                ecv[fenceLonKeys[i]] =
+                    serializeInt2LittleEndian<int32_t>(0);
+                ecv[fenceRadKeys[i]] =
+                    serializeInt2LittleEndian<uint32_t>(0);
+            }
+        }
+    }
+    else
+    {
+        ecv[UbxCfgKeys::CFG_GEOFENCE_CONFLVL]  = {0x00};
+        ecv[UbxCfgKeys::CFG_GEOFENCE_USE_PIO]  = {0x00};
+        ecv[UbxCfgKeys::CFG_GEOFENCE_PINPOL]   = {0x00};
+        ecv[UbxCfgKeys::CFG_GEOFENCE_PIN]      = {0x06};
+
+        for (uint8_t i = 0; i < 4; ++i)
+        {
+            ecv[fenceUseKeys[i]] = {0x00};
+            ecv[fenceLatKeys[i]] = serializeInt2LittleEndian<int32_t>(0);
+            ecv[fenceLonKeys[i]] = serializeInt2LittleEndian<int32_t>(0);
+            ecv[fenceRadKeys[i]] = serializeInt2LittleEndian<uint32_t>(0);
+        }
+    }
 }
 
 bool M9NStartup::execute()
@@ -297,27 +268,68 @@ bool M9NStartup::execute()
         if (!result)
             return false;
     }
-    // commDriver_.transmitReceive(flusher, rxBuff_);
-
-    // result = configurePorts(
-    //     ubxmsg::UBX_CFG_PRT::poll<EUbxPrt::UBX_SPI>(),
-    //     SpiDriver::portConfig().serialize()
-    // );
-    // if (!result)
-    // {
-    //     result = reconfigureCommPort();
-
-    //     if (!result)
-    //     {
-    //         fprintf(stderr, "[Startup] Port configuration failed\r\n");
-    //         return false;
-    //     }
-    // }
 
     commDriver_.transmitReceive(flusher, rxBuff_);
     commDriver_.transmitReceive(flusher, rxBuff_);
 
-    result = try3times([this](){ return configureDynamicModel(); });
+    constexpr std::array<uint32_t, 4> spiInProtKeys = {
+        UbxCfgKeys::CFG_SPIINPROT_UBX,
+        UbxCfgKeys::CFG_SPIINPROT_NMEA,
+        UbxCfgKeys::CFG_SPIINPROT_RTCM3X,
+        UbxCfgKeys::CFG_SPIINPROT_SPARTN
+    };
+    result = configure(spiInProtKeys);
+    if (!result)
+    {
+        fprintf(
+            stderr,
+            "[Startup] SPI input protocol configuration failed\r\n"
+        );
+        return false;
+    }
+
+    commDriver_.transmitReceive(flusher, rxBuff_);
+    commDriver_.transmitReceive(flusher, rxBuff_);
+
+    constexpr std::array<uint32_t, 3> spiOutProtKeys = {
+        UbxCfgKeys::CFG_SPIOUTPROT_UBX,
+        UbxCfgKeys::CFG_SPIOUTPROT_NMEA,
+        UbxCfgKeys::CFG_SPIOUTPROT_RTCM3X
+    };
+    result = configure(spiOutProtKeys);
+    if (!result)
+    {
+        fprintf(
+            stderr,
+            "[Startup] SPI output protocol configuration failed\r\n"
+        );
+        return false;
+    }
+
+    commDriver_.transmitReceive(flusher, rxBuff_);
+    commDriver_.transmitReceive(flusher, rxBuff_);
+
+    constexpr std::array<uint32_t, 5> txReadyKeys = {
+        UbxCfgKeys::CFG_TXREADY_ENABLED,
+        UbxCfgKeys::CFG_TXREADY_POLARITY,
+        UbxCfgKeys::CFG_TXREADY_PIN,
+        UbxCfgKeys::CFG_TXREADY_THRESHOLD,
+        UbxCfgKeys::CFG_TXREADY_INTERFACE
+    };
+    result = configure(txReadyKeys);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] TX Ready configuration failed\r\n");
+        return false;
+    }
+
+    commDriver_.transmitReceive(flusher, rxBuff_);
+    commDriver_.transmitReceive(flusher, rxBuff_);
+
+    constexpr std::array<uint32_t, 1> dynModelKeys = {
+        UbxCfgKeys::CFG_NAVSPG_DYNMODEL
+    };
+    result = configure(dynModelKeys);
     if (!result)
     {
         fprintf(stderr, "[Startup] Dynamic model configuration failed\r\n");
@@ -327,17 +339,56 @@ bool M9NStartup::execute()
     commDriver_.transmitReceive(flusher, rxBuff_);
     commDriver_.transmitReceive(flusher, rxBuff_);
 
-    result = try3times([this](){ return configureGeofences(); });
+    constexpr std::array<uint32_t, 4> geofenceCommonKeys = {
+        UbxCfgKeys::CFG_GEOFENCE_CONFLVL,
+        UbxCfgKeys::CFG_GEOFENCE_USE_PIO,
+        UbxCfgKeys::CFG_GEOFENCE_PINPOL,
+        UbxCfgKeys::CFG_GEOFENCE_PIN
+    };
+    result = configure(geofenceCommonKeys);
     if (!result)
     {
-        fprintf(stderr, "[Startup] Geofences configuration failed\r\n");
+        fprintf(stderr, "[Startup] Geofence common configuration failed\r\n");
         return false;
     }
 
     commDriver_.transmitReceive(flusher, rxBuff_);
     commDriver_.transmitReceive(flusher, rxBuff_);
 
-    result = try3times([this](){ return configureRate(); });
+    constexpr std::array<uint32_t, 16> geofenceFenceKeys = {
+        UbxCfgKeys::CFG_GEOFENCE_USE_FENCE1,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE1_LAT,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE1_LON,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE1_RAD,
+        UbxCfgKeys::CFG_GEOFENCE_USE_FENCE2,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE2_LAT,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE2_LON,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE2_RAD,
+        UbxCfgKeys::CFG_GEOFENCE_USE_FENCE3,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE3_LAT,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE3_LON,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE3_RAD,
+        UbxCfgKeys::CFG_GEOFENCE_USE_FENCE4,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE4_LAT,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE4_LON,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE4_RAD
+    };
+    result = configure(geofenceFenceKeys);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] Geofence fences configuration failed\r\n");
+        return false;
+    }
+
+    commDriver_.transmitReceive(flusher, rxBuff_);
+    commDriver_.transmitReceive(flusher, rxBuff_);
+
+    constexpr std::array<uint32_t, 3> rateKeys = {
+        UbxCfgKeys::CFG_RATE_MEAS,
+        UbxCfgKeys::CFG_RATE_NAV,
+        UbxCfgKeys::CFG_RATE_TIMEREF
+    };
+    result = configure(rateKeys);
     if (!result)
     {
         fprintf(stderr, "[Startup] Rate configuration failed\r\n");
@@ -347,7 +398,7 @@ bool M9NStartup::execute()
     commDriver_.transmitReceive(flusher, rxBuff_);
     commDriver_.transmitReceive(flusher, rxBuff_);
 
-    result = try3times([this](){ return configureTimepulse(); });
+    result = configure(timepulsePinConfigKeys_);
     if (!result)
     {
         fprintf(stderr, "[Startup] Timepulse configuration failed\r\n");
@@ -357,60 +408,17 @@ bool M9NStartup::execute()
     commDriver_.transmitReceive(flusher, rxBuff_);
     commDriver_.transmitReceive(flusher, rxBuff_);
 
-    result = try3times([this]() {
-        return configureUbxMsgSendrate<ubxmsg::UBX_MON_RF, EUbxMsg::UBX_MON_RF>();
-    });
+    constexpr std::array<uint32_t, 5> msgoutKeys = {
+        UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,
+        UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI,
+        UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,
+        UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_SPI,
+        UbxCfgKeys::CFG_MSGOUT_UBX_NAV_GEOFENCE_SPI
+    };
+    result = configure(msgoutKeys);
     if (!result)
     {
-        fprintf(stderr, "[Startup] UBX_MON_RF configuration failed\r\n");
-        return false;
-    }
-
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
-
-    result = try3times([this](){
-        return configureUbxMsgSendrate<ubxmsg::UBX_NAV_DOP, EUbxMsg::UBX_NAV_DOP>();
-    });
-    if (!result)
-    {
-        fprintf(stderr, "[Startup] UBX_NAV_DOP configuration failed\r\n");
-        return false;
-    }
-
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
-
-    result = try3times([this]() {
-        return configureUbxMsgSendrate<ubxmsg::UBX_NAV_GEOFENCE, EUbxMsg::UBX_NAV_GEOFENCE>();
-    });
-    if (!result)
-    {
-        fprintf(stderr, "[Startup] UBX_NAV_GEOFENCE configuration failed\r\n");
-        return false;
-    }
-
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
-
-    result = try3times([this]() {
-        return configureUbxMsgSendrate<ubxmsg::UBX_NAV_PVT, EUbxMsg::UBX_NAV_PVT>();
-    });
-    if (!result)
-    {
-        fprintf(stderr, "[Startup] UBX_NAV_PVT configuration failed\r\n");
-        return false;
-    }
-
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
-
-    result = try3times([this]() {
-        return configureUbxMsgSendrate<ubxmsg::UBX_NAV_SAT, EUbxMsg::UBX_NAV_SAT>();
-    });
-    if (!result)
-    {
-        fprintf(stderr, "[Startup] UBX_NAV_SAT configuration failed\r\n");
+        fprintf(stderr, "[Startup] Message output configuration failed\r\n");
         return false;
     }
 
@@ -502,6 +510,12 @@ enum class CFG_TMODE_MODE : uint8_t
     FIXED     = 2
 };
 
+enum class E_CFG_TXREADY_INTERFACE : uint8_t
+{
+    I2C = 0x00,
+    SPI = 0x01
+};
+
 std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigValues_ = {
     {UbxCfgKeys::CFG_SPI_MAXFF,           {0x3F}},  // 63
     {UbxCfgKeys::CFG_SPI_CPOLARITY,       {0x00}},
@@ -520,18 +534,18 @@ std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigVa
 
     {UbxCfgKeys::CFG_UART1_ENABLED,  {0x01}},
     {UbxCfgKeys::CFG_UART1_BAUDRATE, {0x00, 0xC2, 0x01, 0x00}},  // 115200
-    {UbxCfgKeys::CFG_UART1_DATABITS, {static_cast<uint8_t>(CFG_UART1_DATABITS::EIGHT)}},
-    {UbxCfgKeys::CFG_UART1_PARITY,   {static_cast<uint8_t>(CFG_UART1_PARITY::NONE)}},
-    {UbxCfgKeys::CFG_UART1_STOPBITS, {static_cast<uint8_t>(CFG_UART1_STOPBITS::ONE)}},
+    {UbxCfgKeys::CFG_UART1_DATABITS, {to_underlying(CFG_UART1_DATABITS::EIGHT)}},
+    {UbxCfgKeys::CFG_UART1_PARITY,   {to_underlying(CFG_UART1_PARITY::NONE)}},
+    {UbxCfgKeys::CFG_UART1_STOPBITS, {to_underlying(CFG_UART1_STOPBITS::ONE)}},
 
     {UbxCfgKeys::CFG_UART1OUTPROT_UBX,  {0x01}},
     {UbxCfgKeys::CFG_UART1OUTPROT_NMEA, {0x00}},
 
     {UbxCfgKeys::CFG_UART2_ENABLED,  {0x01}},
     {UbxCfgKeys::CFG_UART2_BAUDRATE, {0x00, 0xC2, 0x01, 0x00}},  // 115200
-    {UbxCfgKeys::CFG_UART2_DATABITS, {static_cast<uint8_t>(CFG_UART1_DATABITS::EIGHT)}},
-    {UbxCfgKeys::CFG_UART2_PARITY,   {static_cast<uint8_t>(CFG_UART1_PARITY::NONE)}},
-    {UbxCfgKeys::CFG_UART2_STOPBITS, {static_cast<uint8_t>(CFG_UART1_STOPBITS::ONE)}},
+    {UbxCfgKeys::CFG_UART2_DATABITS, {to_underlying(CFG_UART1_DATABITS::EIGHT)}},
+    {UbxCfgKeys::CFG_UART2_PARITY,   {to_underlying(CFG_UART1_PARITY::NONE)}},
+    {UbxCfgKeys::CFG_UART2_STOPBITS, {to_underlying(CFG_UART1_STOPBITS::ONE)}},
 
     {UbxCfgKeys::CFG_UART2INPROT_RTCM3X, {0x01}},
 
@@ -542,11 +556,18 @@ std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigVa
     {UbxCfgKeys::CFG_TXREADY_ENABLED,   {0x01}},
     {UbxCfgKeys::CFG_TXREADY_POLARITY,  {0x00}},
     {UbxCfgKeys::CFG_TXREADY_PIN,       {0x07}},
-    {UbxCfgKeys::CFG_TXREADY_THRESHOLD, {0x01, 0x00}},
+    {UbxCfgKeys::CFG_TXREADY_THRESHOLD, {0x18, 0x00}},  // 24
+    {UbxCfgKeys::CFG_TXREADY_INTERFACE, {to_underlying(E_CFG_TXREADY_INTERFACE::SPI)}},
 
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_UART1,  {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_UART1, {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_UART1, {0x01}},
+
+    {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,       {0x01}},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI,      {0x01}},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,      {0x01}},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_SPI,      {0x01}},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_GEOFENCE_SPI, {0x01}},
 
     {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1005_UART2, {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1074_UART2, {0x01}},
@@ -562,126 +583,132 @@ std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigVa
 
 std::vector<uint8_t> StartupBase::getExpectedValue(const uint32_t key)
 {
-    const auto it = StartupBase::expectedConfigValues_.find(key);
-    if (it != StartupBase::expectedConfigValues_.end())
+    const auto it = expectedConfigValues_.find(key);
+    if (it != expectedConfigValues_.end())
         return it->second;
 
     return {};
 }
 
-bool StartupBase::configure(std::span<const uint32_t> keys)
+bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType)
 {
-    configRegistry_.clearStoredConfigValues();
-
-    const auto serializedPoll = ubxmsg::UBX_CFG_VALGET::poll(keys);
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_VALGET)];
+    bool& ack = configRegistry_.ack()[to_underlying(msgType)];
     ack = false;
-    std::fill(rxBuff_.begin(), rxBuff_.end(), 0);
-    commDriver_.transmitReceive(serializedPoll, rxBuff_);
+    std::ranges::fill(rxBuff_, 0);
+    commDriver_.transmitReceive(payload, rxBuff_);
     ubxParser_.parse(rxBuff_);
 
-    if (!ack)
-    {
-        bool result = try3times([this, &ack]() {
-            commDriver_.getRxBuff(rxBuff_.data(), rxBuff_.size());
-            ubxParser_.parse(rxBuff_);
-            return ack;
-        });
-
-        if (!result)
-        {
-            fprintf(stderr, "[Startup] Polling configuration failed\r\n");
-            return false;
-        }
-    }
-
-    std::vector<ubxmsg::ConfigKeyValue> keysValuesToReconfigure;
-    for (const auto& key : keys)
-    {
-        const auto expectedValue = getExpectedValue(key);
-        if (expectedValue.empty())
-            return false;
-
-        const auto actualValue = configRegistry_.getStoredConfigValue(key);
-        if (actualValue != expectedValue)
-        {
-            fprintf(stderr, "[Startup] Key 0x%08X value mismatch\r\n", key);
-            keysValuesToReconfigure.push_back(
-                ubxmsg::ConfigKeyValue { .key = key, .value = expectedValue }
-            );
-        }
-    }
-
-    if (keysValuesToReconfigure.empty())
+    if (ack)
         return true;
 
-    configRegistry_.shouldSaveConfigToFlash(true);
+    return try3times([this, &ack]() {
+        commDriver_.getRxBuff(rxBuff_.data(), rxBuff_.size());
+        ubxParser_.parse(rxBuff_);
+        return ack;
+    });
+}
+
+bool StartupBase::verifyConfig(std::span<const uint32_t> keys)
+{
+    return std::ranges::all_of(keys, [this](const uint32_t key) {
+        const auto expected = getExpectedValue(key);
+        if (expected.empty())
+        {
+            fprintf(
+                stderr,
+                "[Startup] No expected value for key: 0x%08X\r\n",
+                key
+            );
+            std::terminate();
+        }
+        if (configRegistry_.getStoredConfigValue(key) != expected)
+        {
+            fprintf(
+                stderr,
+                "[Startup] Key 0x%08X verification failed\r\n",
+                key
+            );
+            return false;
+        }
+        return true;
+    });
+}
+
+bool StartupBase::configure(std::span<const uint32_t> keys)
+{
+    if (keys.empty())
+        return true;
+
+    configRegistry_.clearStoredConfigValues();
+    const auto serializedPoll = ubxmsg::UBX_CFG_VALGET::poll(keys);
+
+    if (!awaitAck(serializedPoll, EUbxMsg::UBX_CFG_VALGET))
+    {
+        fprintf(
+            stderr,
+            "[Startup] Poll failed for key group: [0x%08X, ...]\r\n",
+            keys.front()
+        );
+        return false;
+    }
+
+    std::vector<ubxmsg::ConfigKeyValue> mismatches;
+    for (const auto key : keys)
+    {
+        const auto expected = getExpectedValue(key);
+        if (expected.empty())
+        {
+            fprintf(
+                stderr,
+                "[Startup] No expected value for keys: [0x%08X, ...]\r\n",
+                key
+            );
+            return false;
+        }
+
+        if (configRegistry_.getStoredConfigValue(key) != expected)
+        {
+            fprintf(
+                stderr,
+                "[Startup] Key 0x%08X value mismatch\r\n",
+                key
+            );
+            mismatches.push_back({.key = key, .value = expected});
+        }
+    }
+
+    if (mismatches.empty())
+        return true;
 
     const auto serializedValset = ubxmsg::UBX_CFG_VALSET(
         0x00,
         EUbxMemoryLayer::RAM,
-        keysValuesToReconfigure
+        mismatches
     ).serialize();
 
-    bool& set_ack =
-        configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_VALSET)];
-    set_ack = false;
-    std::fill(rxBuff_.begin(), rxBuff_.end(), 0);
-    commDriver_.transmitReceive(serializedValset, rxBuff_);
-    ubxParser_.parse(rxBuff_);
-
-    if (!set_ack)
+    if (!awaitAck(serializedValset, EUbxMsg::UBX_CFG_VALSET))
     {
-        bool result = try3times([this, &set_ack]() {
-            commDriver_.getRxBuff(rxBuff_.data(), rxBuff_.size());
-            ubxParser_.parse(rxBuff_);
-            return set_ack;
-        });
-
-        if (!result)
-        {
-            fprintf(stderr, "[Startup] Polling configuration failed\r\n");
-            return false;
-        }
+        fprintf(
+            stderr,
+            "[Startup] VALSET failed for key group: [0x%08X, ...]\r\n",
+            keys.front()
+        );
+        return false;
     }
 
     configRegistry_.clearStoredConfigValues();
 
-    ack = false;
-    std::fill(rxBuff_.begin(), rxBuff_.end(), 0);
-    commDriver_.transmitReceive(serializedPoll, rxBuff_);
-    ubxParser_.parse(rxBuff_);
-
-    if (!ack)
+    if (!awaitAck(serializedPoll, EUbxMsg::UBX_CFG_VALGET))
     {
-        bool result = try3times([this, &ack]() {
-            commDriver_.getRxBuff(rxBuff_.data(), rxBuff_.size());
-            ubxParser_.parse(rxBuff_);
-            return ack;
-        });
-
-        if (!result)
-        {
-            fprintf(stderr, "[Startup] Polling configuration failed\r\n");
-            return false;
-        }
+        fprintf(
+            stderr,
+            "[Startup] Verification poll failed for key group: [0x%08X, ...]\r\n",
+            keys.front()
+        );
+        return false;
     }
 
-    for (const auto& key : keys)
-    {
-        const auto expectedValue = getExpectedValue(key);
-        if (expectedValue.empty())
-            return false;
-
-        const auto actualValue = configRegistry_.getStoredConfigValue(key);
-        if (actualValue != expectedValue)
-        {
-            fprintf(stderr, "[Startup] Key 0x%08X value mismatch\r\n", key);
-            return false;
-        }
-    }
-
-    return true;
+    return verifyConfig(keys);
 }
 
 bool F10TStartup::execute()

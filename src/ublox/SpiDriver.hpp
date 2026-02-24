@@ -10,7 +10,6 @@
 
 #include "ublox/ESpiMode.hpp"
 #include "ublox/ICommDriver.hpp"
-#include "ublox/ubxmsg/UBX_CFG_PRT.hpp"
 
 #define UBX_SPI_DEV "/dev/spidev0.0"
 
@@ -29,7 +28,6 @@ public:
 
     void reinit(const ESpiMode spiMode);
     ESpiMode currentSpiMode() const { return currentSpiMode_; }
-    static ubxmsg::UBX_CFG_PRT_SPI portConfig();
 
     static constexpr ESpiMode expectedSpiMode = ESpiMode::SpiMode0;
 

@@ -11,10 +11,6 @@
 
 #include "ubxmsg/UBX_ACK_ACK.hpp"
 #include "ubxmsg/UBX_ACK_NAK.hpp"
-#include "ubxmsg/UBX_CFG_GEOFENCE.hpp"
-#include "ubxmsg/UBX_CFG_MSG.hpp"
-#include "ubxmsg/UBX_CFG_NAV5.hpp"
-#include "ubxmsg/UBX_CFG_PRT.hpp"
 #include "ubxmsg/UBX_CFG_VALSET.hpp"
 #include "ubxmsg/UBX_CFG_VALGET.hpp"
 #include "ubxmsg/UBX_MON_RF.hpp"
@@ -54,44 +50,28 @@ UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
     };
 
     callbacks_[to_underlying(UBX_CFG_GEOFENCE)] =
-        [&configRegistry](ubxmsg::IUbxMsg& ubxMsg) -> void {
-            const auto& ubxCfgGeofence =
-                static_cast<ubxmsg::UBX_CFG_GEOFENCE&>(ubxMsg);
-            configRegistry.checkGeofencing(ubxCfgGeofence);
-            Gnss::instance().geofencingCfg(ubxCfgGeofence.cfg());
+        [](ubxmsg::IUbxMsg&) -> void {
+            // Deprecated: geofencing migrated to CFG-GEOFENCE-* via VALSET
         };
 
-    callbacks_[to_underlying(UBX_CFG_MSG)] = [&configRegistry](ubxmsg::IUbxMsg& ubxMsg) -> void {
-        const auto& ubxCfgMsg = static_cast<ubxmsg::UBX_CFG_MSG&>(ubxMsg);
-        configRegistry.isMsgSendrateCorrect(
-            configRegistry.getMsgSendrates(ubxCfgMsg.eUbxMsg()) == ubxCfgMsg.sendRates()
-        );
+    callbacks_[to_underlying(UBX_CFG_MSG)] = [](ubxmsg::IUbxMsg&) -> void {
+        // Deprecated: message output migrated to CFG-MSGOUT-* via VALSET
     };
 
-    callbacks_[to_underlying(UBX_CFG_NAV5)] = [&configRegistry](ubxmsg::IUbxMsg& ubxMsg) -> void {
-        const auto& ubxCfgNav5 = static_cast<ubxmsg::UBX_CFG_NAV5&>(ubxMsg);
-        configRegistry.isDynamicModelCorrect(
-            ubxCfgNav5.dynamicModel() == configRegistry.dynamicModel()
-        );
+    callbacks_[to_underlying(UBX_CFG_NAV5)] = [](ubxmsg::IUbxMsg&) -> void {
+        // Deprecated: dynamic model migrated to CFG-NAVSPG-DYNMODEL via VALSET
     };
 
-    callbacks_[to_underlying(UBX_CFG_PRT)] = [&configRegistry](ubxmsg::IUbxMsg& ubxMsg) -> void {
-        const auto receivedConfig = ubxMsg.serialize();
-        const auto expectedConfig = configRegistry.portConfig().serialize();
-        bool isPortConfigured = receivedConfig == expectedConfig;
-        configRegistry.isPortConfigured(isPortConfigured);
+    callbacks_[to_underlying(UBX_CFG_PRT)] = [](ubxmsg::IUbxMsg&) -> void {
+        // Deprecated: port configuration migrated to CFG-VALSET/VALGET
     };
 
-    callbacks_[to_underlying(UBX_CFG_RATE)] = [&configRegistry](ubxmsg::IUbxMsg& ubxMsg) -> void {
-        configRegistry.isRateCorrect(
-            ubxMsg.serialize() == configRegistry.rateConfig().serialize()
-        );
+    callbacks_[to_underlying(UBX_CFG_RATE)] = [](ubxmsg::IUbxMsg&) -> void {
+        // Deprecated: rate configuration migrated to CFG-RATE-* via VALSET
     };
 
-    callbacks_[to_underlying(UBX_CFG_TP5)] = [&configRegistry](ubxmsg::IUbxMsg& ubxMsg) -> void {
-        configRegistry.isTimepulseConfigCorrect(
-            ubxMsg.serialize() == configRegistry.timepulseConfig().serialize()
-        );
+    callbacks_[to_underlying(UBX_CFG_TP5)] = [](ubxmsg::IUbxMsg&) -> void {
+        // Deprecated: timepulse configuration migrated to CFG-TP-* via VALSET
     };
 
     callbacks_[to_underlying(UBX_CFG_VALSET)] = [](ubxmsg::IUbxMsg&) -> void {

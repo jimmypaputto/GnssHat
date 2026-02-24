@@ -32,45 +32,22 @@ public:
     virtual ~StartupBase() = default;
 
 protected:
-    bool configurePorts(std::span<const uint8_t> serializedPoll,
-        std::span<const uint8_t> serializedConfig);
-    bool checkPortsConfig(std::span<const uint8_t> serializedPoll);
-    bool sendPortsConfig(std::span<const uint8_t> serializedConfig);
-
-    bool configureRate();
-    bool checkRateConfig();
-    bool sendRateConfig();
-
-    bool configureTimepulse();
-    bool checkTimepulseConfig();
-    bool sendTimepulseConfig();
-
     virtual bool reconfigureCommPort() = 0;
 
-    bool configureGeofences();
-    bool checkGeofencesConfig();
-    bool sendGeofencesConfig();
-
-    bool configureDynamicModel();
-    bool checkDynamicModel();
-    bool sendDynamicModel();
-
-    template<typename UbxMsg, EUbxMsg eUbxMsg>
-    bool configureUbxMsgSendrate();
-    template<typename UbxMsg, EUbxMsg eUbxMsg>
-    bool checkUbxMsgSendrate();
-    template<typename UbxMsg, EUbxMsg eUbxMsg>
-    bool sendUbxMsgSendrate();
-
+    void rate2Registers(const uint16_t measurementRate_Hz);
+    void timepulsePinConfig2Registers(const TimepulsePinConfig& tpc);
     bool saveCurrentConfigToFlash();
 
     bool configure(std::span<const uint32_t> keys);
 
+    bool awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType);
+    bool verifyConfig(std::span<const uint32_t> keys);
     std::vector<uint8_t> getExpectedValue(const uint32_t key);
 
     ICommDriver& commDriver_;
     IUbloxConfigRegistry& configRegistry_;
     UbxParser& ubxParser_;
+    std::vector<uint32_t> timepulsePinConfigKeys_;
     static constexpr uint32_t rxBuffSize = 1024;
     std::vector<uint8_t> rxBuff_;
     static std::unordered_map<uint32_t, std::vector<uint8_t>>

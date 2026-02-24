@@ -188,7 +188,7 @@ def nav_to_pvt_data(nav):
 
     fix_quality_map = {
         int(gnsshat.FixQuality.INVALID): "Invalid",
-        int(gnsshat.FixQuality.GPS_FIX_2D_3D): "GPS Fix",
+        int(gnsshat.FixQuality.GPS_FIX_2D_3D): "Gps Fix 2D3D",
         int(gnsshat.FixQuality.DGNSS): "DGPS Fix",
         int(gnsshat.FixQuality.PPS_FIX): "PPS Fix",
         int(gnsshat.FixQuality.FIXED_RTK): "RTK Fixed",
@@ -203,11 +203,11 @@ def nav_to_pvt_data(nav):
 
     fix_type_map = {
         int(gnsshat.FixType.NO_FIX): "No Fix",
-        int(gnsshat.FixType.DEAD_RECKONING_ONLY): "Dead Reckoning",
-        int(gnsshat.FixType.FIX_2D): "2D Fix",
-        int(gnsshat.FixType.FIX_3D): "3D Fix",
+        int(gnsshat.FixType.DEAD_RECKONING_ONLY): "Dead Reckoning Only",
+        int(gnsshat.FixType.FIX_2D): "Fix 2D",
+        int(gnsshat.FixType.FIX_3D): "Fix 3D",
         int(gnsshat.FixType.GNSS_WITH_DEAD_RECKONING): "GNSS+DR",
-        int(gnsshat.FixType.TIME_ONLY_FIX): "Time Only",
+        int(gnsshat.FixType.TIME_ONLY_FIX): "Time Only Fix",
     }
 
     utc_time = "N/A"
@@ -644,14 +644,14 @@ def api_set_config():
                 gps_state['thread'] = None
 
             # 2. Destroy old hat
-            socketio.emit('config_progress', {'step': 'destroy', 'message': 'Destroying old GnssHat...'}, namespace='/')
+            socketio.emit('config_progress', {'step': 'destroy', 'message': 'Destroying old GnssHat object...'}, namespace='/')
             if gps_state['hat']:
                 del gps_state['hat']
                 gps_state['hat'] = None
             time.sleep(1)
 
             # 3. Create new hat
-            socketio.emit('config_progress', {'step': 'create', 'message': 'Creating new GnssHat...'}, namespace='/')
+            socketio.emit('config_progress', {'step': 'create', 'message': 'Creating new GnssHat object...'}, namespace='/')
             from jimmypaputto import gnsshat
             hat = gnsshat.GnssHat()
 
@@ -675,7 +675,7 @@ def api_set_config():
                 return jsonify({'error': 'hat.start() returned False — configuration rejected by module'}), 500
 
             # 6. Success — save state and restart reader
-            socketio.emit('config_progress', {'step': 'reader', 'message': 'Starting reader thread...'}, namespace='/')
+            socketio.emit('config_progress', {'step': 'reader', 'message': 'Starting GNSS reader thread...'}, namespace='/')
             gps_state['hat'] = hat
             gps_state['current_config'] = config
             gps_state['reference_position'] = None  # Reset so map re-calibrates

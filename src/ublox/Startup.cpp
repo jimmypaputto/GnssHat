@@ -246,13 +246,16 @@ M9NStartup::M9NStartup(ICommDriver& commDriver,
 
 bool M9NStartup::execute()
 {
+    constexpr auto timeForUbloxToWakeUp = std::chrono::milliseconds(1000);
+    std::this_thread::sleep_for(timeForUbloxToWakeUp);
+
     bool result = false;
 
-    static constexpr auto flusher = []{
-        std::array<uint8_t, 4096> a{};
-        for (auto& b : a) b = 0xFF;
-        return a;
-    }();
+    // static constexpr auto flusher = []{
+    //     std::array<uint8_t, 4096> a{};
+    //     for (auto& b : a) b = 0xFF;
+    //     return a;
+    // }();
 
     constexpr std::array<uint32_t, 5> spiKeys = {
         UbxCfgKeys::CFG_SPI_MAXFF,
@@ -264,13 +267,11 @@ bool M9NStartup::execute()
     result = configure(spiKeys);
     if (!result)
     {
+        fprintf(stderr, "[Startup] SPI DUPA failed\r\n");
         result = reconfigureCommPort();
         if (!result)
             return false;
     }
-
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
 
     constexpr std::array<uint32_t, 4> spiInProtKeys = {
         UbxCfgKeys::CFG_SPIINPROT_UBX,
@@ -288,9 +289,6 @@ bool M9NStartup::execute()
         return false;
     }
 
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
-
     constexpr std::array<uint32_t, 3> spiOutProtKeys = {
         UbxCfgKeys::CFG_SPIOUTPROT_UBX,
         UbxCfgKeys::CFG_SPIOUTPROT_NMEA,
@@ -306,9 +304,6 @@ bool M9NStartup::execute()
         return false;
     }
 
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
-
     constexpr std::array<uint32_t, 5> txReadyKeys = {
         UbxCfgKeys::CFG_TXREADY_ENABLED,
         UbxCfgKeys::CFG_TXREADY_POLARITY,
@@ -323,9 +318,6 @@ bool M9NStartup::execute()
         return false;
     }
 
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
-
     constexpr std::array<uint32_t, 1> dynModelKeys = {
         UbxCfgKeys::CFG_NAVSPG_DYNMODEL
     };
@@ -335,9 +327,6 @@ bool M9NStartup::execute()
         fprintf(stderr, "[Startup] Dynamic model configuration failed\r\n");
         return false;
     }
-
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
 
     constexpr std::array<uint32_t, 4> geofenceCommonKeys = {
         UbxCfgKeys::CFG_GEOFENCE_CONFLVL,
@@ -351,9 +340,6 @@ bool M9NStartup::execute()
         fprintf(stderr, "[Startup] Geofence common configuration failed\r\n");
         return false;
     }
-
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
 
     constexpr std::array<uint32_t, 16> geofenceFenceKeys = {
         UbxCfgKeys::CFG_GEOFENCE_USE_FENCE1,
@@ -380,9 +366,6 @@ bool M9NStartup::execute()
         return false;
     }
 
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
-
     constexpr std::array<uint32_t, 3> rateKeys = {
         UbxCfgKeys::CFG_RATE_MEAS,
         UbxCfgKeys::CFG_RATE_NAV,
@@ -395,18 +378,12 @@ bool M9NStartup::execute()
         return false;
     }
 
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
-
     result = configure(timepulsePinConfigKeys_);
     if (!result)
     {
         fprintf(stderr, "[Startup] Timepulse configuration failed\r\n");
         return false;
     }
-
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
 
     constexpr std::array<uint32_t, 5> msgoutKeys = {
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,
@@ -422,9 +399,6 @@ bool M9NStartup::execute()
         return false;
     }
 
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
-
     if (configRegistry_.shouldSaveConfigToFlash())
     {
         result = try3times([this](){ return saveCurrentConfigToFlash(); });
@@ -437,9 +411,6 @@ bool M9NStartup::execute()
             return false;
         }
     }
-
-    commDriver_.transmitReceive(flusher, rxBuff_);
-    commDriver_.transmitReceive(flusher, rxBuff_);
 
     return true;
 }
@@ -601,11 +572,19 @@ bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType)
     if (ack)
         return true;
 
-    return try3times([this, &ack]() {
+    constexpr auto timeout = std::chrono::seconds(5);
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    do
+    {
         commDriver_.getRxBuff(rxBuff_.data(), rxBuff_.size());
         ubxParser_.parse(rxBuff_);
-        return ack;
-    });
+
+        if (ack)
+            return true;
+    }
+    while (std::chrono::steady_clock::now() < deadline);
+
+    return false;
 }
 
 bool StartupBase::verifyConfig(std::span<const uint32_t> keys)

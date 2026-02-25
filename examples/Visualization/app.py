@@ -16,7 +16,7 @@ _pi_user_site = '/home/pi/.local/lib/python3.13/site-packages'
 if _pi_user_site not in sys.path and os.path.isdir(_pi_user_site):
     sys.path.insert(0, _pi_user_site)
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask_socketio import SocketIO, emit
 from geopy.distance import geodesic
 
@@ -487,6 +487,12 @@ def gps_reader_thread():
                 time.sleep(1)
     
     print("GPS NMEA reader thread stopped")
+
+
+@app.route('/res/<path:filename>')
+def serve_res(filename):
+    """Serve files from res/ directory"""
+    return send_from_directory(os.path.join(app.root_path, 'res'), filename)
 
 
 @app.route('/')

@@ -53,6 +53,15 @@ header h1 {
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-logo {
+    height: 2.4rem;
+    width: auto;
+    -webkit-text-fill-color: initial;
 }
 
 .status-bar {

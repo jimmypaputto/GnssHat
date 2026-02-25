@@ -251,12 +251,6 @@ bool M9NStartup::execute()
 
     bool result = false;
 
-    // static constexpr auto flusher = []{
-    //     std::array<uint8_t, 4096> a{};
-    //     for (auto& b : a) b = 0xFF;
-    //     return a;
-    // }();
-
     constexpr std::array<uint32_t, 5> spiKeys = {
         UbxCfgKeys::CFG_SPI_MAXFF,
         UbxCfgKeys::CFG_SPI_CPOLARITY,
@@ -267,7 +261,6 @@ bool M9NStartup::execute()
     result = configure(spiKeys);
     if (!result)
     {
-        fprintf(stderr, "[Startup] SPI DUPA failed\r\n");
         result = reconfigureCommPort();
         if (!result)
             return false;

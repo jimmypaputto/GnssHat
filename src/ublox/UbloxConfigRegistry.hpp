@@ -32,22 +32,10 @@ public:
     std::array<bool, numberOfUbxMsgs>& ack() override { return ack_; }
     std::array<bool, numberOfUbxMsgs>& nak() override { return nak_; }
 
-    // VALGET Configuration Storage
     void storeConfigValue(uint32_t key,
         const std::vector<uint8_t>& value) override;
     std::vector<uint8_t> getStoredConfigValue(uint32_t key) const override;
-    bool hasStoredConfigValue(uint32_t key) const override;
     void clearStoredConfigValues() override;
-
-    // Configuration Comparison
-    bool compareConfigValue(uint32_t key,
-        const std::vector<uint8_t>& expectedValue) const override;
-    bool compareConfigValue(uint32_t key,
-        uint8_t expectedValue) const override;
-    bool compareConfigValue(uint32_t key,
-        uint16_t expectedValue) const override;
-    bool compareConfigValue(uint32_t key,
-        uint32_t expectedValue) const override;
 
 private:
     bool shouldSaveConfigToFlash_;

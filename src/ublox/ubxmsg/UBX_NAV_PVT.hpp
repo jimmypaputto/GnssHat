@@ -70,14 +70,14 @@ public:
         pvt_.fixQuality = fixQuality;
 
         pvt_.visibleSatellites = serialized[29];
-        pvt_.longitude = readLE<uint32_t>(serialized, 30) / 10000000.0;
-        pvt_.latitude = readLE<uint32_t>(serialized, 34) / 10000000.0;
-        pvt_.altitude = readLE<uint32_t>(serialized, 38) / 1000.0;
-        pvt_.altitudeMSL = readLE<uint32_t>(serialized, 42) / 1000.0;
+        pvt_.longitude = readLE<int32_t>(serialized, 30) / 10000000.0;
+        pvt_.latitude = readLE<int32_t>(serialized, 34) / 10000000.0;
+        pvt_.altitude = readLE<int32_t>(serialized, 38) / 1000.0;
+        pvt_.altitudeMSL = readLE<int32_t>(serialized, 42) / 1000.0;
         pvt_.horizontalAccuracy = readLE<uint32_t>(serialized, 46) / 1000.0;
         pvt_.verticalAccuracy = readLE<uint32_t>(serialized, 50) / 1000.0;
-        pvt_.speedOverGround = readLE<uint32_t>(serialized, 66) / 1000.0;
-        pvt_.heading = readLE<uint32_t>(serialized, 70) / 100000.0;
+        pvt_.speedOverGround = readLE<int32_t>(serialized, 66) / 1000.0;
+        pvt_.heading = readLE<int32_t>(serialized, 70) / 100000.0;
         pvt_.speedAccuracy = readLE<uint32_t>(serialized, 74) / 1000.0;
         pvt_.headingAccuracy = readLE<uint32_t>(serialized, 78) / 100000.0;
     }

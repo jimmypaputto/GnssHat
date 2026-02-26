@@ -19,13 +19,15 @@ public:
     void notify()
     {
         std::lock_guard lock(mtx);
+        ready = true;
         cv.notify_one();
     }
 
     void wait()
     {
         std::unique_lock lock(mtx);
-        cv.wait(lock);
+        cv.wait(lock, [this]{ return ready; });
+        ready = false;
     }
 
     void setFlag(const bool value)
@@ -41,6 +43,7 @@ public:
 private:
     std::mutex mtx;
     std::condition_variable cv;
+    bool ready = false;
     std::atomic<bool> flag = false;
 };
 

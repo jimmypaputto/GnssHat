@@ -57,6 +57,7 @@ include_directories(
 )
 
 set(LIB_SOURCES
+    src/common/GpioInterruptLine.cpp
     src/common/JPGuard.cpp
     src/common/Utils.cpp
     src/ublox/ubxmsg/IUbxMsg.cpp

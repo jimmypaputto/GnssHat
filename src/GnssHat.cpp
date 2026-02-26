@@ -365,30 +365,10 @@ bool GnssHat::enableTimepulse()
         return true;
     }
 
-    try
-    {
-        timepulse_ = std::make_unique<Timepulse>(timepulseNotifier_);
-        timepulse_->run();
-        timepulseEnabled_.store(true);
-        return true;
-    }
-    catch (const std::exception& e)
-    {
-        fprintf(
-            stderr,
-            "[GNSS] Failed to enable timepulse: %s\r\n",
-            e.what()
-        );
-        return false;
-    }
-    catch (...)
-    {
-        fprintf(
-            stderr,
-            "[GNSS] Failed to enable timepulse: Unknown error\r\n"
-        );
-        return false;
-    }
+    timepulse_ = std::make_unique<Timepulse>(timepulseNotifier_);
+    timepulse_->run();
+    timepulseEnabled_.store(true);
+    return true;
 }
 
 void GnssHat::disableTimepulse()

@@ -13,7 +13,16 @@ The `JP_GNSS_HAT` library integrates our gnss hats with the Raspberry Pi via SPI
 
 ## Introduction
 
-The `JP_GNSS_HAT` library introduction.
+The `JP_GNSS_HAT` library is a complete driver for u-blox GNSS modules mounted on Jimmy Paputto GNSS HATs for the Raspberry Pi. It communicates with the receiver via SPI (L1 HAT) or UART (L1/L5 TIME HAT), handles the full UBX binary protocol and provides a clean, high-level API in **C++**, **C** and **Python**.
+
+Key features:
+- **Plug-and-play** — auto-detects the HAT variant (NEO-M9N / NEO-F10T) and configures the communication interface accordingly
+- **Configurable measurement rate** (1–25 Hz), dynamic models, timepulse output and geofencing (up to 4 zones)
+- **Navigation data** — latitude, longitude, altitude, speed, heading, UTC time, DOP values, satellite info, RF/jamming diagnostics
+- **RTK support** — base-station survey-in / fixed-position modes and rover correction injection
+- **GPSD integration** — built-in NMEA forwarding to a virtual serial port (`/tmp/ttyJPGNSS`) for the gpsd daemon
+- **Multi-threaded, event-driven architecture** — interrupt/epoll-based data flow with no busy-wait loops
+- **Thread-safe** — all navigation accessors are mutex-protected; multiple consumer threads are supported out of the box
 
 ## Installation
 
@@ -105,7 +114,6 @@ auto main() -> int
 #### Python Example
 
 ```python
-import time
 from jimmypaputto import gnsshat
 
 def print_position(navigation):
@@ -118,7 +126,7 @@ def main():
     
     config = {
         'measurement_rate_hz': 1,
-        'dynamic_model': gnsshat.DYNAMIC_MODEL_PORTABLE,
+        'dynamic_model': gnsshat.DynamicModel.PORTABLE,
         'timepulse_pin_config': {
             'active': True,
             'fixed_pulse': {
@@ -126,7 +134,7 @@ def main():
                 'pulse_width': 0.1
             },
             'pulse_when_no_fix': None,
-            'polarity': gnsshat.TIMEPULSE_POLARITY_RISING_EDGE
+            'polarity': gnsshat.TimepulsePolarity.RISING_EDGE
         },
         'geofencing': None
     }

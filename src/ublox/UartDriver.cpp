@@ -34,9 +34,11 @@ UartDriver::~UartDriver()
 
 void UartDriver::reinit(const uint32_t baudrate)
 {
+    deinitEpoll();
     deinit();
     baudrate_ = baudrate;
     init(baudrate_);
+    initEpoll();
 }
 
 void UartDriver::transmitReceive(std::span<const uint8_t> txBuff,

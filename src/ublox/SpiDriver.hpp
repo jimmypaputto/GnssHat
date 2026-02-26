@@ -21,6 +21,7 @@ class SpiDriver: public ICommDriver
 {
 public:
     explicit SpiDriver();
+    ~SpiDriver();
 
     void transmitReceive(std::span<const uint8_t> txBuff,
         std::vector<uint8_t>& rxBuff) override;

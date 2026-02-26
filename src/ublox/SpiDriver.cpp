@@ -27,6 +27,11 @@ SpiDriver::SpiDriver()
     std::memset(txBank_, 0xFF, sizeof(txBank_));
 }
 
+SpiDriver::~SpiDriver()
+{
+    deinit();
+}
+
 void SpiDriver::reinit(const ESpiMode spiMode)
 {
     deinit();

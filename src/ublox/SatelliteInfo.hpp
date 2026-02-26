@@ -36,17 +36,17 @@ enum class ESvQuality : uint8_t
 
 struct SatelliteInfo
 {
-    EGnssId gnssId;
-    uint8_t svId;
-    uint8_t cno;
-    int8_t elevation;
-    int16_t azimuth;
-    ESvQuality quality;
-    bool usedInFix;
-    bool healthy;
-    bool diffCorr;
-    bool ephAvail;
-    bool almAvail;
+    EGnssId gnssId = {};
+    uint8_t svId = {};
+    uint8_t cno = {};
+    int8_t elevation = {};
+    int16_t azimuth = {};
+    ESvQuality quality = {};
+    bool usedInFix = {};
+    bool healthy = {};
+    bool diffCorr = {};
+    bool ephAvail = {};
+    bool almAvail = {};
 
     static constexpr uint8_t maxNumberOfSatellites = 64;
 };

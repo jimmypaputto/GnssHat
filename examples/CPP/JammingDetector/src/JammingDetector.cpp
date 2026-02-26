@@ -28,13 +28,13 @@ void printRfBlock(const RfBlock& rfBlock)
 {
     printf("Band %s\r\n", Utils::eBand2string(rfBlock.id).c_str());
     printf("    Noise per ms: %d\r\n", rfBlock.noisePerMS);
-    printf("    AGC monitor, percentage of max gain: %.2f%\r\n",
+    printf("    AGC monitor, percentage of max gain: %.2f%%\r\n",
         rfBlock.agcMonitor);
     printf("    Antenna status: %s\r\n",
         Utils::antennaStatus2string(rfBlock.antennaStatus).c_str());
     printf("    JammingState: %s\r\n",
         Utils::jammingState2string(rfBlock.jammingState).c_str());
-    printf("    CW interference suppression level: %.2f%\r\n",
+    printf("    CW interference suppression level: %.2f%%\r\n",
         rfBlock.cwInterferenceSuppressionLevel);
 }
 
@@ -44,7 +44,7 @@ void analyzeRfBlock(const RfBlock& rfBlock)
     if (rfBlock.cwInterferenceSuppressionLevel < jammingTreshold)
     {
         printf(
-            "CW interference suppression level is below %.f%, "
+            "CW interference suppression level is below %.f%%, "
             "no jamming\r\n",
             jammingTreshold
         );
@@ -52,7 +52,7 @@ void analyzeRfBlock(const RfBlock& rfBlock)
     else
     {
         printf(
-            "CW interference suppression level is above %.f%, "
+            "CW interference suppression level is above %.f%%, "
             "jamming detected\r\n",
             jammingTreshold
         );

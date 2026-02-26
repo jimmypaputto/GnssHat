@@ -105,7 +105,7 @@ GnssConfig createFixedPositionConfig_Ecef()
 
 void printFrame(const std::vector<uint8_t>& frame, const std::string& time)
 {
-    printf("[%s] Frame %zu: %zu bytes: ", 
+    printf("[%s] Frame %u: %zu bytes: ", 
         time.c_str(), getFrameId(frame), frame.size());
 
     for (size_t j = 0; j < frame.size(); ++j)

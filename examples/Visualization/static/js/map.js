@@ -693,6 +693,38 @@ function updateSatTable(satellites) {
     const elUsed = document.getElementById('sky-used');
     if (elTotal) elTotal.textContent = total;
     if (elUsed) elUsed.textContent = used;
+
+    // Per-constellation usage summary
+    const constellationEl = document.getElementById('constellation-summary');
+    if (constellationEl) {
+        constellationEl.textContent = '';
+        const counts = {};
+        for (const sat of satellites) {
+            if (sat.used_in_fix) {
+                counts[sat.gnss_id] = (counts[sat.gnss_id] || 0) + 1;
+            }
+        }
+        const order = ['GPS', 'Galileo', 'GLONASS', 'BeiDou', 'SBAS', 'QZSS', 'IMES'];
+        const entries = [];
+        for (const name of order) {
+            if (counts[name]) entries.push(name);
+        }
+        for (const name of Object.keys(counts)) {
+            if (!order.includes(name)) entries.push(name);
+        }
+        const prefix = document.createTextNode(entries.length > 0 ? '\u{1F6F0}\uFE0F Used: ' : '\u{1F6F0}\uFE0F No satellites used in fix');
+        constellationEl.appendChild(prefix);
+        entries.forEach((name, i) => {
+            if (i > 0) {
+                const sep = document.createTextNode(' | ');
+                constellationEl.appendChild(sep);
+            }
+            const span = document.createElement('span');
+            span.style.color = getGnssColor(name);
+            span.textContent = name + ': ' + counts[name];
+            constellationEl.appendChild(span);
+        });
+    }
 }
 
 function updateSkyView(satellites) {

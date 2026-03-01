@@ -6,6 +6,7 @@
 #define GNSS_HAT_HPP_
 
 #include <string>
+#include <string_view>
 
 #include "ublox/GnssConfig.hpp"
 #include "ublox/Navigation.hpp"
@@ -19,6 +20,8 @@ class IGnssHat
 {
 public:
     virtual bool start(const GnssConfig& config) = 0;
+
+    virtual std::string_view name() const = 0;
 
     virtual Navigation navigation() const = 0;
     virtual Navigation waitAndGetFreshNavigation() = 0;

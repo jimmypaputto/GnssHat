@@ -379,6 +379,7 @@ typedef struct jp_gnss_hat jp_gnss_hat_t;
 
 jp_gnss_hat_t* jp_gnss_hat_create(void);
 void jp_gnss_hat_destroy(jp_gnss_hat_t* hat);
+const char* jp_gnss_hat_name(jp_gnss_hat_t* hat);
 bool jp_gnss_hat_start(jp_gnss_hat_t* hat,
     const jp_gnss_gnss_config_t* config);
 bool jp_gnss_hat_wait_and_get_fresh_navigation(jp_gnss_hat_t* hat,

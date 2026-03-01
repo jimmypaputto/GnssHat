@@ -781,6 +781,14 @@ void jp_gnss_hat_timepulse(jp_gnss_hat_t* hat)
     hat->instance->timepulse();
 }
 
+const char* jp_gnss_hat_name(jp_gnss_hat_t* hat)
+{
+    if (!hat || !hat->instance)
+        return nullptr;
+
+    return hat->instance->name().data();
+}
+
 jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_full_corrections(
     jp_gnss_hat_t* hat)
 {

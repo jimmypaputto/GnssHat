@@ -132,6 +132,11 @@ public:
         return GnssHat::start<M9NStartup, M9NRun>(config);
     }
 
+    std::string_view name() const override
+    {
+        return "L1 GNSS HAT";
+    }
+
     IRtk* rtk() override
     {
         return nullptr;
@@ -152,6 +157,11 @@ public:
     bool start(const GnssConfig& config) override
     {
         return GnssHat::start<F10TStartup, F10TRun>(config);
+    }
+
+    std::string_view name() const override
+    {
+        return "L1/L5 GNSS TIME HAT";
     }
 
     IRtk* rtk() override
@@ -176,6 +186,11 @@ public:
     {
         rtk_ = std::unique_ptr<IRtk>(RtkFactory::create(rtcm3Store_, config));
         return GnssHat::start<F9PStartup, F9PRun>(config);
+    }
+
+    std::string_view name() const override
+    {
+        return "L1/L5 GNSS RTK HAT";
     }
 
     IRtk* rtk() override

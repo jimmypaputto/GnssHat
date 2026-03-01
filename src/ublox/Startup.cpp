@@ -266,11 +266,9 @@ bool M9NStartup::execute()
             return false;
     }
 
-    constexpr std::array<uint32_t, 4> spiInProtKeys = {
+    constexpr std::array<uint32_t, 2> spiInProtKeys = {
         UbxCfgKeys::CFG_SPIINPROT_UBX,
-        UbxCfgKeys::CFG_SPIINPROT_NMEA,
-        UbxCfgKeys::CFG_SPIINPROT_RTCM3X,
-        UbxCfgKeys::CFG_SPIINPROT_SPARTN
+        UbxCfgKeys::CFG_SPIINPROT_NMEA
     };
     result = configure(spiInProtKeys);
     if (!result)
@@ -282,10 +280,9 @@ bool M9NStartup::execute()
         return false;
     }
 
-    constexpr std::array<uint32_t, 3> spiOutProtKeys = {
+    constexpr std::array<uint32_t, 2> spiOutProtKeys = {
         UbxCfgKeys::CFG_SPIOUTPROT_UBX,
-        UbxCfgKeys::CFG_SPIOUTPROT_NMEA,
-        UbxCfgKeys::CFG_SPIOUTPROT_RTCM3X
+        UbxCfgKeys::CFG_SPIOUTPROT_NMEA
     };
     result = configure(spiOutProtKeys);
     if (!result)
@@ -489,12 +486,9 @@ std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigVa
 
     {UbxCfgKeys::CFG_SPIINPROT_UBX,    {0x01}},
     {UbxCfgKeys::CFG_SPIINPROT_NMEA,   {0x00}},
-    {UbxCfgKeys::CFG_SPIINPROT_RTCM3X, {0x00}},
-    {UbxCfgKeys::CFG_SPIINPROT_SPARTN, {0x00}},
 
     {UbxCfgKeys::CFG_SPIOUTPROT_UBX,    {0x01}},
     {UbxCfgKeys::CFG_SPIOUTPROT_NMEA,   {0x00}},
-    {UbxCfgKeys::CFG_SPIOUTPROT_RTCM3X, {0x00}},
 
     {UbxCfgKeys::CFG_UART1_ENABLED,  {0x01}},
     {UbxCfgKeys::CFG_UART1_BAUDRATE, {0x00, 0xC2, 0x01, 0x00}},  // 115200
@@ -789,6 +783,12 @@ F9PStartup::F9PStartup(ICommDriver& commDriver,
 :   M9NStartup(commDriver, configRegistry, ubxParser)
 {
     auto config = configRegistry.getGnssConfig();
+
+    auto& ecv = StartupBase::expectedConfigValues_;
+    ecv[UbxCfgKeys::CFG_SPIINPROT_RTCM3X] = {0x00};
+    ecv[UbxCfgKeys::CFG_SPIINPROT_SPARTN] = {0x00};
+    ecv[UbxCfgKeys::CFG_SPIOUTPROT_RTCM3X] = {0x00};
+
     if (config.rtk == std::nullopt)
         return;
 
@@ -799,7 +799,6 @@ F9PStartup::F9PStartup(ICommDriver& commDriver,
         return;
     }
 
-    auto& ecv = StartupBase::expectedConfigValues_;
     const auto& baseMode = config.rtk->base->mode;
 
     if (std::holds_alternative<BaseConfig::SurveyIn>(baseMode))
@@ -896,6 +895,21 @@ bool F9PStartup::execute()
         return false;
 
     configRegistry_.shouldSaveConfigToFlash(false);
+
+    constexpr std::array<uint32_t, 3> spiProtF9PKeys = {
+        UbxCfgKeys::CFG_SPIINPROT_RTCM3X,
+        UbxCfgKeys::CFG_SPIINPROT_SPARTN,
+        UbxCfgKeys::CFG_SPIOUTPROT_RTCM3X
+    };
+    result = configure(spiProtF9PKeys);
+    if (!result)
+    {
+        fprintf(
+            stderr,
+            "[Startup] SPI protocol (RTCM3X/SPARTN) configuration failed\r\n"
+        );
+        return false;
+    }
 
     constexpr std::array<uint32_t, 5> uart2Keys = {
         UbxCfgKeys::CFG_UART2_ENABLED,

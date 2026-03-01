@@ -2417,6 +2417,20 @@ static PyObject* GnssHat_timepulse(GnssHat* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
+static PyObject* GnssHat_name(GnssHat* self, PyObject* args)
+{
+    CHECK_HAT(self);
+
+    const char* name = jp_gnss_hat_name(self->hat);
+    if (!name)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get HAT name");
+        return NULL;
+    }
+
+    return PyUnicode_FromString(name);
+}
+
 static PyObject* GnssHat_rtk_get_full_corrections(GnssHat* self,
     PyObject* args)
 {
@@ -2689,6 +2703,13 @@ static PyMethodDef GnssHat_methods[] = {
         METH_NOARGS,
         "Wait for the next timepulse interrupt. "
         "Call enable_timepulse() first."
+    },
+    {
+        "name",
+        (PyCFunction)GnssHat_name,
+        METH_NOARGS,
+        "Get the name of the detected HAT "
+        "(e.g. 'L1 GNSS HAT', 'L1/L5 GNSS RTK HAT')."
     },
     {
         "rtk_get_full_corrections",

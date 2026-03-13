@@ -1208,4 +1208,9 @@ window.addEventListener('DOMContentLoaded', () => {
     setupTabs();
     setupDataTabs();
     setupConfigPanel();
+
+    // In ros2 mode, auto-fetch config from the GNSS node on startup
+    if (window.APP_MODE === 'ros2') {
+        loadConfig();
+    }
 });

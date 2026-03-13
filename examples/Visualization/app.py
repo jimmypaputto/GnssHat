@@ -735,8 +735,12 @@ def ros2_reader_thread():
     print("ROS 2 subscriber node spinning on /jp_gnss/navigation")
 
     import rclpy
-    while gps_state['running'] and rclpy.ok():
-        rclpy.spin_once(node, timeout_sec=0.1)
+    from rclpy.executors import ExternalShutdownException
+    try:
+        while gps_state['running'] and rclpy.ok():
+            rclpy.spin_once(node, timeout_sec=0.1)
+    except ExternalShutdownException:
+        pass
 
     node.destroy_node()
     gps_state['ros2_node'] = None

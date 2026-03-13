@@ -420,7 +420,7 @@ function updateGPSData(data) {
     updateDataField('data-heading', `${pvt.heading.toFixed(1)}°`);
 
     // Native mode: extra fields
-    if (window.APP_MODE === 'native') {
+    if (window.APP_MODE === 'native' || window.APP_MODE === 'ros2') {
         // HDOP from DOP object (not pvt)
         if (data.dop) {
             updateDataField('data-hdop', data.dop.horizontal.toFixed(2));
@@ -904,7 +904,7 @@ function setupDataTabs() {
 // ─── Configuration Panel Logic ─────────────────────────────────────────────
 
 function setupConfigPanel() {
-    if (window.APP_MODE !== 'native') return;
+    if (window.APP_MODE !== 'native' && window.APP_MODE !== 'ros2') return;
 
     const tpActive = document.getElementById('cfg-tp-active');
     const tpDetails = document.getElementById('cfg-tp-details');

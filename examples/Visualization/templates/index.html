@@ -39,7 +39,7 @@
                     <div class="map-tabs">
                         <button class="map-tab active" data-tab="relative">📐 Relative Map</button>
                         <button class="map-tab" data-tab="terrain">🗺️ Terrain Map</button>
-                        {% if mode == 'native' %}
+                        {% if mode in ['native', 'ros2'] %}
                         <button class="map-tab" data-tab="skyview">🛰️ Sky View</button>
                         {% endif %}
                     </div>
@@ -76,7 +76,7 @@
                     </div>
                 </div>
                 
-                {% if mode == 'native' %}
+                {% if mode in ['native', 'ros2'] %}
                 <!-- Sky View - Satellite polar plot -->
                 <div id="skyview-map" class="map-view" style="display: none;">
                     <div class="skyview-layout">
@@ -145,7 +145,7 @@
             <!-- Right side: Data panel -->
             <div class="data-container">
                 <div class="data-header">
-                    {% if mode == 'native' %}
+                    {% if mode in ['native', 'ros2'] %}
                     <div class="data-tabs">
                         <button class="data-tab active" data-dtab="navdata">📊 Navigation Data</button>
                         <button class="data-tab" data-dtab="config">⚙️ Configuration</button>
@@ -157,7 +157,7 @@
 
                 <!-- Navigation Data pane -->
                 <div id="navdata-pane" class="data-pane active">
-                <div class="data-content {% if mode == 'native' %}two-columns{% endif %}">
+                <div class="data-content {% if mode in ['native', 'ros2'] %}two-columns{% endif %}">
                     <!-- Column 1: PVT -->
                     <div class="data-column">
                     <table class="data-table">
@@ -209,7 +209,7 @@
                                 <td class="data-label">Altitude (MSL)</td>
                                 <td class="data-value" id="data-altitude-msl">0.0 m</td>
                             </tr>
-                            {% if mode == 'native' %}
+                            {% if mode in ['native', 'ros2'] %}
                             <tr>
                                 <td class="data-label">Altitude (WGS84)</td>
                                 <td class="data-value" id="data-altitude">0.0 m</td>
@@ -233,7 +233,7 @@
                                 <td class="data-value" id="data-heading">0.0°</td>
                             </tr>
 
-                            {% if mode == 'native' %}
+                            {% if mode in ['native', 'ros2'] %}
                             <tr class="section-header">
                                 <td colspan="2">🎯 Accuracy</td>
                             </tr>
@@ -258,7 +258,7 @@
                     </table>
                     </div>
 
-                    {% if mode == 'native' %}
+                    {% if mode in ['native', 'ros2'] %}
                     <!-- Column 2: DOP + Geofencing + RF -->
                     <div class="data-column">
                     <table class="data-table">
@@ -320,7 +320,7 @@
                 </div>
                 </div><!-- end navdata-pane -->
 
-                {% if mode == 'native' %}
+                {% if mode in ['native', 'ros2'] %}
                 <!-- Configuration pane -->
                 <div id="config-pane" class="data-pane" style="display:none;">
                     <div class="config-form">

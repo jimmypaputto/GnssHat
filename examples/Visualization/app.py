@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Jimmy Paputto 2025
 # GPS Visualization Web Application
-# Modes: native (GnssHat library) or external_tty (NMEA serial)
+# Modes: native (GnssHat library), external_tty (NMEA serial), or ros2 (ROS 2 topic)
 
 import sys
 import os
@@ -35,6 +35,7 @@ RUN_MODE = 'native'
 gps_state = {
     'serial_port': None,
     'hat': None,           # GnssHat object (native mode)
+    'ros2_node': None,     # rclpy Node (ros2 mode)
     'running': False,
     'thread': None,
     'reference_position': None,  # (lat, lon) of starting position
@@ -489,6 +490,259 @@ def gps_reader_thread():
     print("GPS NMEA reader thread stopped")
 
 
+# ─── ROS 2 mode: subscribe to /jp_gnss/navigation ───────────────────────────
+
+def ros2_nav_to_pvt_data(nav_msg):
+    """Convert jp_gnss/msg/Navigation ROS message to pvt data dict"""
+    pvt = nav_msg.pvt
+
+    fix_quality_map = {
+        0: "Invalid",
+        1: "Gps Fix 2D3D",
+        2: "DGPS Fix",
+        3: "PPS Fix",
+        4: "RTK Fixed",
+        5: "RTK Float",
+        6: "Dead Reckoning",
+    }
+
+    fix_status_map = {0: "Void", 1: "Active"}
+
+    fix_type_map = {
+        0: "No Fix",
+        1: "Dead Reckoning Only",
+        2: "Fix 2D",
+        3: "Fix 3D",
+        4: "GNSS+DR",
+        5: "Time Only Fix",
+    }
+
+    utc_time = "N/A"
+    if pvt.utc_valid:
+        utc_time = f"{pvt.utc_hours:02d}:{pvt.utc_minutes:02d}:{pvt.utc_seconds:02d}"
+
+    date = "N/A"
+    if pvt.date_valid:
+        date = f"{pvt.date_year:04d}-{pvt.date_month:02d}-{pvt.date_day:02d}"
+
+    dop = nav_msg.dop
+
+    return {
+        'latitude': float(pvt.latitude),
+        'longitude': float(pvt.longitude),
+        'altitude': float(pvt.altitude),
+        'altitude_msl': float(pvt.altitude_msl),
+        'speed_over_ground': float(pvt.speed_over_ground),
+        'heading': float(pvt.heading),
+        'visible_satellites': int(pvt.visible_satellites),
+        'hdop': float(dop.horizontal),
+        'fix_quality': fix_quality_map.get(pvt.fix_quality, "Unknown"),
+        'fix_status': fix_status_map.get(pvt.fix_status, "Void"),
+        'fix_type': fix_type_map.get(pvt.fix_type, "Unknown"),
+        'utc_time': utc_time,
+        'date': date,
+        'horizontal_accuracy': float(pvt.horizontal_accuracy),
+        'vertical_accuracy': float(pvt.vertical_accuracy),
+        'speed_accuracy': float(pvt.speed_accuracy),
+        'heading_accuracy': float(pvt.heading_accuracy),
+    }
+
+
+def ros2_nav_to_full_data(nav_msg):
+    """Convert jp_gnss/msg/Navigation ROS message to full data dict (DOP, RF, etc.)"""
+    dop = nav_msg.dop
+    dop_data = {
+        'geometric': float(dop.geometric),
+        'position': float(dop.position),
+        'time': float(dop.time),
+        'vertical': float(dop.vertical),
+        'horizontal': float(dop.horizontal),
+        'northing': float(dop.northing),
+        'easting': float(dop.easting),
+    }
+
+    geo = nav_msg.geofencing
+    geofencing_status_map = {0: "Not Available", 1: "Active"}
+    geofencing_data = {
+        'status': geofencing_status_map.get(geo.geofencing_status, "Unknown"),
+        'number_of_geofences': int(geo.number_of_geofences),
+    }
+
+    jamming_map = {0: "Unknown", 1: "OK", 2: "Warning", 3: "Critical"}
+    antenna_status_map = {0: "Init", 1: "Unknown", 2: "OK", 3: "Short", 4: "Open"}
+    antenna_power_map = {0: "Off", 1: "On", 2: "Unknown"}
+    band_map = {0: "L1", 1: "L2/L5"}
+
+    rf_blocks_data = []
+    for rf in nav_msg.rf_blocks:
+        rf_blocks_data.append({
+            'band': band_map.get(rf.band, "Unknown"),
+            'jamming_state': jamming_map.get(rf.jamming_state, "Unknown"),
+            'antenna_status': antenna_status_map.get(rf.antenna_status, "Unknown"),
+            'antenna_power': antenna_power_map.get(rf.antenna_power, "Unknown"),
+            'noise_per_ms': int(rf.noise_per_ms),
+            'agc_monitor': float(rf.agc_monitor),
+            'cw_suppression': float(rf.cw_interference_suppression_level),
+        })
+
+    gnss_id_map = {0: "GPS", 1: "SBAS", 2: "Galileo", 3: "BeiDou", 4: "IMES", 5: "QZSS", 6: "GLONASS"}
+    quality_map = {
+        0: "No Signal", 1: "Searching", 2: "Acquired", 3: "Unusable",
+        4: "Code Locked", 5: "Carrier Lock 1", 6: "Carrier Lock 2", 7: "Carrier Lock 3",
+    }
+
+    satellites_data = []
+    for sat in nav_msg.satellites:
+        satellites_data.append({
+            'gnss_id': gnss_id_map.get(sat.gnss_id, "Unknown"),
+            'sv_id': int(sat.sv_id),
+            'cno': int(sat.cno),
+            'elevation': int(sat.elevation),
+            'azimuth': int(sat.azimuth),
+            'quality': quality_map.get(sat.quality, "Unknown"),
+            'used_in_fix': bool(sat.used_in_fix),
+            'healthy': bool(sat.healthy),
+        })
+
+    return {
+        'dop': dop_data,
+        'geofencing': geofencing_data,
+        'rf_blocks': rf_blocks_data,
+        'satellites': satellites_data,
+    }
+
+
+def ros2_config_msg_to_json(config_msg):
+    """Convert jp_gnss/msg/GnssConfig ROS message to JSON-serializable dict"""
+    result = {
+        'measurement_rate_hz': int(config_msg.measurement_rate_hz),
+        'dynamic_model': int(config_msg.dynamic_model),
+    }
+
+    if config_msg.timepulse_active:
+        tp = {
+            'active': True,
+            'fixed_pulse': {
+                'frequency': int(config_msg.timepulse_frequency),
+                'pulse_width': float(config_msg.timepulse_pulse_width),
+            },
+            'polarity': int(config_msg.timepulse_polarity),
+        }
+        if config_msg.timepulse_has_no_fix_pulse:
+            tp['pulse_when_no_fix'] = {
+                'frequency': int(config_msg.timepulse_no_fix_frequency),
+                'pulse_width': float(config_msg.timepulse_no_fix_pulse_width),
+            }
+        result['timepulse_pin_config'] = tp
+    else:
+        result['timepulse_pin_config'] = None
+
+    if config_msg.geofencing_enabled and len(config_msg.geofences) > 0:
+        fences = []
+        for g in config_msg.geofences:
+            fences.append({'lat': float(g.lat), 'lon': float(g.lon), 'radius': float(g.radius)})
+        result['geofencing'] = {
+            'geofences': fences,
+            'confidence_level': int(config_msg.geofencing_confidence_level),
+        }
+    else:
+        result['geofencing'] = None
+
+    return result
+
+
+def json_to_ros2_config_msg(data):
+    """Convert JSON config from frontend to jp_gnss/msg/GnssConfig ROS message"""
+    from jp_gnss.msg import GnssConfig as GnssConfigMsg, Geofence as GeofenceMsg
+
+    msg = GnssConfigMsg()
+    msg.measurement_rate_hz = int(data['measurement_rate_hz'])
+    msg.dynamic_model = int(data['dynamic_model'])
+
+    tp = data.get('timepulse_pin_config')
+    if tp and tp.get('active'):
+        msg.timepulse_active = True
+        msg.timepulse_frequency = int(tp['fixed_pulse']['frequency'])
+        msg.timepulse_pulse_width = float(tp['fixed_pulse']['pulse_width'])
+        msg.timepulse_polarity = int(tp.get('polarity', 1))
+        if tp.get('pulse_when_no_fix') and tp['pulse_when_no_fix'].get('frequency') is not None:
+            msg.timepulse_has_no_fix_pulse = True
+            msg.timepulse_no_fix_frequency = int(tp['pulse_when_no_fix']['frequency'])
+            msg.timepulse_no_fix_pulse_width = float(tp['pulse_when_no_fix']['pulse_width'])
+    else:
+        msg.timepulse_active = False
+
+    geo = data.get('geofencing')
+    if geo and geo.get('geofences') and len(geo['geofences']) > 0:
+        msg.geofencing_enabled = True
+        msg.geofencing_confidence_level = int(geo.get('confidence_level', 3))
+        for f in geo['geofences'][:4]:
+            if f.get('lat') is not None and f.get('lon') is not None and f.get('radius') is not None:
+                gf = GeofenceMsg()
+                gf.lat = float(f['lat'])
+                gf.lon = float(f['lon'])
+                gf.radius = float(f['radius'])
+                msg.geofences.append(gf)
+    else:
+        msg.geofencing_enabled = False
+
+    return msg
+
+
+def ros2_reader_thread():
+    """Background thread: spins an rclpy node subscribed to /jp_gnss/navigation"""
+    from rclpy.node import Node as RclpyNode
+    from jp_gnss.msg import Navigation as NavigationMsg
+
+    node = RclpyNode('jp_gnss_viz')
+
+    def nav_callback(nav_msg):
+        try:
+            pvt_data = ros2_nav_to_pvt_data(nav_msg)
+
+            if gps_state['reference_position'] is None:
+                lat, lon = pvt_data['latitude'], pvt_data['longitude']
+                if lat != 0.0 and lon != 0.0:
+                    gps_state['reference_position'] = (lat, lon)
+                    print(f"Reference position set: {gps_state['reference_position']}")
+
+            current_pos = (pvt_data['latitude'], pvt_data['longitude'])
+            x_offset, y_offset = calculate_offset_meters(
+                gps_state['reference_position'], current_pos)
+
+            data = {
+                'pvt': pvt_data,
+                'offset_x': x_offset,
+                'offset_y': y_offset,
+                'has_reference': gps_state['reference_position'] is not None,
+            }
+
+            try:
+                extra = ros2_nav_to_full_data(nav_msg)
+                data.update(extra)
+            except Exception as e:
+                print(f"Error serializing extra nav data: {e}")
+
+            gps_state['current_data'] = data
+            socketio.emit('gps_update', data, namespace='/')
+
+        except Exception as e:
+            print(f"Error in ROS 2 nav callback: {e}")
+
+    node.create_subscription(NavigationMsg, '/jp_gnss/navigation', nav_callback, 10)
+    gps_state['ros2_node'] = node
+
+    print("ROS 2 subscriber node spinning on /jp_gnss/navigation")
+
+    import rclpy
+    while gps_state['running'] and rclpy.ok():
+        rclpy.spin_once(node, timeout_sec=0.1)
+
+    node.destroy_node()
+    gps_state['ros2_node'] = None
+    print("ROS 2 subscriber node stopped")
+
+
 @app.route('/res/<path:filename>')
 def serve_res(filename):
     """Serve files from res/ directory"""
@@ -623,8 +877,10 @@ def json_to_native_config(data):
 @app.route('/api/config', methods=['GET'])
 def api_get_config():
     """Get current GnssHat configuration"""
+    if RUN_MODE == 'ros2':
+        return _ros2_get_config()
     if RUN_MODE != 'native':
-        return jsonify({'error': 'Configuration only available in native mode'}), 400
+        return jsonify({'error': 'Configuration only available in native or ros2 mode'}), 400
     if gps_state['current_config']:
         return jsonify(config_to_json_safe(gps_state['current_config']))
     return jsonify({'error': 'No config loaded'}), 404
@@ -633,8 +889,10 @@ def api_get_config():
 @app.route('/api/config', methods=['POST'])
 def api_set_config():
     """Apply new GnssHat configuration — stops reader, destroys hat, creates new one"""
+    if RUN_MODE == 'ros2':
+        return _ros2_set_config()
     if RUN_MODE != 'native':
-        return jsonify({'error': 'Configuration only available in native mode'}), 400
+        return jsonify({'error': 'Configuration only available in native or ros2 mode'}), 400
 
     data = request.get_json()
     if not data:
@@ -716,10 +974,97 @@ def api_set_config():
             return jsonify({'error': str(e)}), 500
 
 
+# ─── ROS 2 config service helpers ───────────────────────────────────────────
+
+def _ros2_call_service(srv_type, srv_name, request, timeout=10.0):
+    """Call a ROS 2 service via the subscriber node that is already spinning.
+    The subscriber spin loop processes the response; we just poll future.done()."""
+    node = gps_state.get('ros2_node')
+    if not node:
+        return None
+
+    client = node.create_client(srv_type, srv_name)
+    try:
+        if not client.wait_for_service(timeout_sec=5.0):
+            return None
+        future = client.call_async(request)
+        # The subscriber thread is already spinning the node, so the response
+        # callback will be dispatched there. Just poll until done.
+        deadline = time.monotonic() + timeout
+        while not future.done() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if future.done():
+            return future.result()
+        return None
+    finally:
+        node.destroy_client(client)
+
+
+def _ros2_get_config():
+    """GET /api/config handler for ros2 mode — calls /jp_gnss/get_config service"""
+    try:
+        from jp_gnss.srv import GetGnssConfig
+        resp = _ros2_call_service(
+            GetGnssConfig, '/jp_gnss/get_config', GetGnssConfig.Request())
+        if resp is None:
+            return jsonify({'error': 'Service /jp_gnss/get_config unavailable'}), 503
+        cfg_json = ros2_config_msg_to_json(resp.config)
+        gps_state['current_config'] = cfg_json
+        return jsonify(cfg_json)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def _ros2_set_config():
+    """POST /api/config handler for ros2 mode — calls /jp_gnss/set_config service"""
+    from jp_gnss.srv import SetGnssConfig
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON body'}), 400
+
+    try:
+        socketio.emit('config_progress',
+                       {'step': 'config', 'message': 'Sending config via ROS 2 service...'},
+                       namespace='/')
+
+        req = SetGnssConfig.Request()
+        req.config = json_to_ros2_config_msg(data)
+        req.save_to_yaml = False
+
+        resp = _ros2_call_service(SetGnssConfig, '/jp_gnss/set_config', req, timeout=30.0)
+        if resp is None:
+            socketio.emit('config_progress',
+                           {'step': 'error', 'message': 'Service /jp_gnss/set_config unavailable'},
+                           namespace='/')
+            return jsonify({'error': 'Service /jp_gnss/set_config unavailable'}), 503
+
+        if not resp.success:
+            socketio.emit('config_progress',
+                           {'step': 'error', 'message': f'Config rejected: {resp.message}'},
+                           namespace='/')
+            return jsonify({'error': resp.message}), 500
+
+        gps_state['current_config'] = data
+        gps_state['reference_position'] = None
+        socketio.emit('config_progress',
+                       {'step': 'done', 'message': 'Configuration applied successfully!'},
+                       namespace='/')
+        return jsonify({'success': True, 'config': data})
+
+    except Exception as e:
+        socketio.emit('config_progress',
+                       {'step': 'error', 'message': f'Error: {str(e)}'},
+                       namespace='/')
+        return jsonify({'error': str(e)}), 500
+
+
 def start_gps():
     """Initialize and start GPS data source based on RUN_MODE"""
     if RUN_MODE == 'native':
         return start_gps_native()
+    elif RUN_MODE == 'ros2':
+        return start_gps_ros2()
     else:
         return start_gps_external_tty()
 
@@ -783,6 +1128,22 @@ def start_gps_external_tty():
         return False
 
 
+def start_gps_ros2():
+    """Start ROS 2 subscriber thread for /jp_gnss/navigation topic"""
+    import rclpy
+
+    print("Starting in ROS 2 mode — subscribing to /jp_gnss/navigation...")
+    try:
+        rclpy.init()
+        gps_state['running'] = True
+        gps_state['thread'] = threading.Thread(target=ros2_reader_thread, daemon=True)
+        gps_state['thread'].start()
+        return True
+    except Exception as e:
+        print(f"Error starting ROS 2 subscriber: {e}")
+        return False
+
+
 def stop_gps():
     """Stop GPS data source"""
     print("Stopping GPS...")
@@ -793,9 +1154,17 @@ def stop_gps():
     
     if gps_state['serial_port'] and gps_state['serial_port'].is_open:
         gps_state['serial_port'].close()
+
+    if RUN_MODE == 'ros2':
+        try:
+            import rclpy
+            rclpy.shutdown()
+        except Exception:
+            pass
     
     gps_state['serial_port'] = None
     gps_state['hat'] = None
+    gps_state['ros2_node'] = None
     gps_state['reference_position'] = None
     gps_state['current_data'] = None
     gps_state['last_gga'] = None
@@ -810,10 +1179,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='GPS Visualization Server')
     parser.add_argument(
         'mode',
-        choices=['native', 'external_tty'],
+        choices=['native', 'external_tty', 'ros2'],
         nargs='?',
         default='native',
-        help='Data source mode: native (GnssHat library) or external_tty (NMEA serial). Default: native'
+        help='Data source mode: native (GnssHat library), external_tty (NMEA serial), or ros2 (ROS 2 topic). Default: native'
     )
     args = parser.parse_args()
     RUN_MODE = args.mode
@@ -823,6 +1192,8 @@ if __name__ == '__main__':
     print(f"Mode: {RUN_MODE}")
     if RUN_MODE == 'external_tty':
         print(f"Reading from: {SERIAL_PORT} @ {BAUD_RATE} baud")
+    elif RUN_MODE == 'ros2':
+        print("Subscribing to ROS 2 topic /jp_gnss/navigation")
     else:
         print("Using GnssHat native library")
     print("=" * 60)

@@ -432,6 +432,109 @@
                             </div>
                         </fieldset>
 
+                        <!-- RTK -->
+                        <fieldset class="cfg-section">
+                            <legend>📡 RTK</legend>
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-rtk-en" class="cfg-checkbox">
+                                    Enable RTK
+                                </label>
+                            </div>
+                            <div id="cfg-rtk-details" style="display:none;">
+                                <div class="cfg-row">
+                                    <label for="cfg-rtk-mode">Mode</label>
+                                    <select id="cfg-rtk-mode" class="cfg-input">
+                                        <option value="0">Base</option>
+                                        <option value="1" selected>Rover</option>
+                                    </select>
+                                </div>
+                                <div id="cfg-rtk-base-details" style="display:none;">
+                                    <div class="cfg-row">
+                                        <label for="cfg-rtk-basemode">Base Mode</label>
+                                        <select id="cfg-rtk-basemode" class="cfg-input">
+                                            <option value="0" selected>Survey-In</option>
+                                            <option value="1">Fixed Position</option>
+                                        </select>
+                                    </div>
+                                    <!-- Survey-In -->
+                                    <div id="cfg-rtk-si-details">
+                                        <div class="cfg-row">
+                                            <label for="cfg-rtk-si-obs">Min Observation Time (s)</label>
+                                            <input type="number" id="cfg-rtk-si-obs" min="1" max="86400" value="120" class="cfg-input cfg-input-sm">
+                                        </div>
+                                        <div class="cfg-row">
+                                            <label for="cfg-rtk-si-acc">Required Accuracy (m)</label>
+                                            <input type="number" id="cfg-rtk-si-acc" min="0.1" max="1000" step="0.1" value="50.0" class="cfg-input cfg-input-sm">
+                                        </div>
+                                    </div>
+                                    <!-- Fixed Position -->
+                                    <div id="cfg-rtk-fp-details" style="display:none;">
+                                        <div class="cfg-row">
+                                            <label for="cfg-rtk-fp-type">Position Type</label>
+                                            <select id="cfg-rtk-fp-type" class="cfg-input">
+                                                <option value="0">ECEF</option>
+                                                <option value="1" selected>LLA</option>
+                                            </select>
+                                        </div>
+                                        <div class="cfg-row">
+                                            <label for="cfg-rtk-fp-acc">Position Accuracy (m)</label>
+                                            <input type="number" id="cfg-rtk-fp-acc" min="0.001" max="1000" step="0.001" value="0.5" class="cfg-input cfg-input-sm">
+                                        </div>
+                                        <!-- ECEF -->
+                                        <div id="cfg-rtk-ecef-details" style="display:none;">
+                                            <div class="cfg-row">
+                                                <label for="cfg-rtk-ecef-x">X (m)</label>
+                                                <input type="number" id="cfg-rtk-ecef-x" step="0.001" value="0" class="cfg-input cfg-input-sm">
+                                            </div>
+                                            <div class="cfg-row">
+                                                <label for="cfg-rtk-ecef-y">Y (m)</label>
+                                                <input type="number" id="cfg-rtk-ecef-y" step="0.001" value="0" class="cfg-input cfg-input-sm">
+                                            </div>
+                                            <div class="cfg-row">
+                                                <label for="cfg-rtk-ecef-z">Z (m)</label>
+                                                <input type="number" id="cfg-rtk-ecef-z" step="0.001" value="0" class="cfg-input cfg-input-sm">
+                                            </div>
+                                        </div>
+                                        <!-- LLA -->
+                                        <div id="cfg-rtk-lla-details">
+                                            <div class="cfg-row">
+                                                <label for="cfg-rtk-lla-lat">Latitude (°)</label>
+                                                <input type="number" id="cfg-rtk-lla-lat" step="0.000000001" value="0" class="cfg-input cfg-input-sm">
+                                            </div>
+                                            <div class="cfg-row">
+                                                <label for="cfg-rtk-lla-lon">Longitude (°)</label>
+                                                <input type="number" id="cfg-rtk-lla-lon" step="0.000000001" value="0" class="cfg-input cfg-input-sm">
+                                            </div>
+                                            <div class="cfg-row">
+                                                <label for="cfg-rtk-lla-h">Height (m)</label>
+                                                <input type="number" id="cfg-rtk-lla-h" step="0.001" value="0" class="cfg-input cfg-input-sm">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        {% if mode == 'ros2' %}
+                        <!-- ROS 2 specific options -->
+                        <fieldset class="cfg-section">
+                            <legend>🤖 ROS 2</legend>
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-ros2-stdtopics" checked class="cfg-checkbox">
+                                    Publish Standard Topics
+                                </label>
+                            </div>
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-ros2-ntrip" class="cfg-checkbox">
+                                    Use NTRIP RTCM
+                                </label>
+                            </div>
+                        </fieldset>
+                        {% endif %}
+
                         <!-- Action buttons -->
                         <div class="cfg-actions">
                             <button type="button" id="cfg-load-btn" class="cfg-btn cfg-btn-secondary">📥 Load Config</button>

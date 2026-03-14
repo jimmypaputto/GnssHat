@@ -176,7 +176,8 @@ def create_default_config():
             },
             'polarity': gnsshat.TimepulsePolarity.RISING_EDGE
         },
-        'geofencing': None
+        'geofencing': None,
+        'rtk': None,
     }
 
 
@@ -648,6 +649,54 @@ def ros2_config_msg_to_json(config_msg):
     else:
         result['geofencing'] = None
 
+    # RTK
+    if config_msg.rtk_enabled:
+        rtk_mode = int(config_msg.rtk_mode)
+        rtk = {'mode': rtk_mode}
+        if rtk_mode == 0:  # Base
+            base_type = int(config_msg.rtk_base_type)
+            if base_type == 0:  # Survey-In
+                rtk['base'] = {
+                    'base_mode': 0,
+                    'survey_in': {
+                        'minimum_observation_time_s': int(config_msg.rtk_min_observation_time_s),
+                        'required_position_accuracy_m': float(config_msg.rtk_required_accuracy_m),
+                    },
+                }
+            elif base_type == 1:  # Fixed ECEF
+                rtk['base'] = {
+                    'base_mode': 1,
+                    'fixed_position': {
+                        'position_type': 0,
+                        'ecef': {
+                            'x_m': float(config_msg.rtk_ecef_x_m),
+                            'y_m': float(config_msg.rtk_ecef_y_m),
+                            'z_m': float(config_msg.rtk_ecef_z_m),
+                        },
+                        'position_accuracy_m': float(config_msg.rtk_position_accuracy_m),
+                    },
+                }
+            else:  # Fixed LLA (base_type == 2)
+                rtk['base'] = {
+                    'base_mode': 1,
+                    'fixed_position': {
+                        'position_type': 1,
+                        'lla': {
+                            'latitude_deg': float(config_msg.rtk_lla_latitude_deg),
+                            'longitude_deg': float(config_msg.rtk_lla_longitude_deg),
+                            'height_m': float(config_msg.rtk_lla_height_m),
+                        },
+                        'position_accuracy_m': float(config_msg.rtk_position_accuracy_m),
+                    },
+                }
+        result['rtk'] = rtk
+    else:
+        result['rtk'] = None
+
+    # ROS 2 specific fields
+    result['publish_standard_topics'] = bool(config_msg.publish_standard_topics)
+    result['use_ntrip_rtcm'] = bool(config_msg.use_ntrip_rtcm)
+
     return result
 
 
@@ -685,6 +734,42 @@ def json_to_ros2_config_msg(data):
                 msg.geofences.append(gf)
     else:
         msg.geofencing_enabled = False
+
+    # RTK
+    rtk = data.get('rtk')
+    if rtk and rtk.get('mode') is not None:
+        msg.rtk_enabled = True
+        msg.rtk_mode = int(rtk['mode'])
+        base = rtk.get('base')
+        if base and base.get('base_mode') is not None:
+            base_mode = int(base['base_mode'])
+            if base_mode == 0:  # Survey-In
+                msg.rtk_base_type = 0
+                si = base.get('survey_in', {})
+                msg.rtk_min_observation_time_s = int(si.get('minimum_observation_time_s', 120))
+                msg.rtk_required_accuracy_m = float(si.get('required_position_accuracy_m', 50.0))
+            elif base_mode == 1:  # Fixed Position
+                fp = base.get('fixed_position', {})
+                pos_type = int(fp.get('position_type', 1))
+                msg.rtk_position_accuracy_m = float(fp.get('position_accuracy_m', 0.5))
+                if pos_type == 0:  # ECEF
+                    msg.rtk_base_type = 1
+                    ecef = fp.get('ecef', {})
+                    msg.rtk_ecef_x_m = float(ecef.get('x_m', 0.0))
+                    msg.rtk_ecef_y_m = float(ecef.get('y_m', 0.0))
+                    msg.rtk_ecef_z_m = float(ecef.get('z_m', 0.0))
+                else:  # LLA
+                    msg.rtk_base_type = 2
+                    lla = fp.get('lla', {})
+                    msg.rtk_lla_latitude_deg = float(lla.get('latitude_deg', 0.0))
+                    msg.rtk_lla_longitude_deg = float(lla.get('longitude_deg', 0.0))
+                    msg.rtk_lla_height_m = float(lla.get('height_m', 0.0))
+    else:
+        msg.rtk_enabled = False
+
+    # ROS 2 specific fields
+    msg.publish_standard_topics = bool(data.get('publish_standard_topics', True))
+    msg.use_ntrip_rtcm = bool(data.get('use_ntrip_rtcm', False))
 
     return msg
 
@@ -874,6 +959,49 @@ def json_to_native_config(data):
             config['geofencing'] = None
     else:
         config['geofencing'] = None
+
+    # RTK
+    rtk = data.get('rtk')
+    if rtk and rtk.get('mode') is not None:
+        rtk_cfg = {
+            'mode': int(rtk['mode']),
+        }
+        base = rtk.get('base')
+        if base and base.get('base_mode') is not None:
+            base_cfg = {
+                'base_mode': int(base['base_mode']),
+            }
+            if int(base['base_mode']) == 0:  # SURVEY_IN
+                si = base.get('survey_in', {})
+                base_cfg['survey_in'] = {
+                    'minimum_observation_time_s': int(si.get('minimum_observation_time_s', 120)),
+                    'required_position_accuracy_m': float(si.get('required_position_accuracy_m', 50.0)),
+                }
+            else:  # FIXED_POSITION
+                fp = base.get('fixed_position', {})
+                fp_cfg = {
+                    'position_type': int(fp.get('position_type', 1)),
+                    'position_accuracy_m': float(fp.get('position_accuracy_m', 0.5)),
+                }
+                if int(fp.get('position_type', 1)) == 0:  # ECEF
+                    ecef = fp.get('ecef', {})
+                    fp_cfg['ecef'] = {
+                        'x_m': float(ecef.get('x_m', 0.0)),
+                        'y_m': float(ecef.get('y_m', 0.0)),
+                        'z_m': float(ecef.get('z_m', 0.0)),
+                    }
+                else:  # LLA
+                    lla = fp.get('lla', {})
+                    fp_cfg['lla'] = {
+                        'latitude_deg': float(lla.get('latitude_deg', 0.0)),
+                        'longitude_deg': float(lla.get('longitude_deg', 0.0)),
+                        'height_m': float(lla.get('height_m', 0.0)),
+                    }
+                base_cfg['fixed_position'] = fp_cfg
+            rtk_cfg['base'] = base_cfg
+        config['rtk'] = rtk_cfg
+    else:
+        config['rtk'] = None
 
     return config
 

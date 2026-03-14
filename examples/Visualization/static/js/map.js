@@ -935,6 +935,38 @@ function setupConfigPanel() {
         addGeofenceRow();
     });
 
+    // RTK toggles
+    const rtkEn = document.getElementById('cfg-rtk-en');
+    const rtkDetails = document.getElementById('cfg-rtk-details');
+    const rtkMode = document.getElementById('cfg-rtk-mode');
+    const rtkBaseDetails = document.getElementById('cfg-rtk-base-details');
+    const rtkBaseMode = document.getElementById('cfg-rtk-basemode');
+    const rtkSiDetails = document.getElementById('cfg-rtk-si-details');
+    const rtkFpDetails = document.getElementById('cfg-rtk-fp-details');
+    const rtkFpType = document.getElementById('cfg-rtk-fp-type');
+    const rtkEcefDetails = document.getElementById('cfg-rtk-ecef-details');
+    const rtkLlaDetails = document.getElementById('cfg-rtk-lla-details');
+
+    if (rtkEn) {
+        rtkEn.addEventListener('change', () => {
+            rtkDetails.style.display = rtkEn.checked ? '' : 'none';
+        });
+
+        rtkMode.addEventListener('change', () => {
+            rtkBaseDetails.style.display = rtkMode.value === '0' ? '' : 'none';
+        });
+
+        rtkBaseMode.addEventListener('change', () => {
+            rtkSiDetails.style.display = rtkBaseMode.value === '0' ? '' : 'none';
+            rtkFpDetails.style.display = rtkBaseMode.value === '1' ? '' : 'none';
+        });
+
+        rtkFpType.addEventListener('change', () => {
+            rtkEcefDetails.style.display = rtkFpType.value === '0' ? '' : 'none';
+            rtkLlaDetails.style.display = rtkFpType.value === '1' ? '' : 'none';
+        });
+    }
+
     // Load config button
     document.getElementById('cfg-load-btn').addEventListener('click', loadConfig);
 
@@ -1043,6 +1075,67 @@ function populateFormFromConfig(config) {
         geoEn.checked = false;
         document.getElementById('cfg-geo-details').style.display = 'none';
     }
+
+    // RTK
+    const rtk = config.rtk;
+    const rtkEn = document.getElementById('cfg-rtk-en');
+    if (rtkEn) {
+        if (rtk && rtk.mode !== undefined && rtk.mode !== null) {
+            rtkEn.checked = true;
+            document.getElementById('cfg-rtk-details').style.display = '';
+            document.getElementById('cfg-rtk-mode').value = rtk.mode;
+
+            const isBase = parseInt(rtk.mode) === 0;
+            document.getElementById('cfg-rtk-base-details').style.display = isBase ? '' : 'none';
+
+            if (isBase && rtk.base) {
+                const baseMode = rtk.base.base_mode ?? 0;
+                document.getElementById('cfg-rtk-basemode').value = baseMode;
+
+                document.getElementById('cfg-rtk-si-details').style.display = parseInt(baseMode) === 0 ? '' : 'none';
+                document.getElementById('cfg-rtk-fp-details').style.display = parseInt(baseMode) === 1 ? '' : 'none';
+
+                if (parseInt(baseMode) === 0 && rtk.base.survey_in) {
+                    document.getElementById('cfg-rtk-si-obs').value = rtk.base.survey_in.minimum_observation_time_s ?? 120;
+                    document.getElementById('cfg-rtk-si-acc').value = rtk.base.survey_in.required_position_accuracy_m ?? 50.0;
+                }
+
+                if (parseInt(baseMode) === 1 && rtk.base.fixed_position) {
+                    const fp = rtk.base.fixed_position;
+                    const posType = fp.position_type ?? 1;
+                    document.getElementById('cfg-rtk-fp-type').value = posType;
+                    document.getElementById('cfg-rtk-fp-acc').value = fp.position_accuracy_m ?? 0.5;
+
+                    document.getElementById('cfg-rtk-ecef-details').style.display = parseInt(posType) === 0 ? '' : 'none';
+                    document.getElementById('cfg-rtk-lla-details').style.display = parseInt(posType) === 1 ? '' : 'none';
+
+                    if (parseInt(posType) === 0 && fp.ecef) {
+                        document.getElementById('cfg-rtk-ecef-x').value = fp.ecef.x_m ?? 0;
+                        document.getElementById('cfg-rtk-ecef-y').value = fp.ecef.y_m ?? 0;
+                        document.getElementById('cfg-rtk-ecef-z').value = fp.ecef.z_m ?? 0;
+                    }
+                    if (parseInt(posType) === 1 && fp.lla) {
+                        document.getElementById('cfg-rtk-lla-lat').value = fp.lla.latitude_deg ?? 0;
+                        document.getElementById('cfg-rtk-lla-lon').value = fp.lla.longitude_deg ?? 0;
+                        document.getElementById('cfg-rtk-lla-h').value = fp.lla.height_m ?? 0;
+                    }
+                }
+            }
+        } else {
+            rtkEn.checked = false;
+            document.getElementById('cfg-rtk-details').style.display = 'none';
+        }
+    }
+
+    // ROS 2 specific fields
+    const ros2StdTopics = document.getElementById('cfg-ros2-stdtopics');
+    if (ros2StdTopics) {
+        ros2StdTopics.checked = config.publish_standard_topics !== false;
+    }
+    const ros2Ntrip = document.getElementById('cfg-ros2-ntrip');
+    if (ros2Ntrip) {
+        ros2Ntrip.checked = !!config.use_ntrip_rtcm;
+    }
 }
 
 function buildConfigFromForm() {
@@ -1095,6 +1188,59 @@ function buildConfigFromForm() {
         }
     } else {
         config.geofencing = null;
+    }
+
+    // RTK
+    const rtkEn = document.getElementById('cfg-rtk-en');
+    if (rtkEn && rtkEn.checked) {
+        const rtkMode = parseInt(document.getElementById('cfg-rtk-mode').value);
+        const rtk = { mode: rtkMode };
+
+        if (rtkMode === 0) { // Base
+            const baseMode = parseInt(document.getElementById('cfg-rtk-basemode').value);
+            const base = { base_mode: baseMode };
+
+            if (baseMode === 0) { // Survey-In
+                base.survey_in = {
+                    minimum_observation_time_s: parseInt(document.getElementById('cfg-rtk-si-obs').value) || 120,
+                    required_position_accuracy_m: parseFloat(document.getElementById('cfg-rtk-si-acc').value) || 50.0,
+                };
+            } else { // Fixed Position
+                const posType = parseInt(document.getElementById('cfg-rtk-fp-type').value);
+                const fp = {
+                    position_type: posType,
+                    position_accuracy_m: parseFloat(document.getElementById('cfg-rtk-fp-acc').value) || 0.5,
+                };
+                if (posType === 0) { // ECEF
+                    fp.ecef = {
+                        x_m: parseFloat(document.getElementById('cfg-rtk-ecef-x').value) || 0,
+                        y_m: parseFloat(document.getElementById('cfg-rtk-ecef-y').value) || 0,
+                        z_m: parseFloat(document.getElementById('cfg-rtk-ecef-z').value) || 0,
+                    };
+                } else { // LLA
+                    fp.lla = {
+                        latitude_deg: parseFloat(document.getElementById('cfg-rtk-lla-lat').value) || 0,
+                        longitude_deg: parseFloat(document.getElementById('cfg-rtk-lla-lon').value) || 0,
+                        height_m: parseFloat(document.getElementById('cfg-rtk-lla-h').value) || 0,
+                    };
+                }
+                base.fixed_position = fp;
+            }
+            rtk.base = base;
+        }
+        config.rtk = rtk;
+    } else {
+        config.rtk = null;
+    }
+
+    // ROS 2 specific fields
+    const ros2StdTopics = document.getElementById('cfg-ros2-stdtopics');
+    if (ros2StdTopics) {
+        config.publish_standard_topics = ros2StdTopics.checked;
+    }
+    const ros2Ntrip = document.getElementById('cfg-ros2-ntrip');
+    if (ros2Ntrip) {
+        config.use_ntrip_rtcm = ros2Ntrip.checked;
     }
 
     return config;

@@ -114,17 +114,10 @@ F9PRun::F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
         uart_ = std::jthread([this](std::stop_token stoken) {
             while (!stoken.stop_requested())
             {
-                executeUartRover();
+                executeUartRover(stoken);
             }
         });
     }
-}
-
-F9PRun::~F9PRun()
-{
-    uart_.request_stop();
-    if (uart_.joinable())
-        uart_.join();
 }
 
 void F9PRun::executeUartBase()
@@ -160,10 +153,10 @@ void F9PRun::executeUartBase()
     unfinishedFrameBuff_.clear();
 }
 
-void F9PRun::executeUartRover()
+void F9PRun::executeUartRover(std::stop_token stoken)
 {
     auto& uartDriver = static_cast<UartDriver&>(*uartDriver_);
-    const auto incomingFrames = rtcm3Store_.waitForFrames();
+    const auto incomingFrames = rtcm3Store_.waitForFrames(stoken);
     for (const auto& frame : incomingFrames)
     {
         uartDriver.transmit(frame);

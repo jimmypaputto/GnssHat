@@ -180,7 +180,11 @@ public:
         rtk_(nullptr)
     {}
 
-    ~GnssL1L5TRtkHat() override = default;
+    ~GnssL1L5TRtkHat() override
+    {
+        stopUbloxThread();
+        runStrategy_.reset();
+    }
 
     bool start(const GnssConfig& config) override
     {

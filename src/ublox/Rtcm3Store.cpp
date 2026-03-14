@@ -104,4 +104,19 @@ std::vector<std::vector<uint8_t>> Rtcm3Store::waitForFrames()
     return {};
 }
 
+std::vector<std::vector<uint8_t>> Rtcm3Store::waitForFrames(
+    std::stop_token stoken)
+{
+    if (!roverNotifier_.wait(stoken))
+        return {};
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        const auto result = incomingFrames_;
+        incomingFrames_.clear();
+        xSemaphore_.releaseResource();
+        return result;
+    }
+    return {};
+}
+
 }  // JimmyPaputto

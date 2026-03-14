@@ -8,6 +8,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
+#include <stop_token>
 
 
 namespace JimmyPaputto
@@ -30,6 +31,15 @@ public:
         ready = false;
     }
 
+    bool wait(std::stop_token stoken)
+    {
+        std::unique_lock lock(mtx);
+        if (!cv.wait(lock, stoken, [this]{ return ready; }))
+            return false;
+        ready = false;
+        return true;
+    }
+
     void setFlag(const bool value)
     {
         flag = value;
@@ -42,7 +52,7 @@ public:
 
 private:
     std::mutex mtx;
-    std::condition_variable cv;
+    std::condition_variable_any cv;
     bool ready = false;
     std::atomic<bool> flag = false;
 };

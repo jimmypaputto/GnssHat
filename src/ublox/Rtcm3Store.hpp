@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <span>
+#include <stop_token>
 #include <unordered_map>
 #include <vector>
 
@@ -32,6 +33,7 @@ public:
         std::span<const uint16_t> ids) const;
 
     std::vector<std::vector<uint8_t>> waitForFrames();
+    std::vector<std::vector<uint8_t>> waitForFrames(std::stop_token stoken);
 
 private:
     std::unordered_map<uint16_t, std::vector<uint8_t>> frames_;

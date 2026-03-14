@@ -67,11 +67,11 @@ public:
     F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
         Notifier& txReadyNotifier, Notifier& navigationNotifier,
         Rtcm3Store& rtcm3Store, const GnssConfig& config);
-    ~F9PRun() override;
+    ~F9PRun() override = default;
 
 private:
     void executeUartBase();
-    void executeUartRover();
+    void executeUartRover(std::stop_token stoken);
 
     std::unique_ptr<ICommDriver> uartDriver_;
     Rtcm3Parser rtcm3Parser_;

@@ -31,6 +31,9 @@ BAUD_RATE = 9600
 # Operating mode: 'native' or 'external_tty'
 RUN_MODE = 'native'
 
+# Optional ROS 2 node name (e.g. 'rover', 'base') — changes topic prefix
+ROS2_NODE_NAME = None
+
 # Global state
 gps_state = {
     'serial_port': None,
@@ -774,8 +777,15 @@ def json_to_ros2_config_msg(data):
     return msg
 
 
+def _ros2_topic_prefix():
+    """Return the ROS 2 topic/service prefix, e.g. '/jp_gnss' or '/jp_gnss/rover'."""
+    if ROS2_NODE_NAME:
+        return f'/jp_gnss/{ROS2_NODE_NAME}'
+    return '/jp_gnss'
+
+
 def ros2_reader_thread():
-    """Background thread: spins an rclpy node subscribed to /jp_gnss/navigation"""
+    """Background thread: spins an rclpy node subscribed to /jp_gnss/[node_name/]navigation"""
     from rclpy.node import Node as RclpyNode
     from jp_gnss.msg import Navigation as NavigationMsg
 
@@ -814,10 +824,11 @@ def ros2_reader_thread():
         except Exception as e:
             print(f"Error in ROS 2 nav callback: {e}")
 
-    node.create_subscription(NavigationMsg, '/jp_gnss/navigation', nav_callback, 10)
+    nav_topic = f'{_ros2_topic_prefix()}/navigation'
+    node.create_subscription(NavigationMsg, nav_topic, nav_callback, 10)
     gps_state['ros2_node'] = node
 
-    print("ROS 2 subscriber node spinning on /jp_gnss/navigation")
+    print(f"ROS 2 subscriber node spinning on {nav_topic}")
 
     import rclpy
     from rclpy.executors import ExternalShutdownException
@@ -1136,10 +1147,11 @@ def _ros2_get_config():
     """GET /api/config handler for ros2 mode — calls /jp_gnss/get_config service"""
     try:
         from jp_gnss.srv import GetGnssConfig
+        srv_name = f'{_ros2_topic_prefix()}/get_config'
         resp = _ros2_call_service(
-            GetGnssConfig, '/jp_gnss/get_config', GetGnssConfig.Request())
+            GetGnssConfig, srv_name, GetGnssConfig.Request())
         if resp is None:
-            return jsonify({'error': 'Service /jp_gnss/get_config unavailable'}), 503
+            return jsonify({'error': f'Service {srv_name} unavailable'}), 503
         cfg_json = ros2_config_msg_to_json(resp.config)
         gps_state['current_config'] = cfg_json
         return jsonify(cfg_json)
@@ -1156,6 +1168,7 @@ def _ros2_set_config():
         return jsonify({'error': 'No JSON body'}), 400
 
     try:
+        srv_name = f'{_ros2_topic_prefix()}/set_config'
         socketio.emit('config_progress',
                        {'step': 'config', 'message': 'Sending config via ROS 2 service...'},
                        namespace='/')
@@ -1164,12 +1177,12 @@ def _ros2_set_config():
         req.config = json_to_ros2_config_msg(data)
         req.save_to_yaml = False
 
-        resp = _ros2_call_service(SetGnssConfig, '/jp_gnss/set_config', req, timeout=30.0)
+        resp = _ros2_call_service(SetGnssConfig, srv_name, req, timeout=30.0)
         if resp is None:
             socketio.emit('config_progress',
-                           {'step': 'error', 'message': 'Service /jp_gnss/set_config unavailable'},
+                           {'step': 'error', 'message': f'Service {srv_name} unavailable'},
                            namespace='/')
-            return jsonify({'error': 'Service /jp_gnss/set_config unavailable'}), 503
+            return jsonify({'error': f'Service {srv_name} unavailable'}), 503
 
         if not resp.success:
             socketio.emit('config_progress',
@@ -1261,10 +1274,11 @@ def start_gps_external_tty():
 
 
 def start_gps_ros2():
-    """Start ROS 2 subscriber thread for /jp_gnss/navigation topic"""
+    """Start ROS 2 subscriber thread for /jp_gnss/[node_name/]navigation topic"""
     import rclpy
 
-    print("Starting in ROS 2 mode — subscribing to /jp_gnss/navigation...")
+    nav_topic = f'{_ros2_topic_prefix()}/navigation'
+    print(f"Starting in ROS 2 mode — subscribing to {nav_topic}...")
     try:
         rclpy.init()
         gps_state['running'] = True
@@ -1316,8 +1330,15 @@ if __name__ == '__main__':
         default='native',
         help='Data source mode: native (GnssHat library), external_tty (NMEA serial), or ros2 (ROS 2 topic). Default: native'
     )
+    parser.add_argument(
+        'node_name',
+        nargs='?',
+        default=None,
+        help='Optional ROS 2 node name (e.g. rover, base). Changes topic prefix to /jp_gnss/<node_name>/...'
+    )
     args = parser.parse_args()
     RUN_MODE = args.mode
+    ROS2_NODE_NAME = args.node_name
 
     print("=" * 60)
     print("GPS Visualization Server - Jimmy Paputto 2025")
@@ -1325,7 +1346,10 @@ if __name__ == '__main__':
     if RUN_MODE == 'external_tty':
         print(f"Reading from: {SERIAL_PORT} @ {BAUD_RATE} baud")
     elif RUN_MODE == 'ros2':
-        print("Subscribing to ROS 2 topic /jp_gnss/navigation")
+        nav_topic = f'{_ros2_topic_prefix()}/navigation'
+        print(f"Subscribing to ROS 2 topic {nav_topic}")
+        if ROS2_NODE_NAME:
+            print(f"Node name: {ROS2_NODE_NAME}")
     else:
         print("Using GnssHat native library")
     print("=" * 60)

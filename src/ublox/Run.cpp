@@ -123,9 +123,11 @@ F9PRun::F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
 void F9PRun::executeUartBase()
 {
     auto& uartDriver = static_cast<UartDriver&>(*uartDriver_);
+    constexpr int epollTimeoutMs = 500;
     const auto incomingBytes = uartDriver.epoll(
         uartBuff_.data() + uartBuffOffset_,
-        uartBuffSize - uartBuffOffset_
+        uartBuffSize - uartBuffOffset_,
+        epollTimeoutMs
     );
 
     if (incomingBytes <= 0)

@@ -15,7 +15,7 @@ enum class EDynamicModel: uint8_t
 {
     Portable   = 0,
     Stationary = 2,
-    Pedestrain = 3,
+    Pedestrian = 3,
     Automotive = 4,
     Sea        = 5,
     Airborne1G = 6,

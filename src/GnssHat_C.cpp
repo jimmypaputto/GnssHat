@@ -14,7 +14,7 @@ using namespace JimmyPaputto;
 // Static asserts to ensure C and C++ enum values stay in sync
 static_assert(static_cast<int>(EDynamicModel::Portable) == JP_GNSS_DYNAMIC_MODEL_PORTABLE);
 static_assert(static_cast<int>(EDynamicModel::Stationary) == JP_GNSS_DYNAMIC_MODEL_STATIONARY);
-static_assert(static_cast<int>(EDynamicModel::Pedestrain) == JP_GNSS_DYNAMIC_MODEL_PEDESTRIAN);
+static_assert(static_cast<int>(EDynamicModel::Pedestrian) == JP_GNSS_DYNAMIC_MODEL_PEDESTRIAN);
 static_assert(static_cast<int>(EDynamicModel::Automotive) == JP_GNSS_DYNAMIC_MODEL_AUTOMOTIVE);
 static_assert(static_cast<int>(EDynamicModel::Sea) == JP_GNSS_DYNAMIC_MODEL_SEA);
 static_assert(static_cast<int>(EDynamicModel::Airborne1G) == JP_GNSS_DYNAMIC_MODEL_AIRBORNE_1G);

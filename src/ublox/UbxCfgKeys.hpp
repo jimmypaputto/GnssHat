@@ -71,12 +71,11 @@ constexpr uint32_t CFG_TP_USER_DELAY_TP1   = 0x40050006;
 constexpr uint32_t CFG_TP_POL_TP1          = 0x1005000b;
 constexpr uint32_t CFG_TP_TIMEGRID_TP1     = 0x2005000c;
 
-// CFG-MSGOUT UART1
 constexpr uint32_t CFG_MSGOUT_UBX_MON_RF_UART1  = 0x2091035a;
 constexpr uint32_t CFG_MSGOUT_UBX_NAV_DOP_UART1 = 0x20910039;
 constexpr uint32_t CFG_MSGOUT_UBX_NAV_PVT_UART1 = 0x20910007;
+constexpr uint32_t CFG_MSGOUT_UBX_NAV_SAT_UART1 = 0x20910016;
 
-// CFG-MSGOUT SPI
 constexpr uint32_t CFG_MSGOUT_UBX_MON_RF_SPI       = 0x2091035d;
 constexpr uint32_t CFG_MSGOUT_UBX_NAV_DOP_SPI      = 0x2091003c;
 constexpr uint32_t CFG_MSGOUT_UBX_NAV_PVT_SPI      = 0x2091000a;
@@ -94,7 +93,6 @@ constexpr uint32_t CFG_MSGOUT_RTCM_3X_TYPE1124_UART2 = 0x2091036f;
 constexpr uint32_t CFG_MSGOUT_RTCM_3X_TYPE1127_UART2 = 0x209102d8;
 constexpr uint32_t CFG_MSGOUT_RTCM_3X_TYPE1230_UART2 = 0x20910305;
 
-// CFG-GEOFENCE
 constexpr uint32_t CFG_GEOFENCE_CONFLVL     = 0x20240011;
 constexpr uint32_t CFG_GEOFENCE_USE_PIO     = 0x10240012;
 constexpr uint32_t CFG_GEOFENCE_PINPOL      = 0x20240013;

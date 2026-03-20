@@ -515,6 +515,7 @@ std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigVa
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_UART1,  {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_UART1, {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_UART1, {0x01}},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_UART1, {0x01}},
 
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,       {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI,      {0x01}},
@@ -723,16 +724,6 @@ bool F10TStartup::execute()
         if (!result)
             return false;
     }
-
-    constexpr std::array<uint32_t, 4> txReadyKeys = {
-        UbxCfgKeys::CFG_TXREADY_ENABLED,
-        UbxCfgKeys::CFG_TXREADY_PIN,
-        UbxCfgKeys::CFG_TXREADY_POLARITY,
-        UbxCfgKeys::CFG_TXREADY_THRESHOLD,
-    };
-    result = configure(txReadyKeys);
-    if (!result)
-        return false;
 
     constexpr std::array<uint32_t, 2> prtOutProtoKeys = {
         UbxCfgKeys::CFG_UART1OUTPROT_UBX,

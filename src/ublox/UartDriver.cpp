@@ -55,6 +55,8 @@ void UartDriver::transmitReceive(std::span<const uint8_t> txBuff,
         return;
     }
 
+    tcflush(uartFd_, TCIFLUSH);
+
     const ssize_t written = write(uartFd_, txBuff.data(), txBuff.size());
     if (written != static_cast<ssize_t>(txBuff.size()))
     {
@@ -78,18 +80,23 @@ void UartDriver::getRxBuff(uint8_t* rxBuff, const uint32_t size)
 
     if (readed < 0)
     {
-        printf("[UART] getRxBuff Error: Failed to read data from UART\r\n");
-        perror("[UART] getRxBuff perror");
+        if (errno != EAGAIN && errno != EWOULDBLOCK)
+        {
+            fprintf(
+                stderr,
+                "[UART] getRxBuff Error: Failed to read data from UART\r\n"
+            );
+            perror("[UART] getRxBuff perror");
+        }
         std::memset(rxBuff, 0xFF, size);
-    }
-    else if (readed < size)
-    {
-        std::memset(rxBuff + readed, 0xFF, size - readed);
     }
     else if (readed == 0)
     {
-        printf("[UART] getRxBuff Warning: No data available to read\r\n");
         std::memset(rxBuff, 0xFF, size);
+    }
+    else if (readed < static_cast<ssize_t>(size))
+    {
+        std::memset(rxBuff + readed, 0xFF, size - readed);
     }
 }
 
@@ -227,7 +234,6 @@ void UartDriver::initEpoll()
         epollFd_ = -1;
         return;
     }
-    
 }
 
 void UartDriver::deinitEpoll()

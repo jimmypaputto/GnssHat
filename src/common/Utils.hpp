@@ -139,4 +139,16 @@ std::vector<T> operator += (std::vector<T>& vector1, const std::vector<T>& vecto
 bool getBit(uint8_t val, uint8_t pos);
 void setBit(uint32_t& val, uint8_t pos, bool bit);
 
+inline std::string toHex(const std::vector<uint8_t>& v)
+{
+    std::string s;
+    for (auto b : v)
+    {
+        char buf[4];
+        snprintf(buf, sizeof(buf), "%02X", b);
+        s += buf;
+    }
+    return s.empty() ? std::string("(empty)") : s;
+}
+
 #endif  // JIMMY_PAPUTTO_UTILS_HPP_

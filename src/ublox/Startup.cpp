@@ -438,11 +438,6 @@ bool M9NStartup::reconfigureCommPort()
     return result;
 }
 
-F10TStartup::F10TStartup(ICommDriver& commDriver,
-    IUbloxConfigRegistry& configRegistry, UbxParser& ubxParser)
-:	StartupBase(commDriver, configRegistry, ubxParser)
-{}
-
 enum class CFG_UART1_STOPBITS : uint8_t
 {
     HALF    = 0,
@@ -554,7 +549,7 @@ bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType)
     ack = false;
     std::ranges::fill(rxBuff_, 0);
     commDriver_.transmitReceive(payload, rxBuff_);
-    ubxParser_.parse(rxBuff_);
+    auto unfinished = ubxParser_.parse(rxBuff_);
 
     if (ack)
         return true;
@@ -563,8 +558,20 @@ bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType)
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     do
     {
-        commDriver_.getRxBuff(rxBuff_.data(), rxBuff_.size());
-        ubxParser_.parse(rxBuff_);
+        std::copy(unfinished.begin(), unfinished.end(), rxBuff_.begin());
+        const uint32_t offset = unfinished.size();
+        const int bytesRead = pollRxData(
+            rxBuff_.data() + offset,
+            rxBuff_.size() - offset,
+            static_cast<int>(timeout.count())
+        );
+
+        if (bytesRead <= 0)
+            continue;
+
+        unfinished = ubxParser_.parse(
+            std::span<const uint8_t>(rxBuff_.data(), offset + bytesRead)
+        );
 
         if (ack)
             return true;
@@ -572,6 +579,13 @@ bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType)
     while (std::chrono::steady_clock::now() < deadline);
 
     return false;
+}
+
+int StartupBase::pollRxData(uint8_t* rxBuff, const uint32_t size,
+    [[maybe_unused]] int timeoutMs)
+{
+    commDriver_.getRxBuff(rxBuff, size);
+    return size;
 }
 
 bool StartupBase::verifyConfig(std::span<const uint32_t> keys)
@@ -587,12 +601,14 @@ bool StartupBase::verifyConfig(std::span<const uint32_t> keys)
             );
             std::terminate();
         }
-        if (configRegistry_.getStoredConfigValue(key) != expected)
+        const auto got = configRegistry_.getStoredConfigValue(key);
+        if (got != expected)
         {
             fprintf(
                 stderr,
-                "[Startup] Key 0x%08X verification failed\r\n",
-                key
+                "[Startup] Key 0x%08X verification failed: "
+                "got 0x%s, expected 0x%s\r\n",
+                key, toHex(got).c_str(), toHex(expected).c_str()
             );
             return false;
         }
@@ -633,12 +649,13 @@ bool StartupBase::configure(std::span<const uint32_t> keys)
                 return false;
             }
 
-            if (configRegistry_.getStoredConfigValue(key) != expected)
+            const auto got = configRegistry_.getStoredConfigValue(key);
+            if (got != expected)
             {
                 fprintf(
                     stderr,
-                    "[Startup] Key 0x%08X value mismatch\r\n",
-                    key
+                    "[Startup] Key 0x%08X value mismatch: got 0x%s, expected 0x%s\r\n",
+                    key, toHex(got).c_str(), toHex(expected).c_str()
                 );
                 mismatches.push_back({.key = key, .value = expected});
             }
@@ -677,6 +694,12 @@ bool StartupBase::configure(std::span<const uint32_t> keys)
 
         return verifyConfig(keys);
     });
+}
+
+F10TStartup::F10TStartup(ICommDriver& commDriver,
+    IUbloxConfigRegistry& configRegistry, UbxParser& ubxParser)
+:	StartupBase(commDriver, configRegistry, ubxParser)
+{
 }
 
 bool F10TStartup::execute()
@@ -776,6 +799,13 @@ bool F10TStartup::reconfigureCommPort()
     }
 
     return result;
+}
+
+int F10TStartup::pollRxData(uint8_t* rxBuff, const uint32_t size,
+    int timeoutMs)
+{
+    auto& uartDriver = static_cast<UartDriver&>(commDriver_);
+    return uartDriver.epoll(rxBuff, size, timeoutMs);
 }
 
 F9PStartup::F9PStartup(ICommDriver& commDriver,

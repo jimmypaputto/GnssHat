@@ -61,9 +61,11 @@ F10TRun::F10TRun(ICommDriver& commDriver, UbxParser& ubxParser)
 void F10TRun::execute()
 {    
     auto& uartDriver = static_cast<UartDriver&>(commDriver_);
+    constexpr int epollTimeoutMs = 500;
     const auto incomingBytes = uartDriver.epoll(
         runRxBuff_.data() + runRxBuffOffset_,
-        runRxBuffSize - runRxBuffOffset_
+        runRxBuffSize - runRxBuffOffset_,
+        epollTimeoutMs
     );
 
     if (incomingBytes <= 0)

@@ -33,6 +33,7 @@ public:
 
 protected:
     virtual bool reconfigureCommPort() = 0;
+    virtual int pollRxData(uint8_t* rxBuff, uint32_t size, int timeoutMs);
 
     void rate2Registers(const uint16_t measurementRate_Hz);
     void timepulsePinConfig2Registers(const TimepulsePinConfig& tpc);
@@ -78,6 +79,7 @@ public:
 
 private:
     bool reconfigureCommPort() override;
+    int pollRxData(uint8_t* rxBuff, uint32_t size, int timeoutMs) override;
 };
 
 class F9PStartup: public M9NStartup

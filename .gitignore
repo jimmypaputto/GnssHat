@@ -1,6 +1,7 @@
 build/
 .vscode/
 .github/
+.ai/
 examples/build/
 examples/ConfigFromJson/build/
 examples/Python/__pycache__/

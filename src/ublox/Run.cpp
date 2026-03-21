@@ -61,17 +61,24 @@ F10TRun::F10TRun(ICommDriver& commDriver, UbxParser& ubxParser)
 void F10TRun::execute()
 {    
     auto& uartDriver = static_cast<UartDriver&>(commDriver_);
-    constexpr int epollTimeoutMs = 500;
+    constexpr uint32_t parseThreshold = 100;
+    const int epollTimeoutMs = (runRxBuffOffset_ > 0) ? 10 : 500;
+
     const auto incomingBytes = uartDriver.epoll(
         runRxBuff_.data() + runRxBuffOffset_,
         runRxBuffSize - runRxBuffOffset_,
         epollTimeoutMs
     );
 
-    if (incomingBytes <= 0)
-        return;
+    if (incomingBytes > 0)
+        runRxBuffOffset_ += incomingBytes;
 
-    runRxBuffOffset_ += incomingBytes;
+    const bool shouldParse =
+        (runRxBuffOffset_ >= parseThreshold) ||
+        (incomingBytes <= 0 && runRxBuffOffset_ > 0);
+
+    if (!shouldParse)
+        return;
 
     // TODO: ogar tej alokacji, std::span
     const auto unfinishedFrame = ubxParser_.parse(

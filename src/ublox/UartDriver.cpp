@@ -146,15 +146,16 @@ void UartDriver::init(const uint32_t baudrate)
     tty.c_cflag &= ~CRTSCTS;       // No hardware flow control
     tty.c_cflag |= CREAD | CLOCAL; // Enable read, ignore control lines
 
-    // Configure input flags
-    tty.c_iflag &= ~(IXON | IXOFF | IXANY);           // No software flow control
-    tty.c_iflag &= ~(ICANON | ECHO | ECHOE | ISIG);   // Raw input
+    // Configure input flags - clear ALL processing for raw binary protocol
+    tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP |
+                      INLCR | IGNCR | ICRNL |
+                      IXON | IXOFF | IXANY);
 
     // Configure output flags
     tty.c_oflag &= ~OPOST;         // Raw output
 
     // Configure line discipline
-    tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);   // Raw mode
+    tty.c_lflag &= ~(ICANON | ECHO | ECHONL | ECHOE | ISIG | IEXTEN);
 
     // Set timeouts
     tty.c_cc[VMIN] = 0;   // Non-blocking read
@@ -224,7 +225,7 @@ void UartDriver::initEpoll()
     }
 
     struct epoll_event event;
-    event.events = EPOLLIN | EPOLLET;
+    event.events = EPOLLIN;
     event.data.fd = uartFd_;
     
     if (epoll_ctl(epollFd_, EPOLL_CTL_ADD, uartFd_, &event) < 0)
@@ -270,22 +271,28 @@ int UartDriver::epoll(uint8_t* rxBuff, const uint32_t size, int timeoutMs)
     ssize_t totalBytesRead = 0;
     if (events[0].data.fd == uartFd_ && (events[0].events & EPOLLIN))
     {
-        const auto bytesRead = read(
-            uartFd_,
-            rxBuff + totalBytesRead,
-            size - totalBytesRead
-        );
+        while (static_cast<uint32_t>(totalBytesRead) < size)
+        {
+            const auto bytesRead = read(
+                uartFd_,
+                rxBuff + totalBytesRead,
+                size - totalBytesRead
+            );
 
-        if (bytesRead > 0)
-        {
-            totalBytesRead += bytesRead;
-        }
-        else if (bytesRead < 0)
-        {
-            if (errno != EAGAIN && errno != EWOULDBLOCK)
+            if (bytesRead > 0)
             {
-                perror("[UART] Read error in epoll");
+                totalBytesRead += bytesRead;
+                continue;
             }
+
+            if (bytesRead == 0)
+                break;
+
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                break;
+
+            perror("[UART] Read error in epoll");
+            break;
         }
     }
 

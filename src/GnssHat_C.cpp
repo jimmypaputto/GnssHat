@@ -991,7 +991,8 @@ const char* jp_gnss_utc_time_iso8601(
     cpp_pvt.utc.mm = pvt->utc.mm;
     cpp_pvt.utc.ss = pvt->utc.ss;
 
-    thread_local std::string result = Utils::utcTimeFromGnss_ISO8601(cpp_pvt);
+    thread_local std::string result;
+    result = Utils::utcTimeFromGnss_ISO8601(cpp_pvt);
     return result.c_str();
 }
 

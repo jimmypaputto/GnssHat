@@ -90,10 +90,16 @@ python rtk_base.py
 ```
 
 ### 8. rtk_rover.py
-RTK Rover example demonstrating:
-- Monitoring RTK fix quality on a rover
-- Applying RTCM3 corrections
-- Tracking fix quality and fix type
+RTK Rover example with NTRIP client demonstrating:
+- Connecting to an NTRIP caster to receive RTCM3 corrections over the internet
+- Applying RTCM3 corrections to the GNSS receiver for centimeter-level accuracy
+- Real-time monitoring of RTK fix quality
+- Batched correction application with per-frame RTCM3 message identification
+- Uses `pygnssutils` (GNSSNTRIPClient) for NTRIP communication
+
+**Requires:** `pip install pygnssutils` (or `pip install -r requirements.txt`)
+
+Edit the configuration constants at the top of the script to set your NTRIP caster credentials (caster_ip, port, mountpoint, username, password).
 
 ```bash
 python rtk_rover.py

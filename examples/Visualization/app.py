@@ -1213,7 +1213,7 @@ def _ros2_set_config():
 
         req = SetGnssConfig.Request()
         req.config = json_to_ros2_config_msg(data)
-        req.save_to_yaml = False
+        req.save_to_yaml = bool(data.get('save_to_yaml', False))
 
         resp = _ros2_call_service(SetGnssConfig, srv_name, req, timeout=30.0)
         if resp is None:

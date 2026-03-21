@@ -1302,6 +1302,10 @@ function populateFormFromConfig(config) {
     if (ros2Ntrip) {
         ros2Ntrip.checked = !!config.use_ntrip_rtcm;
     }
+    const ros2SaveYaml = document.getElementById('cfg-ros2-save-yaml');
+    if (ros2SaveYaml) {
+        ros2SaveYaml.checked = !!config.save_to_yaml;
+    }
 }
 
 function buildConfigFromForm() {
@@ -1410,6 +1414,10 @@ function buildConfigFromForm() {
     const ros2Ntrip = document.getElementById('cfg-ros2-ntrip');
     if (ros2Ntrip) {
         config.use_ntrip_rtcm = ros2Ntrip.checked;
+    }
+    const ros2SaveYaml = document.getElementById('cfg-ros2-save-yaml');
+    if (ros2SaveYaml) {
+        config.save_to_yaml = ros2SaveYaml.checked;
     }
 
     return config;

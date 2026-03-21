@@ -53,7 +53,7 @@ To install the library, follow these steps:
 
 3. Optional, build samples:
     ```sh
-    ./scripts/build_all_examples.sh
+    ../scripts/build_all_examples.sh
     ```
 
 ## Usage

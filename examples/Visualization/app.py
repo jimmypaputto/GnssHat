@@ -184,6 +184,16 @@ def create_default_config():
     }
 
 
+def format_time_accuracy(accuracy_ns):
+    """Format time accuracy from nanoseconds to a human-readable string"""
+    if accuracy_ns < 1000:
+        return f"{accuracy_ns} ns"
+    elif accuracy_ns < 1_000_000:
+        return f"{accuracy_ns / 1000:.1f} µs"
+    else:
+        return f"{accuracy_ns / 1_000_000:.1f} ms"
+
+
 def nav_to_pvt_data(nav):
     """Convert Navigation object from GnssHat to pvt data dict for the frontend"""
     from jimmypaputto import gnsshat
@@ -216,8 +226,10 @@ def nav_to_pvt_data(nav):
     }
 
     utc_time = "N/A"
+    time_accuracy = "N/A"
     if pvt.utc_time and pvt.utc_time.valid:
         utc_time = f"{pvt.utc_time.hours:02d}:{pvt.utc_time.minutes:02d}:{pvt.utc_time.seconds:02d}"
+        time_accuracy = format_time_accuracy(pvt.utc_time.accuracy)
 
     date = "N/A"
     if pvt.date and pvt.date.valid:
@@ -237,6 +249,7 @@ def nav_to_pvt_data(nav):
         'fix_type': fix_type_map.get(pvt.fix_type, "Unknown"),
         'utc_time': utc_time,
         'date': date,
+        'time_accuracy': time_accuracy,
         'horizontal_accuracy': float(pvt.horizontal_accuracy),
         'vertical_accuracy': float(pvt.vertical_accuracy),
         'speed_accuracy': float(pvt.speed_accuracy),
@@ -522,8 +535,11 @@ def ros2_nav_to_pvt_data(nav_msg):
     }
 
     utc_time = "N/A"
+    time_accuracy = "N/A"
     if pvt.utc_valid:
         utc_time = f"{pvt.utc_hours:02d}:{pvt.utc_minutes:02d}:{pvt.utc_seconds:02d}"
+        if hasattr(pvt, 'utc_accuracy'):
+            time_accuracy = format_time_accuracy(pvt.utc_accuracy)
 
     date = "N/A"
     if pvt.date_valid:
@@ -545,6 +561,7 @@ def ros2_nav_to_pvt_data(nav_msg):
         'fix_type': fix_type_map.get(pvt.fix_type, "Unknown"),
         'utc_time': utc_time,
         'date': date,
+        'time_accuracy': time_accuracy,
         'horizontal_accuracy': float(pvt.horizontal_accuracy),
         'vertical_accuracy': float(pvt.vertical_accuracy),
         'speed_accuracy': float(pvt.speed_accuracy),

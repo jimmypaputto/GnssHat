@@ -409,6 +409,7 @@ function updateGPSData(data) {
     // Update data table
     updateDataField('data-utc-time', pvt.utc_time);
     updateDataField('data-date', pvt.date);
+    updateDataField('data-time-accuracy', pvt.time_accuracy);
     updateDataField('data-fix-quality', pvt.fix_quality);
     updateDataField('data-fix-status', pvt.fix_status);
     updateDataField('data-fix-type', pvt.fix_type);

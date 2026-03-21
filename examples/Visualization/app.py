@@ -279,9 +279,16 @@ def nav_to_full_data(nav):
         int(gnsshat.GeofencingStatus.NOT_AVAILABLE): "Not Available",
         int(gnsshat.GeofencingStatus.ACTIVE): "Active",
     }
+    geofence_state_map = {
+        int(gnsshat.GeofenceStatus.UNKNOWN): "Unknown",
+        int(gnsshat.GeofenceStatus.INSIDE): "Inside",
+        int(gnsshat.GeofenceStatus.OUTSIDE): "Outside",
+    }
     geofencing_data = {
         'status': geofencing_status_map.get(geofencing_nav.status, "Unknown"),
         'number_of_geofences': int(geofencing_nav.number_of_geofences),
+        'combined_state': geofence_state_map.get(geofencing_nav.combined_state, "Unknown"),
+        'geofences': [geofence_state_map.get(int(s), "Unknown") for s in geofencing_nav.geofences],
     }
 
     jamming_map = {
@@ -584,9 +591,12 @@ def ros2_nav_to_full_data(nav_msg):
 
     geo = nav_msg.geofencing
     geofencing_status_map = {0: "Not Available", 1: "Active"}
+    geofence_state_map = {0: "Unknown", 1: "Inside", 2: "Outside"}
     geofencing_data = {
         'status': geofencing_status_map.get(geo.geofencing_status, "Unknown"),
         'number_of_geofences': int(geo.number_of_geofences),
+        'combined_state': geofence_state_map.get(int(geo.combined_state), "Unknown"),
+        'geofences': [geofence_state_map.get(int(s), "Unknown") for s in geo.geofences_status[:int(geo.number_of_geofences)]],
     }
 
     jamming_map = {0: "Unknown", 1: "OK", 2: "Warning", 3: "Critical"}

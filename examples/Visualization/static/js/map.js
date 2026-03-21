@@ -453,6 +453,12 @@ function updateGPSData(data) {
         if (data.geofencing) {
             updateDataField('data-geo-status', data.geofencing.status);
             updateDataField('data-geo-count', data.geofencing.number_of_geofences);
+            updateDataField('data-geo-combined', data.geofencing.combined_state || '-');
+            if (data.geofencing.geofences && data.geofencing.geofences.length > 0) {
+                updateDataField('data-geo-fences', data.geofencing.geofences.map((s, i) => `#${i+1}: ${s}`).join(', '));
+            } else {
+                updateDataField('data-geo-fences', '-');
+            }
         }
 
         // RF Blocks

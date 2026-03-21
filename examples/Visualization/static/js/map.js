@@ -10,6 +10,7 @@ class GPSMap {
         this.position = { x: 0, y: 0 }; // Current position in meters
         this.trail = []; // Complete position history (never clears except on reset)
         this.originSet = false; // Whether reference position has been set
+        this.geofences = []; // Array of {offsetX, offsetY, radius} in meters
         
         // Animation
         this.animationFrame = null;
@@ -67,6 +68,14 @@ class GPSMap {
             this.trail = [{ x, y }];
             this.position = { x, y };
             this.updateScaleDisplay();
+            // Resolve pending geofences now that we have a reference
+            if (this._pendingGeofences) {
+                const data = window.lastGPSData;
+                if (data && data.pvt && data.has_reference) {
+                    this._computeGeofenceOffsets(this._pendingGeofences, data);
+                    this._pendingGeofences = null;
+                }
+            }
             return;
         }
         
@@ -74,6 +83,15 @@ class GPSMap {
         
         // Add to trail - NEVER clear it (persistent trail)
         this.trail.push({ x, y });
+
+        // Resolve pending geofences if not yet done
+        if (this._pendingGeofences) {
+            const data = window.lastGPSData;
+            if (data && data.pvt && data.has_reference) {
+                this._computeGeofenceOffsets(this._pendingGeofences, data);
+                this._pendingGeofences = null;
+            }
+        }
     }
     
     getGridSpacing() {
@@ -117,6 +135,9 @@ class GPSMap {
         
         // Draw axes
         this.drawAxes(centerX, centerY);
+        
+        // Draw geofences (behind trail and position)
+        this.drawGeofences(centerX, centerY);
         
         // Draw trail (GREEN, persistent)
         this.drawTrail(centerX, centerY);
@@ -286,6 +307,69 @@ class GPSMap {
         this.ctx.shadowColor = 'transparent';
     }
     
+    drawGeofences(centerX, centerY) {
+        if (this.geofences.length === 0) return;
+
+        for (let i = 0; i < this.geofences.length; i++) {
+            const gf = this.geofences[i];
+            const px = centerX + this.metersToPixels(gf.offsetX);
+            const py = centerY - this.metersToPixels(gf.offsetY);
+            const rPx = this.metersToPixels(gf.radius);
+
+            // Fill
+            this.ctx.fillStyle = 'rgba(0, 180, 255, 0.08)';
+            this.ctx.beginPath();
+            this.ctx.arc(px, py, rPx, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Stroke
+            this.ctx.strokeStyle = 'rgba(0, 180, 255, 0.6)';
+            this.ctx.lineWidth = 2;
+            this.ctx.setLineDash([6, 4]);
+            this.ctx.beginPath();
+            this.ctx.arc(px, py, rPx, 0, Math.PI * 2);
+            this.ctx.stroke();
+            this.ctx.setLineDash([]);
+
+            // Label
+            this.ctx.fillStyle = 'rgba(0, 140, 220, 0.85)';
+            this.ctx.font = 'bold 12px sans-serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'bottom';
+            this.ctx.fillText(`GF${i + 1} (${gf.radius}m)`, px, py - rPx - 4);
+        }
+    }
+
+    setGeofences(geofences) {
+        // geofences: array of {lat, lon, radius}
+        this._rawGeofences = geofences;
+        // Convert to relative offsets from reference position
+        const data = window.lastGPSData;
+        if (!data || !data.pvt || !data.has_reference) {
+            // No reference yet — store raw and convert on next draw
+            this._pendingGeofences = geofences;
+            this.geofences = [];
+            return;
+        }
+        this._pendingGeofences = null;
+        this._computeGeofenceOffsets(geofences, data);
+    }
+
+    _computeGeofenceOffsets(geofences, data) {
+        const curLat = data.pvt.latitude;
+        const curLon = data.pvt.longitude;
+        const curOffX = data.offset_x;
+        const curOffY = data.offset_y;
+        const DEG_TO_M = 111320;
+        const cosLat = Math.cos(curLat * Math.PI / 180);
+
+        this.geofences = geofences.map(gf => ({
+            offsetX: curOffX + (gf.lon - curLon) * DEG_TO_M * cosLat,
+            offsetY: curOffY + (gf.lat - curLat) * DEG_TO_M,
+            radius: gf.radius,
+        }));
+    }
+
     startAnimation() {
         const animate = () => {
             this.draw();
@@ -306,6 +390,11 @@ class GPSMap {
         this.position = { x: 0, y: 0 };
         this.trail = [{ x: 0, y: 0 }];
         this.originSet = true;
+        // Re-queue geofences for recalculation with new reference
+        if (this._rawGeofences && this._rawGeofences.length > 0) {
+            this._pendingGeofences = this._rawGeofences;
+            this.geofences = [];
+        }
     }
 }
 
@@ -736,6 +825,7 @@ let osmMap = null;
 let osmMarker = null;
 let osmTrail = null;
 let osmTrailCoords = [];
+let osmGeofenceCircles = [];
 
 function initOSMMap() {
     if (osmMap) return;
@@ -791,6 +881,11 @@ function initOSMMap() {
         }
     `;
     document.head.appendChild(style);
+
+    // Add any geofence circles that were set before map init
+    for (const c of osmGeofenceCircles) {
+        c.addTo(osmMap);
+    }
 }
 
 function updateOSMMap(lat, lon) {
@@ -823,6 +918,48 @@ function updateOSMMap(lat, lon) {
     document.getElementById('osm-lat').textContent = `${lat.toFixed(6)}°`;
     document.getElementById('osm-lon').textContent = `${lon.toFixed(6)}°`;
     document.getElementById('osm-zoom').textContent = osmMap.getZoom();
+}
+
+function updateOSMGeofences(geofences) {
+    // Remove old circles
+    for (const c of osmGeofenceCircles) {
+        c.remove();
+    }
+    osmGeofenceCircles = [];
+
+    if (!geofences || geofences.length === 0) return;
+
+    for (let i = 0; i < geofences.length; i++) {
+        const gf = geofences[i];
+        const circle = L.circle([gf.lat, gf.lon], {
+            radius: gf.radius,
+            color: '#00b4ff',
+            weight: 2,
+            dashArray: '6 4',
+            fillColor: '#00b4ff',
+            fillOpacity: 0.08,
+        });
+        circle.bindTooltip(`GF${i + 1} (${gf.radius}m)`, { permanent: false });
+        osmGeofenceCircles.push(circle);
+
+        // Add to map if already initialized
+        if (osmMap) {
+            circle.addTo(osmMap);
+        }
+    }
+}
+
+function applyGeofencesToMaps(config) {
+    const geo = config && config.geofencing;
+    const fences = (geo && geo.geofences) || [];
+
+    // OSM map
+    updateOSMGeofences(fences);
+
+    // Relative canvas map
+    if (map) {
+        map.setGeofences(fences);
+    }
 }
 
 // =======================
@@ -1314,6 +1451,8 @@ function handleConfigProgress(data) {
             showConfigStatus(data.message, false);
             document.getElementById('cfg-send-btn').disabled = false;
         }, 1200);
+        // Update geofences on maps from current form state
+        applyGeofencesToMaps(buildConfigFromForm());
     } else if (data.step === 'error') {
         bar.style.background = '#e57373';
         setTimeout(() => {
@@ -1336,6 +1475,7 @@ async function loadConfig() {
         }
         const config = await resp.json();
         populateFormFromConfig(config);
+        applyGeofencesToMaps(config);
         showConfigStatus('Configuration loaded from device', false);
     } catch (e) {
         showConfigStatus('Load failed: ' + e.message, true);

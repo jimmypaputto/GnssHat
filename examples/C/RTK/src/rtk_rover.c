@@ -3,15 +3,22 @@
  *
  * RTK Rover example (C)
  *
- * Demonstrates configuring the GNSS module as an RTK Rover using
- * the C API. The rover receives RTCM3 correction data from a base
- * station to achieve centimeter-level positioning accuracy.
+ * Demonstrates configuring the GNSS module as an RTK Rover.
+ * The corrections thread shows where RTCM3 data from an NTRIP
+ * caster should be applied to the receiver.
+ *
+ * NOTE: A full NTRIP client implementation is available in the
+ * Python example (examples/Python/rtk_rover.py) using pygnssutils.
+ * A native C++ NTRIP client is under development and will be
+ * added here in a future release.
  */
 
+#include <pthread.h>
 #include <signal.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <unistd.h>
 
 #include <jimmypaputto/GnssHat.h>
 
@@ -51,6 +58,41 @@ jp_gnss_gnss_config_t create_config()
     return config;
 }
 
+
+/*
+ * Correction application thread.
+ *
+ * In a real setup this thread would:
+ *   1. Connect to an NTRIP caster (host, port, mountpoint, credentials)
+ *   2. Receive a stream of RTCM3 frames
+ *   3. Forward them to the receiver via jp_gnss_rtk_apply_corrections()
+ *
+ * Below is the skeleton — replace the TODO section with your NTRIP
+ * client code or pipe data from an external source.
+ */
+void* corrections_thread(void* arg)
+{
+    jp_gnss_hat_t* gnss = (jp_gnss_hat_t*)arg;
+
+    while (atomic_load(&running))
+    {
+        /* TODO: Receive RTCM3 frames from your NTRIP caster here.
+         *
+         * Example (pseudocode):
+         *
+         *   jp_gnss_rtcm3_frame_t frames[16];
+         *   uint32_t count = ntrip_client_receive(frames, 16);
+         *   if (count > 0)
+         *       jp_gnss_rtk_apply_corrections(gnss, frames, count);
+         */
+
+        sleep(1);
+    }
+
+    return NULL;
+}
+
+
 int main(void)
 {
     signal(SIGINT, signal_handler);
@@ -62,7 +104,7 @@ int main(void)
         return -1;
     }
 
-    jp_gnss_hat_hard_reset_cold_start(gnss);
+    jp_gnss_hat_soft_reset_hot_start(gnss);
 
     jp_gnss_gnss_config_t config = create_config();
     if (!jp_gnss_hat_start(gnss, &config))
@@ -72,7 +114,10 @@ int main(void)
         return -1;
     }
 
-    printf("GNSS started as RTK Rover. Monitoring fix quality...\r\n\n");
+    printf("GNSS started as RTK Rover\r\n");
+
+    pthread_t corr_thread;
+    pthread_create(&corr_thread, NULL, corrections_thread, gnss);
 
     jp_gnss_navigation_t navigation;
 
@@ -88,6 +133,7 @@ int main(void)
         );
     }
 
+    pthread_join(corr_thread, NULL);
     jp_gnss_hat_destroy(gnss);
     printf("Application terminated gracefully\n");
 

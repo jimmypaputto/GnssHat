@@ -2,6 +2,7 @@ build/
 .vscode/
 .github/
 .ai/
+.claude/
 examples/build/
 examples/ConfigFromJson/build/
 examples/Python/__pycache__/

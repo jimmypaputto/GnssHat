@@ -302,8 +302,9 @@ class GPSMap {
     }
     
     resetOrigin() {
-        // Reset origin to current position and clear trail
-        this.trail = [{ x: this.position.x, y: this.position.y }]; // Start new trail from current pos
+        // Immediately clear trail and jump to 0,0
+        this.position = { x: 0, y: 0 };
+        this.trail = [{ x: 0, y: 0 }];
         this.originSet = true;
     }
 }
@@ -349,7 +350,6 @@ function initializeSocket() {
     
     socket.on('reference_reset', function(data) {
         console.log('Reference position reset:', data);
-        map.resetOrigin();
     });
 
     // Config progress events (native mode)
@@ -363,8 +363,11 @@ function setupUIHandlers() {
     if (resetBtn) {
         resetBtn.addEventListener('click', function() {
             console.log('Reset Origin button clicked');
-            socket.emit('reset_reference');
             map.resetOrigin();
+            document.getElementById('pos-x').textContent = '0.00 m';
+            document.getElementById('pos-y').textContent = '0.00 m';
+            document.getElementById('distance').textContent = '0.00 m';
+            socket.emit('reset_reference');
         });
     }
 }

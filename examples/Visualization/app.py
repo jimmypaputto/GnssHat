@@ -676,6 +676,8 @@ def ros2_config_msg_to_json(config_msg):
             'geofences': fences,
             'confidence_level': int(config_msg.geofencing_confidence_level),
         }
+        if config_msg.geofencing_has_pio_pin_polarity:
+            result['geofencing']['pin_polarity'] = int(config_msg.geofencing_pio_pin_polarity)
     else:
         result['geofencing'] = None
 
@@ -755,6 +757,12 @@ def json_to_ros2_config_msg(data):
     if geo and geo.get('geofences') and len(geo['geofences']) > 0:
         msg.geofencing_enabled = True
         msg.geofencing_confidence_level = int(geo.get('confidence_level', 3))
+        pin_pol = geo.get('pin_polarity')
+        if pin_pol is not None:
+            msg.geofencing_has_pio_pin_polarity = True
+            msg.geofencing_pio_pin_polarity = int(pin_pol)
+        else:
+            msg.geofencing_has_pio_pin_polarity = False
         for f in geo['geofences'][:4]:
             if f.get('lat') is not None and f.get('lon') is not None and f.get('radius') is not None:
                 gf = GeofenceMsg()

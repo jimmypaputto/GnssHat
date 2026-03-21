@@ -1511,6 +1511,15 @@ static bool validate_config(PyObject* config_dict)
                 }
             }
         }
+
+        PyObject* pin_polarity = PyDict_GetItemString(geofencing_dict,
+            "pin_polarity");
+        if (pin_polarity && pin_polarity != Py_None && !PyLong_Check(pin_polarity))
+        {
+            PyErr_SetString(PyExc_TypeError,
+                "pin_polarity must be an integer (PioPinPolarity) or None");
+            return false;
+        }
     }
 
     /* ── RTK config validation ──────────────────────────────────────── */
@@ -1742,6 +1751,18 @@ static void populate_config_from_dict(PyObject* config_dict, jp_gnss_gnss_config
         PyObject* confidence_level = PyDict_GetItemString(geofencing_dict, "confidence_level");
         if (confidence_level)
             config->geofencing.confidence_level = (uint8_t)PyLong_AsLong(confidence_level);
+
+        PyObject* pin_polarity = PyDict_GetItemString(geofencing_dict, "pin_polarity");
+        if (pin_polarity && pin_polarity != Py_None)
+        {
+            config->geofencing.has_pin_polarity = true;
+            config->geofencing.pin_polarity =
+                (jp_gnss_pio_pin_polarity_t)PyLong_AsLong(pin_polarity);
+        }
+        else
+        {
+            config->geofencing.has_pin_polarity = false;
+        }
         
         PyObject* geofences_list = PyDict_GetItemString(geofencing_dict, "geofences");
         if (geofences_list)

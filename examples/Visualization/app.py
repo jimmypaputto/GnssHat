@@ -983,6 +983,9 @@ def json_to_native_config(data):
                 'geofences': fences,
                 'confidence_level': int(geo.get('confidence_level', 3)),
             }
+            pin_pol = geo.get('pin_polarity')
+            if pin_pol is not None:
+                config['geofencing']['pin_polarity'] = gnsshat.PioPinPolarity(int(pin_pol))
         else:
             config['geofencing'] = None
     else:

@@ -934,6 +934,15 @@ function setupConfigPanel() {
         geoDetails.style.display = geoEn.checked ? '' : 'none';
     });
 
+    // Toggle PIO pin details
+    const geoPinEn = document.getElementById('cfg-geo-pin-en');
+    const geoPinDetails = document.getElementById('cfg-geo-pin-details');
+    if (geoPinEn && geoPinDetails) {
+        geoPinEn.addEventListener('change', () => {
+            geoPinDetails.style.display = geoPinEn.checked ? '' : 'none';
+        });
+    }
+
     // Add geofence button
     document.getElementById('cfg-geo-add').addEventListener('click', () => {
         addGeofenceRow();
@@ -1072,6 +1081,16 @@ function populateFormFromConfig(config) {
         geoEn.checked = true;
         document.getElementById('cfg-geo-details').style.display = '';
         document.getElementById('cfg-geo-conf').value = geo.confidence_level ?? 3;
+        const geoPinEn = document.getElementById('cfg-geo-pin-en');
+        const geoPinDetails = document.getElementById('cfg-geo-pin-details');
+        if (geo.pin_polarity !== undefined && geo.pin_polarity !== null) {
+            geoPinEn.checked = true;
+            geoPinDetails.style.display = '';
+            document.getElementById('cfg-geo-pin-pol').value = geo.pin_polarity;
+        } else {
+            geoPinEn.checked = false;
+            geoPinDetails.style.display = 'none';
+        }
         for (const f of geo.geofences) {
             addGeofenceRow(f.lat, f.lon, f.radius);
         }
@@ -1187,6 +1206,9 @@ function buildConfigFromForm() {
                 geofences: fences,
                 confidence_level: parseInt(document.getElementById('cfg-geo-conf').value) || 3,
             };
+            if (document.getElementById('cfg-geo-pin-en').checked) {
+                config.geofencing.pin_polarity = parseInt(document.getElementById('cfg-geo-pin-pol').value) || 0;
+            }
         } else {
             config.geofencing = null;
         }

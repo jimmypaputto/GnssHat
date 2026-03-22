@@ -33,7 +33,7 @@ public:
     void startForwarding(const Gnss& gnss);
     void stopForwarding();
     void joinForwarding();
-    
+
     std::string getDevicePath() const { return devicePath_; }
     bool isRunning() const { return forwardingEnabled_.load(); }
 

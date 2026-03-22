@@ -1073,9 +1073,11 @@ function setupConfigPanel() {
     });
 
     // Toggle geofencing details
-    geoEn.addEventListener('change', () => {
-        geoDetails.style.display = geoEn.checked ? '' : 'none';
-    });
+    if (geoEn && geoDetails) {
+        geoEn.addEventListener('change', () => {
+            geoDetails.style.display = geoEn.checked ? '' : 'none';
+        });
+    }
 
     // Toggle PIO pin details
     const geoPinEn = document.getElementById('cfg-geo-pin-en');
@@ -1087,9 +1089,12 @@ function setupConfigPanel() {
     }
 
     // Add geofence button
-    document.getElementById('cfg-geo-add').addEventListener('click', () => {
-        addGeofenceRow();
-    });
+    const geoAddBtn = document.getElementById('cfg-geo-add');
+    if (geoAddBtn) {
+        geoAddBtn.addEventListener('click', () => {
+            addGeofenceRow();
+        });
+    }
 
     // RTK toggles
     const rtkEn = document.getElementById('cfg-rtk-en');
@@ -1134,9 +1139,11 @@ let geoFenceCount = 0;
 
 function addGeofenceRow(lat, lon, radius) {
     if (geoFenceCount >= 4) return;
-    geoFenceCount++;
 
     const container = document.getElementById('cfg-geo-fences');
+    if (!container) return;
+
+    geoFenceCount++;
 
     // Add labels row if first fence
     if (geoFenceCount === 1) {
@@ -1172,12 +1179,14 @@ function addGeofenceRow(lat, lon, radius) {
 
 function updateAddFenceBtn() {
     const btn = document.getElementById('cfg-geo-add');
+    if (!btn) return;
     btn.disabled = geoFenceCount >= 4;
     btn.textContent = geoFenceCount >= 4 ? 'Max 4 geofences' : '+ Add Geofence';
 }
 
 function clearGeofenceRows() {
     const container = document.getElementById('cfg-geo-fences');
+    if (!container) return;
     container.innerHTML = '';
     geoFenceCount = 0;
 }
@@ -1219,27 +1228,29 @@ function populateFormFromConfig(config) {
     // Geofencing
     const geo = config.geofencing;
     const geoEn = document.getElementById('cfg-geo-en');
-    clearGeofenceRows();
-    if (geo && geo.geofences && geo.geofences.length > 0) {
-        geoEn.checked = true;
-        document.getElementById('cfg-geo-details').style.display = '';
-        document.getElementById('cfg-geo-conf').value = geo.confidence_level ?? 3;
-        const geoPinEn = document.getElementById('cfg-geo-pin-en');
-        const geoPinDetails = document.getElementById('cfg-geo-pin-details');
-        if (geo.pin_polarity !== undefined && geo.pin_polarity !== null) {
-            geoPinEn.checked = true;
-            geoPinDetails.style.display = '';
-            document.getElementById('cfg-geo-pin-pol').value = geo.pin_polarity;
+    if (geoEn) {
+        clearGeofenceRows();
+        if (geo && geo.geofences && geo.geofences.length > 0) {
+            geoEn.checked = true;
+            document.getElementById('cfg-geo-details').style.display = '';
+            document.getElementById('cfg-geo-conf').value = geo.confidence_level ?? 3;
+            const geoPinEn = document.getElementById('cfg-geo-pin-en');
+            const geoPinDetails = document.getElementById('cfg-geo-pin-details');
+            if (geo.pin_polarity !== undefined && geo.pin_polarity !== null) {
+                geoPinEn.checked = true;
+                geoPinDetails.style.display = '';
+                document.getElementById('cfg-geo-pin-pol').value = geo.pin_polarity;
+            } else {
+                geoPinEn.checked = false;
+                geoPinDetails.style.display = 'none';
+            }
+            for (const f of geo.geofences) {
+                addGeofenceRow(f.lat, f.lon, f.radius);
+            }
         } else {
-            geoPinEn.checked = false;
-            geoPinDetails.style.display = 'none';
+            geoEn.checked = false;
+            document.getElementById('cfg-geo-details').style.display = 'none';
         }
-        for (const f of geo.geofences) {
-            addGeofenceRow(f.lat, f.lon, f.radius);
-        }
-    } else {
-        geoEn.checked = false;
-        document.getElementById('cfg-geo-details').style.display = 'none';
     }
 
     // RTK
@@ -1336,7 +1347,8 @@ function buildConfigFromForm() {
     }
 
     // Geofencing
-    if (document.getElementById('cfg-geo-en').checked) {
+    const geoEnEl = document.getElementById('cfg-geo-en');
+    if (geoEnEl && geoEnEl.checked) {
         const fenceRows = document.querySelectorAll('.cfg-geo-fence');
         const fences = [];
         fenceRows.forEach(row => {

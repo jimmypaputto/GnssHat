@@ -48,6 +48,7 @@ gps_state = {
     'last_gsa': None,  # Last GSA sentence
     'last_gsv': None,  # Last GSV sentences
     'current_config': None,  # Current GnssHat config dict
+    'hat_name': None,  # HAT name string (native mode only)
     'config_lock': threading.Lock(),  # Lock for config changes
 }
 
@@ -887,7 +888,7 @@ def serve_res(filename):
 @app.route('/')
 def index():
     """Serve main page"""
-    return render_template('index.html', mode=RUN_MODE)
+    return render_template('index.html', mode=RUN_MODE, hat_name=gps_state.get('hat_name'))
 
 
 @app.route('/api/status')
@@ -1265,8 +1266,10 @@ def start_gps_native():
             print("Failed to start GnssHat")
             return False
 
-        print("GnssHat started successfully!")
+        hat_name = hat.name()
+        print(f"GnssHat started successfully! HAT: {hat_name}")
         gps_state['hat'] = hat
+        gps_state['hat_name'] = hat_name
         gps_state['current_config'] = config
         gps_state['running'] = True
         gps_state['thread'] = threading.Thread(target=native_reader_thread, daemon=True)

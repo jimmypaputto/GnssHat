@@ -681,6 +681,8 @@ bool StartupBase::configure(std::span<const uint32_t> keys)
             return false;
         }
 
+        configRegistry_.shouldSaveConfigToFlash(true);
+
         configRegistry_.clearStoredConfigValues();
 
         if (!awaitAck(serializedPoll, EUbxMsg::UBX_CFG_VALGET))
@@ -954,6 +956,19 @@ bool F9PStartup::execute()
         result = rtkRoverStartup();
         if (!result)
             return false;
+    }
+
+    if (configRegistry_.shouldSaveConfigToFlash())
+    {
+        result = try3times([this](){ return saveCurrentConfigToFlash(); });
+        if (!result)
+        {
+            fprintf(
+                stderr,
+                "[Startup] Save current configuration to flash failed\r\n"
+            );
+            return false;
+        }
     }
 
     return true;

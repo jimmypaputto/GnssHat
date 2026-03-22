@@ -43,6 +43,7 @@ private:
     std::string generateNmeaRMC(const Navigation& navigation);
     std::string generateNmeaGSA(const Navigation& navigation);
     std::string generateNmeaGSV(const Navigation& navigation);
+    std::string generateNmeaGST(const Navigation& navigation);
     std::string generateNmeaZDA(const Navigation& navigation);
     std::string calculateNmeaChecksum(const std::string& sentence);
     std::string formatLatitude(const double lat);

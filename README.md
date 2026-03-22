@@ -51,7 +51,18 @@ To install the library, follow these steps:
     sudo ldconfig
     ```
 
-3. Optional, build samples:
+3. Optional, build and install python module"
+    ```sh
+    cd python
+    mkdir -p build
+    cd build
+    cmake ..
+    make
+    sudo make install
+    sudo ldconfig
+    ```
+
+4. Optional, build samples:
     ```sh
     ../scripts/build_all_examples.sh
     ```

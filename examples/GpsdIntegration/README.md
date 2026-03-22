@@ -1,124 +1,177 @@
-# JP GNSS to GPSD Bridge Daemon
+# JP GNSS to GPSD Bridge
 
-Systemd daemon that bridges Jimmy Paputto GNSS HAT data to gpsd via virtual serial port.
+Two ways to forward GNSS data to gpsd:
 
-## Quick Start
+1. **`jpgnss2gpsd-bridge`** — standalone systemd daemon, runs in background
+2. **`GpsdInteractive`** — example for embed NMEA forwarding in your own application
 
-### 1. Build
+Both create `/dev/jimmypaputto/gnss` virtual serial port that gpsd reads.
+
+L1 GNSS HAT and L1/L5 RTK HAT use SPI — gpsd can't read SPI directly. The bridge reads NMEA from the HAT and exposes it as a virtual serial device that gpsd understands.
+
+The L1/L5 TIME HAT uses UART (`/dev/ttyAMA0`) so gpsd can talk to it directly. The bridge still works with TIME HAT and simplifies the setup.
+
+## Embedded forwarding (GpsdInteractive)
+
+`GpsdInteractive` is an example — adapt the same mechanism in your own code. Your application can forward NMEA to gpsd while doing its own work at the same time. The forwarding runs in a background thread — no collisions with navigation reads.
+
+```cpp
+auto* ubxHat = IGnssHat::create();
+ubxHat->start(config);
+
+// Start NMEA forwarding in background
+ubxHat->startForwardForGpsd();
+printf("gpsd device: %s\n", ubxHat->getGpsdDevicePath().c_str());
+
+// Your app keeps running — navigation and gpsd work simultaneously
+while (running)
+{
+    auto nav = ubxHat->waitAndGetFreshNavigation();
+    // use nav...
+}
+
+ubxHat->stopForwardForGpsd();
+```
+
+Build and run:
+
 ```bash
-mkdir -p build
-cd build
+cd examples/GpsdIntegration
+mkdir -p build && cd build
+cmake .. && make
+sudo ./GpsdInteractive
+```
+
+Then in another terminal:
+
+```bash
+cgps
+```
+
+Key API calls:
+- `startForwardForGpsd()` — creates virtual serial port, starts NMEA thread
+- `getGpsdDevicePath()` — returns path to virtual device (`/dev/jimmypaputto/gnss`)
+- `stopForwardForGpsd()` — stops forwarding, removes virtual device
+- `joinForwardForGpsd()` — blocks until forwarding is stopped
+
+## Daemon (jpgnss2gpsd-bridge)
+
+## How it works
+
+```
+GNSS HAT (SPI/UART) → jpgnss2gpsd-bridge → /dev/jimmypaputto/gnss → gpsd
+```
+
+The daemon:
+- Auto-detects HAT type via `/proc/device-tree/hat/product`
+- Starts the GNSS module with 1 Hz measurement rate
+- Creates `/dev/jimmypaputto/gnss` virtual serial port (9600 baud, 8N1)
+- Forwards NMEA sentences (GGA, RMC, GSA) at 1 Hz
+- Runs as systemd service, restarts on failure
+
+## Build
+
+```bash
+cd examples/GpsdIntegration
+mkdir -p build && cd build
 cmake ..
 make
 ```
 
-### 2. Install as systemd service
+## Install
+
 ```bash
-# Install daemon by script
+cd examples/GpsdIntegration
 sudo ./scripts/install_daemon.sh
+```
 
-# Or manually
-cd build && sudo make install
-systemctl daemon-reload
+Or manually:
+
+```bash
+cd examples/GpsdIntegration/build
+sudo make install
+sudo systemctl daemon-reload
 sudo systemctl enable jpgnss2gpsd-bridge
-
-# Start daemon
 sudo systemctl start jpgnss2gpsd-bridge
+```
 
-# Check status
+Installs to `/usr/local/bin/jimmypaputto/jpgnss2gpsd-bridge`.
+
+Verify:
+
+```bash
+ls /dev/jimmypaputto/gnss
+cat /dev/jimmypaputto/gnss
 sudo systemctl status jpgnss2gpsd-bridge
 ```
 
-### 3. Quick use with gpsd
-```bash
-# Start gpsd in terminal
-sudo gpsd -N -D5 /dev/jimmypaputto/gnss
+## Optional: PPS support
 
-# View GPS data
-cgps
-gpsmon
+All three HATs output a PPS (Pulse Per Second) signal on **GPIO 5**. If you want gpsd to use PPS for precise timing, enable the kernel PPS driver first:
+
+Add to `/boot/firmware/config.txt`:
+
 ```
-
-## Daemon Control
-
-### Using systemctl directly:
-```bash
-sudo systemctl start jpgnss2gpsd-bridge
-sudo systemctl stop jpgnss2gpsd-bridge
-sudo systemctl status jpgnss2gpsd-bridge
-sudo systemctl restart jpgnss2gpsd-bridge
-sudo journalctl -u jpgnss2gpsd-bridge -f
-```
-
-## Virtual Device
-
-Daemon creates: `/dev/jimmypaputto/gnss`
-- Emulates serial GPS device
-- 9600 baud, 8N1
-- Sends NMEA sentences (GGA, RMC, GSA)
-- Updates every 1 second
-
-## Integration Examples
-
-### PPS (if pps is enabled you can not use timepulse functionalities from library like IGnssHat::timepulse())
-
-#### Step 1: Enable PPS in device tree
-```bash
-# Add to /boot/frimware/config.txt (requires reboot):
 dtoverlay=pps-gpio,gpiopin=5
 ```
 
-#### Step 2: Load PPS kernel module (afer reboot)
+Reboot, then verify:
+
 ```bash
-# Load module
-sudo modprobe pps-gpio
-
-# Make it permanent - add to /etc/modules:
-echo "pps-gpio" | sudo tee -a /etc/modules
-
-# Verify PPS device exists
-ls -la /dev/pps*
-# Should show: /dev/pps0
-```
-
-#### Step 3: Test PPS signal
-```bash
-# Install pps-tools
-sudo apt-get install pps-tools
-
-# Test PPS signal (should show timestamps)
+sudo apt install pps-tools
+sudo dmesg | grep pps
+ls /dev/pps0
 sudo ppstest /dev/pps0
-# Expected output:
-# trying PPS source "/dev/pps0"
-# found PPS source "/dev/pps0"
-# ok, found 1 source(s), now start fetching data...
-# source 0 - assert 1234567890.123456789, sequence: 1
 ```
 
-### GPSD with PPS (Full systemd integration):
+> **Note:** Kernel PPS (`/dev/pps0`) and the library's `IGnssHat::timepulse()` callback both use GPIO 5 — they cannot run at the same time.
+
+If you skip this step, gpsd works fine without PPS — you just won't get sub-microsecond timing. For a full PPS + chrony time server setup, see [../TimeServer/README.md](../TimeServer/README.md).
+
+## Configure gpsd
+
+### Option A: With bridge (L1 HAT, RTK HAT or TIME HAT)
+
 ```bash
-# Option A: Auto-configure with script (RECOMMENDED)
-sudo ./scripts/configure_gpsd.sh --with-pps
+sudo apt install gpsd gpsd-clients
+```
 
-# Option B: Manual configuration  
-# 1. Start GNSS bridge daemon
-sudo systemctl start jpgnss2gpsd-bridge
-sudo systemctl enable jpgnss2gpsd-bridge
+Auto-configure (and skip rest to **Verify**):
 
-# 2. Install gpsd
-sudo apt-get install gpsd gpsd-clients
+```bash
+sudo ./scripts/configure_gpsd.sh              # without PPS
+sudo ./scripts/configure_gpsd.sh --with-pps   # with PPS (adds /dev/pps0 to DEVICES)
+```
 
-# 3. Configure gpsd via its config file
-sudo nano /etc/default/gpsd
-# Add these lines:
-# DEVICES="/dev/jimmypaputto/gnss /dev/pps0"
-# GPSD_OPTIONS="-n"
-# USBAUTO="false"
-# START_DAEMON="true"
-# GPSD_SOCKET="/var/run/gpsd.sock"
+Or manually — without PPS:
 
-# 4. Create systemd dependency (gpsd starts after bridge)
+```bash
+sudo tee /etc/default/gpsd > /dev/null <<EOF
+DEVICES="/dev/jimmypaputto/gnss"
+GPSD_OPTIONS="-n"
+USBAUTO="false"
+START_DAEMON="true"
+GPSD_SOCKET="/var/run/gpsd.sock"
+EOF
+```
+
+With PPS:
+
+```bash
+sudo tee /etc/default/gpsd > /dev/null <<EOF
+DEVICES="/dev/jimmypaputto/gnss /dev/pps0"
+GPSD_OPTIONS="-n"
+USBAUTO="false"
+START_DAEMON="true"
+GPSD_SOCKET="/var/run/gpsd.sock"
+EOF
+```
+
+Then make gpsd depend on the bridge:
+
+```bash
 sudo mkdir -p /etc/systemd/system/gpsd.service.d
+
 sudo tee /etc/systemd/system/gpsd.service.d/override.conf > /dev/null <<EOF
 [Unit]
 Requires=jpgnss2gpsd-bridge.service
@@ -130,305 +183,166 @@ Restart=always
 RestartSec=5
 EOF
 
-# 5. Enable and start services
 sudo systemctl daemon-reload
-sudo systemctl enable jpgnss2gpsd-bridge
 sudo systemctl enable gpsd
-sudo systemctl start jpgnss2gpsd-bridge
 sudo systemctl start gpsd
+```
 
-# Verify both are running
+### Option B: Direct UART (TIME HAT only, no bridge needed)
+
+Disable serial console and enable hardware UART:
+
+```bash
+sudo raspi-config nonint do_serial_hw 0
+sudo raspi-config nonint do_serial_cons 1
+sudo reboot
+```
+
+After reboot, set baud rate:
+
+```bash
+sudo stty -F /dev/ttyAMA0 115200
+```
+
+Without PPS:
+
+```bash
+sudo apt install gpsd gpsd-clients
+
+sudo tee /etc/default/gpsd > /dev/null <<EOF
+DEVICES="/dev/ttyAMA0"
+GPSD_OPTIONS="-n"
+USBAUTO="false"
+START_DAEMON="true"
+GPSD_SOCKET="/var/run/gpsd.sock"
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable gpsd
+sudo systemctl start gpsd
+```
+
+With PPS:
+
+```bash
+sudo apt install gpsd gpsd-clients
+
+sudo tee /etc/default/gpsd > /dev/null <<EOF
+DEVICES="/dev/ttyAMA0 /dev/pps0"
+GPSD_OPTIONS="-n"
+USBAUTO="false"
+START_DAEMON="true"
+GPSD_SOCKET="/var/run/gpsd.sock"
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable gpsd
+sudo systemctl start gpsd
+```
+
+No systemd override needed — gpsd reads UART directly, skip bridge install entirely.
+
+## Verify
+
+```bash
+cgps
+gpsmon
+```
+
+## Service control
+
+```bash
+sudo systemctl start jpgnss2gpsd-bridge
+sudo systemctl stop jpgnss2gpsd-bridge
+sudo systemctl restart jpgnss2gpsd-bridge
 sudo systemctl status jpgnss2gpsd-bridge
-sudo systemctl status gpsd
-
-# Check GPS data with PPS
-cgps       # Should show GPS fix
-gpsmon     # Should show PPS pulses
+sudo journalctl -u jpgnss2gpsd-bridge -f
 ```
 
-### Time Synchronization with GNSS
+## Configuration scripts
 
-Modern systems require precise time synchronization. There are two main NTP implementations:
+Helper scripts in `scripts/`:
 
-#### **NTP vs Chrony - Which to choose?**
+| Script | Description |
+|--------|-------------|
+| `install_daemon.sh` | install bridge as systemd service |
+| `uninstall_daemon.sh` | Remove bridge service and binary |
+| `configure_gpsd.sh` | Auto-configure gpsd (add `--with-pps` for PPS) |
 
-**NTP (Network Time Protocol daemon):**
-- ✅ **Traditional** - oldest and most established
-- ✅ **Widely supported** - works everywhere
-- ✅ **Stable** - proven in production environments
-- ❌ **Slower convergence** - takes longer to sync
-- ❌ **Less accurate** - ~1ms precision
-- 🎯 **Best for:** Servers, traditional setups, compatibility
+## Time server
 
-**Chrony:**
-- ✅ **Modern** - designed for mobile/intermittent connections
-- ✅ **Fast convergence** - syncs quickly after network outages
-- ✅ **High accuracy** - sub-millisecond precision
-- ✅ **Better PPS support** - optimized for hardware clocks
-- ❌ **Newer** - less widely deployed
-- 🎯 **Best for:** Laptops, Raspberry Pi, high-precision applications
+Once gpsd is running, you can set up a PPS-disciplined time server with sub-microsecond accuracy. See [../TimeServer/README.md](../TimeServer/README.md) for the full setup guide.
 
-**Recommendation:** Use **Chrony** for Raspberry Pi + GNSS applications!
+## Uninstall
 
-### With chrony + PPS (Modern, recommended):
+### Bridge daemon
+
 ```bash
-# Option A: Auto-configure with script (RECOMMENDED)
-sudo ./scripts/configure_chrony.sh --with-pps
-
-# Option B: Manual configuration
-# 1. Ensure gpsd is running with PPS
-sudo systemctl start jpgnss2gpsd-bridge
-sudo systemctl start gpsd
-
-# 2. Install chrony (remove ntp if present)
-sudo systemctl stop ntp || true
-sudo systemctl disable ntp || true
-sudo apt-get remove ntp -y || true
-sudo apt-get install chrony
-
-# 3. Backup original config
-sudo cp /etc/chrony/chrony.conf /etc/chrony/chrony.conf.backup
-
-# 4. Configure chrony for GNSS + PPS
-sudo tee /etc/chrony/chrony.conf > /dev/null <<EOF
-# Jimmy Paputto GNSS HAT + PPS Configuration
-
-# GPS time via SHM from gpsd
-refclock SHM 0 offset 0.0 delay 0.2 refid NMEA
-
-# PPS (ultra-precise timing)
-refclock PPS /dev/pps0 refid PPS lock NMEA
-
-# Fallback internet time servers
-pool 0.pool.ntp.org iburst
-pool 1.pool.ntp.org iburst
-
-# Local network access (adjust for your network) for example
-# allow 192.168.0.0/16
-
-# Performance tuning for GNSS
-maxupdateskew 100.0
-makestep 1000 3
-rtcsync
-
-# Logging and statistics
-log tracking measurements statistics
-logdir /var/log/chrony
-EOF
-
-# 5. Create log directory
-sudo mkdir -p /var/log/chrony
-sudo chown chrony:chrony /var/log/chrony
-
-# 6. Enable and start chrony
-sudo systemctl enable chrony
-sudo systemctl restart chrony
-
-# 7. Verify configuration
-chronyc sources -v     # Show time sources
-chronyc tracking       # Show synchronization status
-chronyc sourcestats    # Show source statistics
+sudo ./scripts/uninstall_daemon.sh
 ```
-### With ntpd + PPS (Traditional setup):
+
+Or manually:
+
 ```bash
-# Option A: Auto-configure with script (RECOMMENDED)
-sudo ./scripts/configure_ntp.sh --with-pps
+sudo systemctl stop jpgnss2gpsd-bridge
+sudo systemctl disable jpgnss2gpsd-bridge
+sudo rm /etc/systemd/system/jpgnss2gpsd-bridge.service
+sudo rm /usr/local/bin/jimmypaputto/jpgnss2gpsd-bridge
+sudo systemctl daemon-reload
+```
 
-# Option B: Manual configuration
-# 1. Ensure gpsd is running with PPS
-sudo systemctl start jpgnss2gpsd-bridge
-sudo systemctl start gpsd
+### gpsd
 
-# 2. Install ntp (remove chrony if present)
-sudo systemctl stop chronyd || true
-sudo systemctl disable chronyd || true
-sudo apt-get remove chrony -y || true
-sudo apt-get install ntp
+```bash
+sudo systemctl stop gpsd
+sudo systemctl disable gpsd
+sudo rm -rf /etc/systemd/system/gpsd.service.d
+sudo rm /etc/default/gpsd
+sudo apt remove --purge gpsd gpsd-clients
+sudo systemctl daemon-reload
+```
 
-# 3. Backup original config
-sudo cp /etc/ntp.conf /etc/ntp.conf.backup
+### PPS
 
-# 4. Configure ntp for GNSS + PPS
-sudo tee /etc/ntp.conf > /dev/null <<EOF
-# Jimmy Paputto GNSS HAT + PPS Configuration
+Remove PPS overlay from `/boot/firmware/config.txt`:
 
-# Use local GPS time via gpsd shared memory
-server 127.127.28.0 minpoll 4 maxpoll 4
-fudge 127.127.28.0 time1 0.420 refid GPS stratum 1
-
-# Use PPS signal for high precision
-server 127.127.22.0 minpoll 4 maxpoll 4 prefer
-fudge 127.127.22.0 refid PPS stratum 0
-
-# Fallback internet time servers
-pool 0.pool.ntp.org iburst
-pool 1.pool.ntp.org iburst
-
-# Security and access control
-restrict default kod nomodify notrap nopeer noquery
-restrict 127.0.0.1
-restrict ::1
-
-# Statistics
-statsdir /var/log/ntpstats/
-statistics loopstats peerstats clockstats
-filegen loopstats file loopstats type day enable
-filegen peerstats file peerstats type day enable
-filegen clockstats file clockstats type day enable
-EOF
-
-# 5. Create stats directory
-sudo mkdir -p /var/log/ntpstats
-sudo chown ntp:ntp /var/log/ntpstats
-
-# 6. Enable and start ntp
-sudo systemctl enable ntp
-sudo systemctl restart ntp
-
-# 7. Verify configuration
-ntpq -p  # Should show GPS and PPS sources
-ntpq -c rv  # Show system status
+```bash
+sudo sed -i '/dtoverlay=pps-gpio,gpiopin=5/d' /boot/firmware/config.txt
+sudo apt remove --purge pps-tools
+sudo reboot
 ```
 
 ## Troubleshooting
 
-### Permission issues:
+**Bridge won't start:**
 ```bash
-# Run with sudo - daemon needs root for /dev access
-sudo ./scripts/jpgnss2gpsd-bridge.sh start
+sudo journalctl -u jpgnss2gpsd-bridge -f
+# Common cause: HAT not detected — check /proc/device-tree/hat/product
 ```
 
-### Check logs:
+**No `/dev/jimmypaputto/gnss`:**
 ```bash
-./scripts/jpgnss2gpsd-bridge.sh logs
+sudo systemctl status jpgnss2gpsd-bridge
+# Restart if needed
+sudo systemctl restart jpgnss2gpsd-bridge
 ```
 
-### Manual testing:
+**gpsd shows no data:**
 ```bash
-# Test binary directly
-sudo ./build/jpgnss2gpsd-bridge
-
-# Test virtual device
+# Check bridge output first
 cat /dev/jimmypaputto/gnss
+# If NMEA flows here but cgps is empty — check /etc/default/gpsd device path
 ```
 
-### Cleanup:
+**Debug gpsd in foreground:**
 ```bash
-# Complete removal
-sudo ./scripts/uninstall_daemon.sh
+# Stop running instance first, then start manually with debug output
+sudo systemctl stop gpsd
+sudo gpsd -N -D5 /dev/jimmypaputto/gnss
 ```
 
-### PPS Troubleshooting:
-
-#### No /dev/pps0 device:
+**Manual gpsd test (foreground with debug):**
 ```bash
-# Check device tree overlay
-dtoverlay -l | grep pps
-
-# Check kernel messages
-dmesg | grep pps
-
-# Manually load module with debug
-sudo modprobe pps-gpio gpio_pin=18
+sudo systemctl stop gpsd
+sudo gpsd -N -D5 /dev/jimmypaputto/gnss
 ```
-
-#### PPS signal not working:
-```bash
-# Check GPIO connection (should be GPIO 18 or GPIO 5)
-# Verify 1PPS signal with oscilloscope/logic analyzer
-
-# Check ppstest output
-sudo ppstest /dev/pps0
-
-# If no pulses, check GNSS configuration:
-# - Timepulse must be enabled in library config
-# - Check GPIO pin mapping
-```
-
-#### gpsd not seeing PPS:
-```bash
-# Check gpsd logs
-sudo journalctl -u gpsd -f
-
-# Verify PPS permissions
-ls -la /dev/pps0
-sudo chmod 666 /dev/pps0
-
-# Test manual gpsd start
-sudo gpsd -N -D5 -S 2222 /dev/jimmypaputto/gnss /dev/pps0
-```
-
-### Time Synchronization Troubleshooting:
-
-#### NTP not syncing:
-```bash
-# Check ntp status
-ntpq -p
-ntpstat
-
-# Look for GPS/PPS sources
-# Should show:
-# *GPS(0) - GPS active (asterisk means selected)
-# oPPS(0) - PPS available (o means PPS peer)
-
-# Check ntp logs
-sudo journalctl -u ntp -f
-
-# Manual sync test
-sudo ntpdate -s time.nist.gov
-```
-
-#### Chrony not syncing:
-```bash
-# Check chrony status
-chronyc sources -v
-chronyc tracking
-
-# Look for GPS/PPS sources
-# Should show:
-# #* GPS - GPS synced (# means local, * means selected)
-# #* PPS - PPS synced and preferred
-
-# Check chrony logs
-sudo journalctl -u chrony -f
-
-# Force online sources
-chronyc online
-```
-
-#### No GPS time source:
-```bash
-# Verify gpsd is providing shared memory
-ipcs -m | grep 28
-# Should show shared memory segments
-
-# Check gpsd shared memory
-gpsmon  # Look for "SHM" or shared memory output
-
-# Test gpsd JSON output
-echo "?WATCH={\"enable\":true,\"json\":true}" | nc localhost 2947
-```
-
-#### PPS not working with time sync:
-```bash
-# Verify PPS device permissions
-ls -la /dev/pps0
-sudo chmod 666 /dev/pps0
-
-# Check PPS signal
-sudo ppstest /dev/pps0
-
-# For NTP - check kernel PPS
-dmesg | grep pps
-
-# For Chrony - verify PPS refclock
-chronyc sources | grep PPS
-```
-
-## Features
-
-- Systemd integration
-- Easy install/uninstall
-- NMEA 0183 compliant output
-- 1PPS timepulse support
-- Compatible with all GPS software

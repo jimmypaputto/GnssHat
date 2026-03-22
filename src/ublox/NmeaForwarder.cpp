@@ -218,6 +218,7 @@ void NmeaForwarder::stopForwarding()
         return;
 
     forwardingEnabled_.store(false);
+    forwardingThread_.request_stop();
 
     if (!devicePath_.empty())
         unlink(devicePath_.c_str());
@@ -242,10 +243,11 @@ void NmeaForwarder::forwardingThread(const Gnss& gnss, std::stop_token stoken)
         const std::string gga = generateNmeaGGA(nav);
         const std::string gsa = generateNmeaGSA(nav);
         const std::string gsv = generateNmeaGSV(nav);
+        const std::string gst = generateNmeaGST(nav);
         const std::string rmc = generateNmeaRMC(nav);
         const std::string zda = generateNmeaZDA(nav);
 
-        const std::string combined = gga + gsa + gsv + rmc + zda;
+        const std::string combined = gga + gsa + gsv + gst + rmc + zda;
 
         if (masterFd_ >= 0)
         {
@@ -488,6 +490,35 @@ std::string NmeaForwarder::generateNmeaGSV(const Navigation& navigation)
     }
 
     return result;
+}
+
+std::string NmeaForwarder::generateNmeaGST(const Navigation& navigation)
+{
+    std::string sentence = "GNGST,";
+
+    sentence += formatTime(navigation) + ",";
+
+    // RMS, semi-major, semi-minor, orientation - not available from UBX-NAV-PVT
+    sentence += ",,,,";
+
+    // hAcc = sqrt(stdLat^2 + stdLon^2), assuming stdLat ≈ stdLon
+    constexpr float invSqrt2 = 0.707107f;
+    const float stdLatLon = navigation.pvt.horizontalAccuracy * invSqrt2;
+
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3) << stdLatLon;
+    sentence += oss.str() + ",";
+
+    oss.str("");
+    oss << std::fixed << std::setprecision(3) << stdLatLon;
+    sentence += oss.str() + ",";
+
+    oss.str("");
+    oss << std::fixed << std::setprecision(3) << navigation.pvt.verticalAccuracy;
+    sentence += oss.str();
+
+    const std::string checksum = calculateNmeaChecksum(sentence);
+    return "$" + sentence + "*" + checksum + "\r\n";
 }
 
 std::string NmeaForwarder::calculateNmeaChecksum(const std::string& sentence)

@@ -49,10 +49,12 @@ auto main() -> int
     };
     config.geofencing = std::nullopt;
 
+    ubxHat->softResetUbloxSom_HotStart();
     const bool isStartupDone = ubxHat->start(config);
     if (!isStartupDone)
     {
         printf("Failed to start GNSS module\r\n");
+        delete ubxHat;
         return 1;
     }
 
@@ -82,6 +84,7 @@ auto main() -> int
     }
 
     ubxHat->stopForwardForGpsd();
+    ubxHat->joinForwardForGpsd();
     delete ubxHat;
 
     return 0;

@@ -452,20 +452,17 @@ bool GnssHat::startForwardForGpsd()
 void GnssHat::stopForwardForGpsd()
 {
     if (nmeaForwarder_)
-    {
         nmeaForwarder_->stopForwarding();
-        nmeaForwarder_->joinForwarding();
-        nmeaForwarder_.reset();
-        printf("[GNSS] GPSD forwarding stopped\n");
-    }
 }
 
 void GnssHat::joinForwardForGpsd()
 {
-    if (!nmeaForwarder_ || !nmeaForwarder_->isRunning())
+    if (!nmeaForwarder_)
         return;
 
     nmeaForwarder_->joinForwarding();
+    nmeaForwarder_.reset();
+    printf("[GNSS] GPSD forwarding stopped\n");
 }
 
 std::string GnssHat::getGpsdDevicePath() const

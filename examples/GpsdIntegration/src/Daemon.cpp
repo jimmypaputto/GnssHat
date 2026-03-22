@@ -13,15 +13,9 @@ JimmyPaputto::IGnssHat* ubxHat = nullptr;
 
 void signalHandler(int signal)
 {
-    if (!ubxHat)
-    {
-        printf("\nSignal received, but ubxHat is not initialized\r\n");
-        return;
-    }
-
     printf("\nReceived signal %d, shutting down daemon...\r\n", signal);
-    printf("Stopping NMEA forwarding...\n");
-    ubxHat->stopForwardForGpsd();
+    if (ubxHat)
+        ubxHat->stopForwardForGpsd();
 }
 
 auto main() -> int
@@ -74,10 +68,9 @@ auto main() -> int
     printf("\tgpsmon  # To monitor gpsd and PPS\r\n");
     printf("Daemon is running... Press Ctrl+C to stop\r\n");
 
-    // Enter daemon mode - this will block until signal received
     ubxHat->joinForwardForGpsd();
 
-    printf("Daemon stopped by signal\r\n");
+    printf("Daemon stopped\r\n");
     delete ubxHat;
     printf("Clean up completed. Exiting...\r\n");
     return 0;

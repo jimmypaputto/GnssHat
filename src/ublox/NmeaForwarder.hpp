@@ -33,7 +33,7 @@ public:
     void startForwarding(const Gnss& gnss);
     void stopForwarding();
     void joinForwarding();
-    
+
     std::string getDevicePath() const { return devicePath_; }
     bool isRunning() const { return forwardingEnabled_.load(); }
 
@@ -43,6 +43,7 @@ private:
     std::string generateNmeaRMC(const Navigation& navigation);
     std::string generateNmeaGSA(const Navigation& navigation);
     std::string generateNmeaGSV(const Navigation& navigation);
+    std::string generateNmeaGST(const Navigation& navigation);
     std::string generateNmeaZDA(const Navigation& navigation);
     std::string calculateNmeaChecksum(const std::string& sentence);
     std::string formatLatitude(const double lat);

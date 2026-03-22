@@ -64,7 +64,7 @@ To install the library, follow these steps:
 
 4. Optional, build samples:
     ```sh
-    ../scripts/build_all_examples.sh
+    ../../scripts/build_all_examples.sh
     ```
 
 ## Usage

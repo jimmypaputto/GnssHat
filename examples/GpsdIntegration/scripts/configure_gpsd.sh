@@ -122,5 +122,5 @@ if [ "$USE_PPS" = true ]; then
     echo "  gpsmon                     # Look for PPS indicator"
     echo ""
     echo "Time server integration:"
-    echo "  See README.md for ntpd/chrony configuration"
+    echo "  See README.md for chrony configuration"
 fi

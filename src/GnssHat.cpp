@@ -358,7 +358,7 @@ bool validateConfig(const GnssConfig& config)
         {
             fprintf(
                 stderr,
-                "[GnssConfig] timeBase is only supported on F10T - "
+                "[GnssConfig] TimeBase is only supported on F10T - "
                 "must be nullopt\r\n"
             );
             return false;

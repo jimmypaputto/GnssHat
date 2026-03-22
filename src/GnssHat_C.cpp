@@ -392,14 +392,6 @@ std::optional<GnssConfig> convert_gnss_config(
         cpp_config.timeBase = *timeBase;
     }
 
-    if (c_config.has_time_base)
-    {
-        auto timeBase = convert_base_config(c_config.time_base);
-        if (!timeBase)
-            return std::nullopt;
-        cpp_config.timeBase = *timeBase;
-    }
-
     cpp_config.enableTimeMark = c_config.enable_time_mark;
 
     return cpp_config;

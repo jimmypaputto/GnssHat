@@ -218,6 +218,7 @@ void NmeaForwarder::stopForwarding()
         return;
 
     forwardingEnabled_.store(false);
+    forwardingThread_.request_stop();
 
     if (!devicePath_.empty())
         unlink(devicePath_.c_str());

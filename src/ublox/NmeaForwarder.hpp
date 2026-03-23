@@ -5,7 +5,6 @@
 #ifndef JIMMY_PAPUTTO_NMEA_FORWARDER_HPP_
 #define JIMMY_PAPUTTO_NMEA_FORWARDER_HPP_
 
-#include <atomic>
 #include <string>
 #include <thread>
 #include <memory>
@@ -35,7 +34,7 @@ public:
     void joinForwarding();
 
     std::string getDevicePath() const { return devicePath_; }
-    bool isRunning() const { return forwardingEnabled_.load(); }
+    bool isRunning() const;
 
 private:
     void forwardingThread(const Gnss& gnss, std::stop_token stoken);
@@ -54,7 +53,6 @@ private:
     int masterFd_;
     int slaveFd_;
     std::string devicePath_;
-    std::atomic<bool> forwardingEnabled_{false};
     std::jthread forwardingThread_;
 
     std::chrono::milliseconds updateInterval_{1000};

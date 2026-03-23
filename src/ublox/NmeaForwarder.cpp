@@ -67,6 +67,7 @@ NmeaForwarder::NmeaForwarder()
 NmeaForwarder::~NmeaForwarder()
 {
     stopForwarding();
+    joinForwarding();
 
     if (masterFd_ >= 0)
         close(masterFd_);
@@ -189,10 +190,15 @@ bool NmeaForwarder::createVirtualTty()
 
 void NmeaForwarder::startForwarding(const Gnss& gnss)
 {
-    if (forwardingEnabled_.load())
+    if (forwardingThread_.joinable())
     {
-        printf("[NmeaForwarder] Already forwarding\n");
-        return;
+        if (forwardingThread_.get_stop_token().stop_requested())
+            forwardingThread_.join();
+        else
+        {
+            printf("[NmeaForwarder] Already forwarding\n");
+            return;
+        }
     }
 
     if (masterFd_ < 0)
@@ -204,7 +210,6 @@ void NmeaForwarder::startForwarding(const Gnss& gnss)
         return;
     }
 
-    forwardingEnabled_.store(true);
     forwardingThread_ = std::jthread(
         [this, &gnss](std::stop_token stoken) {
             forwardingThread(gnss, stoken);
@@ -214,10 +219,6 @@ void NmeaForwarder::startForwarding(const Gnss& gnss)
 
 void NmeaForwarder::stopForwarding()
 {
-    if (!forwardingEnabled_.load())
-        return;
-
-    forwardingEnabled_.store(false);
     forwardingThread_.request_stop();
 
     if (!devicePath_.empty())
@@ -230,9 +231,15 @@ void NmeaForwarder::joinForwarding()
         forwardingThread_.join();
 }
 
+bool NmeaForwarder::isRunning() const
+{
+    return forwardingThread_.joinable()
+        && !forwardingThread_.get_stop_token().stop_requested();
+}
+
 void NmeaForwarder::forwardingThread(const Gnss& gnss, std::stop_token stoken)
 {    
-    while (!stoken.stop_requested() && forwardingEnabled_.load())
+    while (!stoken.stop_requested())
     {
         if (!gnss.lock())
             continue;

@@ -467,7 +467,7 @@ void GnssHat::joinForwardForGpsd()
 
 std::string GnssHat::getGpsdDevicePath() const
 {
-    if (nmeaForwarder_)
+    if (nmeaForwarder_ && nmeaForwarder_->isRunning())
         return nmeaForwarder_->getDevicePath();
     return "";
 }

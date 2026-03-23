@@ -551,6 +551,49 @@ bool M9NStartup::reconfigureCommPort()
     return result;
 }
 
+static std::vector<uint32_t> baseConfig2Keys(const BaseConfig& baseConfig)
+{
+    std::vector<uint32_t> tmodeKeys = { UbxCfgKeys::CFG_TMODE_MODE };
+
+    const auto& baseMode = baseConfig.mode;
+
+    if (std::holds_alternative<BaseConfig::SurveyIn>(baseMode))
+    {
+        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_SVIN_MIN_DUR);
+        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_SVIN_ACC_LIMIT);
+    }
+    else if (std::holds_alternative<BaseConfig::FixedPosition>(baseMode))
+    {
+        const auto& fixed =
+            std::get<BaseConfig::FixedPosition>(baseMode);
+        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_POS_TYPE);
+        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_FIXED_POS_ACC);
+
+        if (std::holds_alternative<BaseConfig::FixedPosition::Ecef>(
+                fixed.position))
+        {
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_X);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_X_HP);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Y);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Y_HP);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Z);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Z_HP);
+        }
+        else if (std::holds_alternative<BaseConfig::FixedPosition::Lla>(
+                     fixed.position))
+        {
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LAT);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LAT_HP);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LON);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LON_HP);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_HEIGHT);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_HEIGHT_HP);
+        }
+    }
+
+    return tmodeKeys;
+}
+
 enum class CFG_UART1_STOPBITS : uint8_t
 {
     HALF    = 0,
@@ -558,92 +601,6 @@ enum class CFG_UART1_STOPBITS : uint8_t
     ONEHALF = 2,
     TWO     = 3
 };
-
-static std::vector<uint32_t> baseConfig2Keys(const BaseConfig& baseConfig)
-{
-    std::vector<uint32_t> tmodeKeys = { UbxCfgKeys::CFG_TMODE_MODE };
-
-    const auto& baseMode = baseConfig.mode;
-
-    if (std::holds_alternative<BaseConfig::SurveyIn>(baseMode))
-    {
-        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_SVIN_MIN_DUR);
-        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_SVIN_ACC_LIMIT);
-    }
-    else if (std::holds_alternative<BaseConfig::FixedPosition>(baseMode))
-    {
-        const auto& fixed =
-            std::get<BaseConfig::FixedPosition>(baseMode);
-        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_POS_TYPE);
-        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_FIXED_POS_ACC);
-
-        if (std::holds_alternative<BaseConfig::FixedPosition::Ecef>(
-                fixed.position))
-        {
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_X);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_X_HP);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Y);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Y_HP);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Z);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Z_HP);
-        }
-        else if (std::holds_alternative<BaseConfig::FixedPosition::Lla>(
-                     fixed.position))
-        {
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LAT);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LAT_HP);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LON);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LON_HP);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_HEIGHT);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_HEIGHT_HP);
-        }
-    }
-
-    return tmodeKeys;
-}
-
-static std::vector<uint32_t> baseConfig2Keys(const BaseConfig& baseConfig)
-{
-    std::vector<uint32_t> tmodeKeys = { UbxCfgKeys::CFG_TMODE_MODE };
-
-    const auto& baseMode = baseConfig.mode;
-
-    if (std::holds_alternative<BaseConfig::SurveyIn>(baseMode))
-    {
-        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_SVIN_MIN_DUR);
-        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_SVIN_ACC_LIMIT);
-    }
-    else if (std::holds_alternative<BaseConfig::FixedPosition>(baseMode))
-    {
-        const auto& fixed =
-            std::get<BaseConfig::FixedPosition>(baseMode);
-        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_POS_TYPE);
-        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_FIXED_POS_ACC);
-
-        if (std::holds_alternative<BaseConfig::FixedPosition::Ecef>(
-                fixed.position))
-        {
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_X);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_X_HP);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Y);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Y_HP);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Z);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Z_HP);
-        }
-        else if (std::holds_alternative<BaseConfig::FixedPosition::Lla>(
-                     fixed.position))
-        {
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LAT);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LAT_HP);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LON);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LON_HP);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_HEIGHT);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_HEIGHT_HP);
-        }
-    }
-
-    return tmodeKeys;
-}
 
 enum class E_CFG_TXREADY_INTERFACE : uint8_t
 {

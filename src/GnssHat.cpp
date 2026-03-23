@@ -566,7 +566,7 @@ void GnssHat::disableTimeMarkTrigger()
         static_cast<int>(name().size()), name().data());
 }
 
-void GnssHat::triggerTimeMark(ETimeMarkTriggerEdge /*edge*/)
+void GnssHat::triggerTimeMark(ETimeMarkTriggerEdge)
 {
     fprintf(stderr,
         "[GNSS] TimeMarkTrigger is not supported on %.*s. "

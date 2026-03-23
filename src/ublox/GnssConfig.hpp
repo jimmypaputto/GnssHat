@@ -34,6 +34,8 @@ struct GnssConfig
     std::optional<Geofencing> geofencing;
 
     std::optional<RtkConfig> rtk;
+
+    bool enableTimeMark{false};
 };
 
 bool checkMeasurmentRate(const uint16_t measurmentRate);

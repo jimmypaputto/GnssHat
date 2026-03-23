@@ -156,7 +156,10 @@ public:
         )
     {}
 
-    ~GnssL1L5TimeHat() override = default;
+    ~GnssL1L5TimeHat() override
+    {
+        stopSource_.request_stop();
+    }
 
     bool start(const GnssConfig& config) override
     {
@@ -180,25 +183,19 @@ public:
 
     TimeMark waitAndGetFreshTimeMark() override
     {
-        timeMarkNotifier_.wait();
-
-        TimeMark timeMark{};
-        if (gnss_.lock())
-        {
-            timeMark = gnss_.timeMark().value_or(TimeMark{});
-            gnss_.unlock();
-        }
-        return timeMark;
+        timeMarkNotifier_.wait(stopSource_.get_token());
+        return Gnss::instance().timeMark().value_or(TimeMark{});
     }
+
+private:
+    std::stop_source stopSource_;
 };
 
 class GnssL1L5TRtkHat : public GnssHat
 {
 public:
     explicit GnssL1L5TRtkHat()
-    :   GnssHat(
-            std::make_unique<SpiDriver>()
-        ),
+    :   GnssHat(std::make_unique<SpiDriver>()),
         rtk_(nullptr)
     {}
 
@@ -293,6 +290,15 @@ bool validateConfig(const GnssConfig& config)
     if constexpr (std::is_same_v<StartupStrategy, M9NStartup> ||
         std::is_same_v<StartupStrategy, F9PStartup>)
     {
+        if (config.enableTimeMark)
+        {
+            fprintf(
+                stderr,
+                "[GnssConfig] TimeMark is not supported on this HAT - "
+                "use L1/L5 GNSS TIME HAT\r\n"
+            );
+            return false;
+        }
         return checkGeofencing(config.geofencing);
     }
     else if constexpr (std::is_same_v<StartupStrategy, F10TStartup>)

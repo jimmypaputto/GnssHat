@@ -5,17 +5,16 @@
 #include <chrono>
 #include <cstdio>
 #include <csignal>
+#include <thread>
 
 #include <jimmypaputto/GnssHat.hpp>
 
 
-JimmyPaputto::IGnssHat* ubxHat = nullptr;
+volatile sig_atomic_t shutdownRequested = 0;
 
-void signalHandler(int signal)
+void signalHandler(int)
 {
-    printf("\nReceived signal %d, shutting down daemon...\r\n", signal);
-    if (ubxHat)
-        ubxHat->stopForwardForGpsd();
+    shutdownRequested = 1;
 }
 
 auto main() -> int
@@ -23,7 +22,7 @@ auto main() -> int
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
-    ubxHat = JimmyPaputto::IGnssHat::create();
+    auto* ubxHat = JimmyPaputto::IGnssHat::create();
 
     JimmyPaputto::GnssConfig config;
     config.measurementRate_Hz = 1;
@@ -68,6 +67,11 @@ auto main() -> int
     printf("\tgpsmon  # To monitor gpsd and PPS\r\n");
     printf("Daemon is running... Press Ctrl+C to stop\r\n");
 
+    while (!shutdownRequested)
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    printf("\nShutting down daemon...\r\n");
+    ubxHat->stopForwardForGpsd();
     ubxHat->joinForwardForGpsd();
 
     printf("Daemon stopped\r\n");

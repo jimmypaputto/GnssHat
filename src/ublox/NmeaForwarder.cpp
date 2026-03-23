@@ -192,8 +192,13 @@ void NmeaForwarder::startForwarding(const Gnss& gnss)
 {
     if (forwardingThread_.joinable())
     {
-        printf("[NmeaForwarder] Already forwarding\n");
-        return;
+        if (forwardingThread_.get_stop_token().stop_requested())
+            forwardingThread_.join();
+        else
+        {
+            printf("[NmeaForwarder] Already forwarding\n");
+            return;
+        }
     }
 
     if (masterFd_ < 0)

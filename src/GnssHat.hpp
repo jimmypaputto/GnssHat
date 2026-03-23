@@ -7,10 +7,12 @@
 
 #include <string>
 #include <string_view>
+#include <optional>
 
 #include "ublox/GnssConfig.hpp"
 #include "ublox/Navigation.hpp"
 #include "ublox/RTK.hpp"
+#include "ublox/TimeMark.hpp"
 
 
 namespace JimmyPaputto
@@ -39,6 +41,9 @@ public:
     virtual bool enableTimepulse() = 0;
     virtual void disableTimepulse() = 0;
     virtual void timepulse() = 0;
+
+    virtual std::optional<TimeMark> timeMark() const = 0;
+    virtual TimeMark waitAndGetFreshTimeMark() = 0;
 
     static IGnssHat* create();
 

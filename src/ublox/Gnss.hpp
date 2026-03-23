@@ -9,6 +9,9 @@
 #include "common/JPGuard.hpp"
 
 #include "ublox/Navigation.hpp"
+#include "ublox/TimeMark.hpp"
+
+#include <optional>
 
 
 namespace JimmyPaputto
@@ -26,6 +29,9 @@ public:
     void rfBlocks(const std::vector<RfBlock>& rfBlocks);
     void satellites(const std::vector<SatelliteInfo>& satellites);
 
+    void timeMark(const TimeMark& timeMark);
+    std::optional<TimeMark> timeMark() const;
+
     bool lock() const;
     void unlock() const;
 
@@ -33,6 +39,7 @@ public:
 
 private:
     Navigation navigation_;
+    std::optional<TimeMark> timeMark_;
     mutable JPGuard xSemaphore_;
 };
 

@@ -517,6 +517,8 @@ std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigVa
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_UART1, {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_UART1, {0x01}},
 
+    {UbxCfgKeys::CFG_MSGOUT_UBX_TIM_TM2_UART1, {0x01}},
+
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,       {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI,      {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,      {0x01}},
@@ -735,10 +737,11 @@ bool F10TStartup::execute()
     if (!result)
         return false;
 
-    constexpr std::array<uint32_t, 3> msgCfgKeys = {
+    constexpr std::array<uint32_t, 4> msgCfgKeys = {
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_UART1,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_UART1,
-        UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_UART1
+        UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_UART1,
+        UbxCfgKeys::CFG_MSGOUT_UBX_TIM_TM2_UART1
     };
     result = configure(msgCfgKeys);
     if (!result)

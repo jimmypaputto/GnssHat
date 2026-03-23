@@ -23,7 +23,8 @@ class UbxParser final
 {
 public:
     explicit UbxParser(IUbloxConfigRegistry& configRegistry,
-        Notifier& navigationNotifier, bool callbackNotificationEnabled = true);
+        Notifier& navigationNotifier, Notifier& timeMarkNotifier,
+        bool callbackNotificationEnabled = true);
 
     std::vector<uint8_t> parse(std::span<const uint8_t> buffer);
 

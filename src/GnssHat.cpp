@@ -93,6 +93,9 @@ public:
     void softResetUbloxSom_HotStart() override;
     void timepulse() override;
 
+    std::optional<TimeMark> timeMark() const override;
+    TimeMark waitAndGetFreshTimeMark() override;
+
 protected:
     void stopUbloxThread();
     virtual std::optional<std::reference_wrapper<Rtcm3Store>> rtcm3Store();
@@ -110,6 +113,7 @@ protected:
     Notifier txReadyNotifier_;
     Notifier timepulseNotifier_;
     Notifier navigationNotifier_;
+    Notifier timeMarkNotifier_;
     GnssConfig config_;
 
     std::jthread ubloxThread_;
@@ -167,6 +171,24 @@ public:
     IRtk* rtk() override
     {
         return nullptr;
+    }
+
+    std::optional<TimeMark> timeMark() const override
+    {
+        return gnss_.timeMark();
+    }
+
+    TimeMark waitAndGetFreshTimeMark() override
+    {
+        timeMarkNotifier_.wait();
+
+        TimeMark timeMark{};
+        if (gnss_.lock())
+        {
+            timeMark = gnss_.timeMark().value_or(TimeMark{});
+            gnss_.unlock();
+        }
+        return timeMark;
     }
 };
 
@@ -304,7 +326,8 @@ bool GnssHat::start(const GnssConfig& config)
     constexpr bool callbackNotificationEnabled =
         std::is_same_v<RunStrategy, F10TRun>;
     ubxParser_ = std::make_unique<UbxParser>(
-        *configRegistry_, navigationNotifier_, callbackNotificationEnabled
+        *configRegistry_, navigationNotifier_, timeMarkNotifier_,
+        callbackNotificationEnabled
     );
     startupStrategy_ = std::make_unique<StartupStrategy>(
         *commDriver_, *configRegistry_, *ubxParser_
@@ -426,6 +449,24 @@ void GnssHat::timepulse()
         return;
     }
     timepulseNotifier_.wait();
+}
+
+std::optional<TimeMark> GnssHat::timeMark() const
+{
+    fprintf(stderr,
+        "[GNSS] TimeMark is not supported on %.*s. "
+        "Use L1/L5 GNSS TIME HAT.\r\n",
+        static_cast<int>(name().size()), name().data());
+    return std::nullopt;
+}
+
+TimeMark GnssHat::waitAndGetFreshTimeMark()
+{
+    fprintf(stderr,
+        "[GNSS] TimeMark is not supported on %.*s. "
+        "Use L1/L5 GNSS TIME HAT.\r\n",
+        static_cast<int>(name().size()), name().data());
+    return {};
 }
 
 bool GnssHat::startForwardForGpsd()

@@ -181,3 +181,187 @@ TEST(TimepulseValidation, ZeroPulseWidthIsValid)
     };
     EXPECT_TRUE(checkTimepulsePinConfig(cfg));
 }
+
+TEST(TimeBaseValidation, NulloptIsValid)
+{
+    EXPECT_TRUE(checkTimeBase(std::nullopt));
+}
+
+TEST(TimeBaseValidation, SurveyInValid)
+{
+    BaseConfig cfg {
+        .mode = BaseConfig::SurveyIn {
+            .minimumObservationTime_s = 120,
+            .requiredPositionAccuracy_m = 50.0
+        }
+    };
+    EXPECT_TRUE(checkBaseConfig(cfg));
+}
+
+TEST(TimeBaseValidation, SurveyInZeroTimeFails)
+{
+    BaseConfig cfg {
+        .mode = BaseConfig::SurveyIn {
+            .minimumObservationTime_s = 0,
+            .requiredPositionAccuracy_m = 50.0
+        }
+    };
+    EXPECT_FALSE(checkBaseConfig(cfg));
+}
+
+TEST(TimeBaseValidation, SurveyInZeroAccuracyFails)
+{
+    BaseConfig cfg {
+        .mode = BaseConfig::SurveyIn {
+            .minimumObservationTime_s = 120,
+            .requiredPositionAccuracy_m = 0.0
+        }
+    };
+    EXPECT_FALSE(checkBaseConfig(cfg));
+}
+
+TEST(TimeBaseValidation, SurveyInNegativeAccuracyFails)
+{
+    BaseConfig cfg {
+        .mode = BaseConfig::SurveyIn {
+            .minimumObservationTime_s = 120,
+            .requiredPositionAccuracy_m = -1.0
+        }
+    };
+    EXPECT_FALSE(checkBaseConfig(cfg));
+}
+
+TEST(TimeBaseValidation, FixedPositionLlaValid)
+{
+    BaseConfig cfg {
+        .mode = BaseConfig::FixedPosition {
+            .position = BaseConfig::FixedPosition::Lla {
+                .latitude_deg = 52.232222,
+                .longitude_deg = 21.008055,
+                .height_m = 110.0
+            },
+            .positionAccuracy_m = 0.5
+        }
+    };
+    EXPECT_TRUE(checkBaseConfig(cfg));
+}
+
+TEST(TimeBaseValidation, FixedPositionEcefValid)
+{
+    BaseConfig cfg {
+        .mode = BaseConfig::FixedPosition {
+            .position = BaseConfig::FixedPosition::Ecef {
+                .x_m = 3656215.987,
+                .y_m = 1409547.654,
+                .z_m = 5049982.321
+            },
+            .positionAccuracy_m = 0.5
+        }
+    };
+    EXPECT_TRUE(checkBaseConfig(cfg));
+}
+
+TEST(TimeBaseValidation, FixedPositionZeroAccuracyFails)
+{
+    BaseConfig cfg {
+        .mode = BaseConfig::FixedPosition {
+            .position = BaseConfig::FixedPosition::Ecef {
+                .x_m = 3656215.987,
+                .y_m = 1409547.654,
+                .z_m = 5049982.321
+            },
+            .positionAccuracy_m = 0.0
+        }
+    };
+    EXPECT_FALSE(checkBaseConfig(cfg));
+}
+
+TEST(TimeBaseValidation, FixedPositionNegativeAccuracyFails)
+{
+    BaseConfig cfg {
+        .mode = BaseConfig::FixedPosition {
+            .position = BaseConfig::FixedPosition::Lla {
+                .latitude_deg = 50.0,
+                .longitude_deg = 20.0,
+                .height_m = 100.0
+            },
+            .positionAccuracy_m = -0.1
+        }
+    };
+    EXPECT_FALSE(checkBaseConfig(cfg));
+}
+
+TEST(TimeBaseValidation, LlaLatitudeOutOfRangeFails)
+{
+    BaseConfig cfg {
+        .mode = BaseConfig::FixedPosition {
+            .position = BaseConfig::FixedPosition::Lla {
+                .latitude_deg = 91.0,
+                .longitude_deg = 21.0,
+                .height_m = 110.0
+            },
+            .positionAccuracy_m = 0.5
+        }
+    };
+    EXPECT_FALSE(checkBaseConfig(cfg));
+
+    cfg.mode = BaseConfig::FixedPosition {
+        .position = BaseConfig::FixedPosition::Lla {
+            .latitude_deg = -91.0,
+            .longitude_deg = 21.0,
+            .height_m = 110.0
+        },
+        .positionAccuracy_m = 0.5
+    };
+    EXPECT_FALSE(checkBaseConfig(cfg));
+}
+
+TEST(TimeBaseValidation, LlaLongitudeOutOfRangeFails)
+{
+    BaseConfig cfg {
+        .mode = BaseConfig::FixedPosition {
+            .position = BaseConfig::FixedPosition::Lla {
+                .latitude_deg = 52.0,
+                .longitude_deg = 181.0,
+                .height_m = 110.0
+            },
+            .positionAccuracy_m = 0.5
+        }
+    };
+    EXPECT_FALSE(checkBaseConfig(cfg));
+
+    cfg.mode = BaseConfig::FixedPosition {
+        .position = BaseConfig::FixedPosition::Lla {
+            .latitude_deg = 52.0,
+            .longitude_deg = -181.0,
+            .height_m = 110.0
+        },
+        .positionAccuracy_m = 0.5
+    };
+    EXPECT_FALSE(checkBaseConfig(cfg));
+}
+
+TEST(TimeBaseValidation, LlaBoundaryCoordinatesValid)
+{
+    BaseConfig cfg {
+        .mode = BaseConfig::FixedPosition {
+            .position = BaseConfig::FixedPosition::Lla {
+                .latitude_deg = 90.0,
+                .longitude_deg = 180.0,
+                .height_m = 0.0
+            },
+            .positionAccuracy_m = 1.0
+        }
+    };
+    EXPECT_TRUE(checkBaseConfig(cfg));
+
+    cfg.mode = BaseConfig::FixedPosition {
+        .position = BaseConfig::FixedPosition::Lla {
+            .latitude_deg = -90.0,
+            .longitude_deg = -180.0,
+            .height_m = -10.0
+        },
+        .positionAccuracy_m = 0.01
+    };
+    EXPECT_TRUE(checkBaseConfig(cfg));
+}

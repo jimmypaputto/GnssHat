@@ -138,6 +138,99 @@ void StartupBase::rate2Registers(const uint16_t measurementRate_Hz)
     ecv[CFG_RATE_TIMEREF] = {to_underlying(E_CFG_RATE_TIMEREF::UTC)};
 }
 
+void StartupBase::baseConfig2Registers(const BaseConfig& baseConfig)
+{
+    auto& ecv = StartupBase::expectedConfigValues_;
+
+    const auto& baseMode = baseConfig.mode;
+
+    if (std::holds_alternative<BaseConfig::SurveyIn>(baseMode))
+    {
+        const auto& surveyIn = std::get<BaseConfig::SurveyIn>(baseMode);
+        ecv[UbxCfgKeys::CFG_TMODE_MODE] =
+            {static_cast<uint8_t>(CFG_TMODE_MODE::SURVEY_IN)};
+        ecv[UbxCfgKeys::CFG_TMODE_SVIN_MIN_DUR] =
+            serializeInt2LittleEndian<uint32_t>(
+                surveyIn.minimumObservationTime_s
+            );
+        ecv[UbxCfgKeys::CFG_TMODE_SVIN_ACC_LIMIT] =
+            serializeInt2LittleEndian<uint32_t>(static_cast<uint32_t>(
+                surveyIn.requiredPositionAccuracy_m * 10000.0
+            ));
+    }
+    else if (std::holds_alternative<BaseConfig::FixedPosition>(baseMode))
+    {
+        const auto& fixed = std::get<BaseConfig::FixedPosition>(baseMode);
+        ecv[UbxCfgKeys::CFG_TMODE_MODE] =
+            {static_cast<uint8_t>(CFG_TMODE_MODE::FIXED)};
+        ecv[UbxCfgKeys::CFG_TMODE_FIXED_POS_ACC] =
+            serializeInt2LittleEndian<uint32_t>(static_cast<uint32_t>(
+                fixed.positionAccuracy_m * 10000.0
+            ));
+
+        if (std::holds_alternative<BaseConfig::FixedPosition::Ecef>(
+                fixed.position))
+        {
+            const auto& ecef =
+                std::get<BaseConfig::FixedPosition::Ecef>(fixed.position);
+            ecv[UbxCfgKeys::CFG_TMODE_POS_TYPE] = {0x00};
+
+            const int64_t x_01mm = std::llround(ecef.x_m * 10000.0);
+            const int64_t y_01mm = std::llround(ecef.y_m * 10000.0);
+            const int64_t z_01mm = std::llround(ecef.z_m * 10000.0);
+
+            ecv[UbxCfgKeys::CFG_TMODE_ECEF_X] =
+                serializeInt2LittleEndian<int32_t>(
+                    static_cast<int32_t>(x_01mm / 100));
+            ecv[UbxCfgKeys::CFG_TMODE_ECEF_X_HP] =
+                serializeInt2LittleEndian<int8_t>(
+                    static_cast<int8_t>(x_01mm % 100));
+            ecv[UbxCfgKeys::CFG_TMODE_ECEF_Y] =
+                serializeInt2LittleEndian<int32_t>(
+                    static_cast<int32_t>(y_01mm / 100));
+            ecv[UbxCfgKeys::CFG_TMODE_ECEF_Y_HP] =
+                serializeInt2LittleEndian<int8_t>(
+                    static_cast<int8_t>(y_01mm % 100));
+            ecv[UbxCfgKeys::CFG_TMODE_ECEF_Z] =
+                serializeInt2LittleEndian<int32_t>(
+                    static_cast<int32_t>(z_01mm / 100));
+            ecv[UbxCfgKeys::CFG_TMODE_ECEF_Z_HP] =
+                serializeInt2LittleEndian<int8_t>(
+                    static_cast<int8_t>(z_01mm % 100));
+        }
+        else if (std::holds_alternative<BaseConfig::FixedPosition::Lla>(
+                     fixed.position))
+        {
+            const auto& lla =
+                std::get<BaseConfig::FixedPosition::Lla>(fixed.position);
+            ecv[UbxCfgKeys::CFG_TMODE_POS_TYPE] = {0x01};
+
+            const int64_t lat_1e9 = std::llround(lla.latitude_deg * 1e9);
+            const int64_t lon_1e9 = std::llround(lla.longitude_deg * 1e9);
+            const int64_t h_01mm  = std::llround(lla.height_m * 10000.0);
+
+            ecv[UbxCfgKeys::CFG_TMODE_LAT] =
+                serializeInt2LittleEndian<int32_t>(
+                    static_cast<int32_t>(lat_1e9 / 100));
+            ecv[UbxCfgKeys::CFG_TMODE_LAT_HP] =
+                serializeInt2LittleEndian<int8_t>(
+                    static_cast<int8_t>(lat_1e9 % 100));
+            ecv[UbxCfgKeys::CFG_TMODE_LON] =
+                serializeInt2LittleEndian<int32_t>(
+                    static_cast<int32_t>(lon_1e9 / 100));
+            ecv[UbxCfgKeys::CFG_TMODE_LON_HP] =
+                serializeInt2LittleEndian<int8_t>(
+                    static_cast<int8_t>(lon_1e9 % 100));
+            ecv[UbxCfgKeys::CFG_TMODE_HEIGHT] =
+                serializeInt2LittleEndian<int32_t>(
+                    static_cast<int32_t>(h_01mm / 100));
+            ecv[UbxCfgKeys::CFG_TMODE_HEIGHT_HP] =
+                serializeInt2LittleEndian<int8_t>(
+                    static_cast<int8_t>(h_01mm % 100));
+        }
+    }
+}
+
 M9NStartup::M9NStartup(ICommDriver& commDriver,
     IUbloxConfigRegistry& configRegistry, UbxParser& ubxParser)
 :	StartupBase(commDriver, configRegistry, ubxParser)
@@ -466,6 +559,49 @@ enum class CFG_TMODE_MODE : uint8_t
     FIXED     = 2
 };
 
+static std::vector<uint32_t> baseConfig2Keys(const BaseConfig& baseConfig)
+{
+    std::vector<uint32_t> tmodeKeys = { UbxCfgKeys::CFG_TMODE_MODE };
+
+    const auto& baseMode = baseConfig.mode;
+
+    if (std::holds_alternative<BaseConfig::SurveyIn>(baseMode))
+    {
+        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_SVIN_MIN_DUR);
+        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_SVIN_ACC_LIMIT);
+    }
+    else if (std::holds_alternative<BaseConfig::FixedPosition>(baseMode))
+    {
+        const auto& fixed =
+            std::get<BaseConfig::FixedPosition>(baseMode);
+        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_POS_TYPE);
+        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_FIXED_POS_ACC);
+
+        if (std::holds_alternative<BaseConfig::FixedPosition::Ecef>(
+                fixed.position))
+        {
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_X);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_X_HP);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Y);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Y_HP);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Z);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Z_HP);
+        }
+        else if (std::holds_alternative<BaseConfig::FixedPosition::Lla>(
+                     fixed.position))
+        {
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LAT);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LAT_HP);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LON);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LON_HP);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_HEIGHT);
+            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_HEIGHT_HP);
+        }
+    }
+
+    return tmodeKeys;
+}
+
 enum class E_CFG_TXREADY_INTERFACE : uint8_t
 {
     I2C = 0x00,
@@ -703,6 +839,13 @@ F10TStartup::F10TStartup(ICommDriver& commDriver,
     IUbloxConfigRegistry& configRegistry, UbxParser& ubxParser)
 :	StartupBase(commDriver, configRegistry, ubxParser)
 {
+    const auto& config = configRegistry.getGnssConfig();
+
+    if (config.timeBase.has_value())
+    {
+        timeBaseEnabled_ = true;
+        baseConfig2Registers(config.timeBase.value());
+    }
 }
 
 bool F10TStartup::execute()
@@ -743,6 +886,13 @@ bool F10TStartup::execute()
     result = configure(msgCfgKeys);
     if (!result)
         return false;
+
+    if (timeBaseEnabled_)
+    {
+        result = timeBaseStartup();
+        if (!result)
+            return false;
+    }
 
     if (configRegistry_.shouldSaveConfigToFlash())
     {
@@ -801,6 +951,23 @@ int F10TStartup::pollRxData(uint8_t* rxBuff, const uint32_t size,
     return uartDriver.epoll(rxBuff, size, timeoutMs);
 }
 
+bool F10TStartup::timeBaseStartup()
+{
+    const auto& timeBase = configRegistry_.getGnssConfig().timeBase;
+    if (!timeBase.has_value())
+        return false;
+
+    const auto tmodeKeys = baseConfig2Keys(timeBase.value());
+    const bool result = configure(tmodeKeys);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] Time base TMODE configuration failed\r\n");
+        return false;
+    }
+
+    return true;
+}
+
 F9PStartup::F9PStartup(ICommDriver& commDriver,
     IUbloxConfigRegistry& configRegistry, UbxParser& ubxParser)
 :   M9NStartup(commDriver, configRegistry, ubxParser)
@@ -822,93 +989,7 @@ F9PStartup::F9PStartup(ICommDriver& commDriver,
         return;
     }
 
-    const auto& baseMode = config.rtk->base->mode;
-
-    if (std::holds_alternative<BaseConfig::SurveyIn>(baseMode))
-    {
-        const auto& surveyIn = std::get<BaseConfig::SurveyIn>(baseMode);
-        ecv[UbxCfgKeys::CFG_TMODE_MODE] =
-            {static_cast<uint8_t>(CFG_TMODE_MODE::SURVEY_IN)};
-        ecv[UbxCfgKeys::CFG_TMODE_SVIN_MIN_DUR] =
-            serializeInt2LittleEndian<uint32_t>(
-                surveyIn.minimumObservationTime_s
-            );
-        ecv[UbxCfgKeys::CFG_TMODE_SVIN_ACC_LIMIT] =
-            serializeInt2LittleEndian<uint32_t>(static_cast<uint32_t>(
-                surveyIn.requiredPositionAccuracy_m * 10000.0
-            ));
-    }
-    else if (std::holds_alternative<BaseConfig::FixedPosition>(baseMode))
-    {
-        const auto& fixed = std::get<BaseConfig::FixedPosition>(baseMode);
-        ecv[UbxCfgKeys::CFG_TMODE_MODE] =
-            {static_cast<uint8_t>(CFG_TMODE_MODE::FIXED)};
-        ecv[UbxCfgKeys::CFG_TMODE_FIXED_POS_ACC] =
-            serializeInt2LittleEndian<uint32_t>(static_cast<uint32_t>(
-                fixed.positionAccuracy_m * 10000.0
-            ));
-
-        if (std::holds_alternative<BaseConfig::FixedPosition::Ecef>(
-                fixed.position))
-        {
-            const auto& ecef =
-                std::get<BaseConfig::FixedPosition::Ecef>(fixed.position);
-            ecv[UbxCfgKeys::CFG_TMODE_POS_TYPE] = {0x00};
-
-            const int64_t x_01mm = std::llround(ecef.x_m * 10000.0);
-            const int64_t y_01mm = std::llround(ecef.y_m * 10000.0);
-            const int64_t z_01mm = std::llround(ecef.z_m * 10000.0);
-
-            ecv[UbxCfgKeys::CFG_TMODE_ECEF_X] =
-                serializeInt2LittleEndian<int32_t>(
-                    static_cast<int32_t>(x_01mm / 100));
-            ecv[UbxCfgKeys::CFG_TMODE_ECEF_X_HP] =
-                serializeInt2LittleEndian<int8_t>(
-                    static_cast<int8_t>(x_01mm % 100));
-            ecv[UbxCfgKeys::CFG_TMODE_ECEF_Y] =
-                serializeInt2LittleEndian<int32_t>(
-                    static_cast<int32_t>(y_01mm / 100));
-            ecv[UbxCfgKeys::CFG_TMODE_ECEF_Y_HP] =
-                serializeInt2LittleEndian<int8_t>(
-                    static_cast<int8_t>(y_01mm % 100));
-            ecv[UbxCfgKeys::CFG_TMODE_ECEF_Z] =
-                serializeInt2LittleEndian<int32_t>(
-                    static_cast<int32_t>(z_01mm / 100));
-            ecv[UbxCfgKeys::CFG_TMODE_ECEF_Z_HP] =
-                serializeInt2LittleEndian<int8_t>(
-                    static_cast<int8_t>(z_01mm % 100));
-        }
-        else if (std::holds_alternative<BaseConfig::FixedPosition::Lla>(
-                     fixed.position))
-        {
-            const auto& lla =
-                std::get<BaseConfig::FixedPosition::Lla>(fixed.position);
-            ecv[UbxCfgKeys::CFG_TMODE_POS_TYPE] = {0x01};
-
-            const int64_t lat_1e9 = std::llround(lla.latitude_deg * 1e9);
-            const int64_t lon_1e9 = std::llround(lla.longitude_deg * 1e9);
-            const int64_t h_01mm  = std::llround(lla.height_m * 10000.0);
-
-            ecv[UbxCfgKeys::CFG_TMODE_LAT] =
-                serializeInt2LittleEndian<int32_t>(
-                    static_cast<int32_t>(lat_1e9 / 100));
-            ecv[UbxCfgKeys::CFG_TMODE_LAT_HP] =
-                serializeInt2LittleEndian<int8_t>(
-                    static_cast<int8_t>(lat_1e9 % 100));
-            ecv[UbxCfgKeys::CFG_TMODE_LON] =
-                serializeInt2LittleEndian<int32_t>(
-                    static_cast<int32_t>(lon_1e9 / 100));
-            ecv[UbxCfgKeys::CFG_TMODE_LON_HP] =
-                serializeInt2LittleEndian<int8_t>(
-                    static_cast<int8_t>(lon_1e9 % 100));
-            ecv[UbxCfgKeys::CFG_TMODE_HEIGHT] =
-                serializeInt2LittleEndian<int32_t>(
-                    static_cast<int32_t>(h_01mm / 100));
-            ecv[UbxCfgKeys::CFG_TMODE_HEIGHT_HP] =
-                serializeInt2LittleEndian<int8_t>(
-                    static_cast<int8_t>(h_01mm % 100));
-        }
-    }
+    baseConfig2Registers(config.rtk->base.value());
 }
 
 bool F9PStartup::execute()
@@ -978,47 +1059,11 @@ bool F9PStartup::rtkBaseStartup()
 {
     bool result = false;
 
-    std::vector<uint32_t> tmodeKeys = {
-        UbxCfgKeys::CFG_TMODE_MODE
-    };
+    const auto& baseConfig = configRegistry_.getGnssConfig().rtk->base;
+    if (!baseConfig.has_value())
+        return false;
 
-    const auto& baseMode =
-        configRegistry_.getGnssConfig().rtk->base->mode;
-
-    if (std::holds_alternative<BaseConfig::SurveyIn>(baseMode))
-    {
-        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_SVIN_MIN_DUR);
-        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_SVIN_ACC_LIMIT);
-    }
-    else if (std::holds_alternative<BaseConfig::FixedPosition>(baseMode))
-    {
-        const auto& fixed =
-            std::get<BaseConfig::FixedPosition>(baseMode);
-        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_POS_TYPE);
-        tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_FIXED_POS_ACC);
-
-        if (std::holds_alternative<BaseConfig::FixedPosition::Ecef>(
-                fixed.position))
-        {
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_X);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_X_HP);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Y);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Y_HP);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Z);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_ECEF_Z_HP);
-        }
-        else if (std::holds_alternative<BaseConfig::FixedPosition::Lla>(
-                     fixed.position))
-        {
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LAT);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LAT_HP);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LON);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_LON_HP);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_HEIGHT);
-            tmodeKeys.push_back(UbxCfgKeys::CFG_TMODE_HEIGHT_HP);
-        }
-    }
-
+    const auto tmodeKeys = baseConfig2Keys(baseConfig.value());
     result = configure(tmodeKeys);
     if (!result)
         return false;

@@ -116,6 +116,7 @@ typedef struct
     uint8_t mag_i;
     int8_t ofs_q;
     uint8_t mag_q;
+    uint8_t gnss_band;
 } RfBlock;
 
 typedef struct
@@ -359,6 +360,7 @@ static PyObject* RfBlock_new(PyTypeObject* type, PyObject* args, PyObject* kwds)
         self->mag_i = 0;
         self->ofs_q = 0;
         self->mag_q = 0;
+        self->gnss_band = 0;
     }
     return (PyObject*)self;
 }
@@ -448,6 +450,13 @@ static PyMemberDef RfBlock_members[] = {
         0,
         "Q magnitude"
     },
+    {
+        "gnss_band",
+        T_UBYTE,
+        offsetof(RfBlock, gnss_band),
+        0,
+        "RF Band"
+    },
     {NULL}
 };
 
@@ -468,6 +477,7 @@ static PyObject* RfBlock_str(RfBlock* self)
         "    cw_interference_suppression_level=%.2f\n"
         "    ofs_i=%d  mag_i=%u\n"
         "    ofs_q=%d  mag_q=%u\n"
+        "    gnss_band=%u\n"
         ")",
         self->id,
         self->jamming_state,
@@ -480,7 +490,8 @@ static PyObject* RfBlock_str(RfBlock* self)
         self->ofs_i,
         self->mag_i,
         self->ofs_q,
-        self->mag_q
+        self->mag_q,
+        self->gnss_band
     );
     return PyUnicode_FromString(buffer);
 }
@@ -2256,7 +2267,7 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
         rf_block->mag_i = nav->rf_blocks[i].mag_i;
         rf_block->ofs_q = nav->rf_blocks[i].ofs_q;
         rf_block->mag_q = nav->rf_blocks[i].mag_q;
-
+        rf_block->gnss_band = nav->rf_blocks[i].gnss_band;
         PyList_SetItem(rf_blocks_list, i, (PyObject*)rf_block);
     }
 
@@ -3259,7 +3270,11 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
 
     /* ── RfBand ─────────────────────────────────────────────────────── */
     MAKE_ENUM("RfBand",
-        {"L1",       JP_GNSS_RF_BAND_L1},
+        {"UNKNOWN", JP_GNSS_RF_BAND_UNKNOWN},
+        {"L1", JP_GNSS_RF_BAND_L1},
+        {"L2", JP_GNSS_RF_BAND_L2},
+        {"L3", JP_GNSS_RF_BAND_L3},
+        {"L5", JP_GNSS_RF_BAND_L5},
         {"L2_OR_L5", JP_GNSS_RF_BAND_L2_OR_L5}
     );
 

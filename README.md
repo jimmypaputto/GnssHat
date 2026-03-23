@@ -292,7 +292,7 @@ The library provides several key structures. First one is `GnssConfig` which sto
       - `combinedState` (EGeofenceStatus): Combined state of all geofences (`Unknown`, `Inside`, or `Outside`)
       - `geofencesStatus` (array\<EGeofenceStatus, 4\>): Individual status of each geofence
   - `rfBlocks` (vector\<RfBlock\>, max 2): RF block data for interference monitoring:
-    - `id` (EBand): RF band identifier (`L1` or `L2orL5`)
+    - `id` (ERfBlockIdBand): RF block id
     - `jammingState` (EJammingState): Jamming detection status:
       - `Unknown`: Jamming state unknown
       - `Ok_NoSignifantJamming`: No significant jamming detected
@@ -305,6 +305,7 @@ The library provides several key structures. First one is `GnssConfig` which sto
     - `agcMonitor` (float): AGC monitor value (percentage of max gain)
     - `cwInterferenceSuppressionLevel` (float): CW interference suppression level
     - `ofsI` (int8_t), `magI` (uint8_t), `ofsQ` (int8_t), `magQ` (uint8_t): I/Q imbalance values for RF calibration
+    - `rfBlockGnssBand` (uint8_t): RF band identifier (UNKNOWN/L1/L2/L3/L5)
   - `satellites` (vector\<SatelliteInfo\>, max 64): Per-satellite information:
     - `gnssId` (EGnssId): GNSS constellation (`GPS`, `SBAS`, `Galileo`, `BeiDou`, `IMES`, `QZSS`, `GLONASS`)
     - `svId` (uint8_t): Satellite vehicle ID

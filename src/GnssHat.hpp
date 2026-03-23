@@ -48,7 +48,7 @@ public:
 namespace Utils
 {
 
-std::string eBand2string(const EBand e);
+std::string eBand2string(const EGnssBand e);
 std::string eFixQuality2string(const EFixQuality e);
 std::string eFixStatus2string(const EFixStatus e);
 std::string eFixType2string(const EFixType e);

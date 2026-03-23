@@ -238,7 +238,7 @@ void printNavigationTable(const Navigation& navigation)
     printf("+");
     drawHorizontalLine(42, '-');
     printf("+\n");
-    printf("| " COLOR_BOLD COLOR_MAGENTA "RF MONITOR (L1 BAND)" COLOR_RESET "%*s |%*s|\n", 5, "", 42, "");
+    printf("| " COLOR_BOLD COLOR_MAGENTA "RF MONITOR (RF BLOCK 0)" COLOR_RESET "%*s |%*s|\n", 2, "", 42, "");
     printf("+");
     drawHorizontalLine(27, '-');
     printf("+");
@@ -252,6 +252,7 @@ void printNavigationTable(const Navigation& navigation)
         printTableRow("Jamming State", Utils::jammingState2string(navigation.rfBlocks[0].jammingState));
         printTableRow("Antenna Status", Utils::antennaStatus2string(navigation.rfBlocks[0].antennaStatus));
         printTableRow("CW Interference", std::to_string(navigation.rfBlocks[0].cwInterferenceSuppressionLevel) + "%");
+        printTableRow("RF Band", Utils::eBand2string(navigation.rfBlocks[0].gnssBand));
     }
     else
     {

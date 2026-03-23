@@ -88,8 +88,12 @@ typedef enum
 
 typedef enum
 {
-    JP_GNSS_RF_BAND_L1       = 0x00,
-    JP_GNSS_RF_BAND_L2_OR_L5 = 0x01
+    JP_GNSS_RF_BAND_UNKNOWN  = 0x00,
+    JP_GNSS_RF_BAND_L1       = 0x01,
+    JP_GNSS_RF_BAND_L2       = 0x02,
+    JP_GNSS_RF_BAND_L3       = 0x03,
+    JP_GNSS_RF_BAND_L5       = 0x04,
+    JP_GNSS_RF_BAND_L2_OR_L5 = 0xF1
 } jp_gnss_rf_band_t;
 
 typedef enum
@@ -227,7 +231,7 @@ typedef struct
 
 typedef struct
 {
-    jp_gnss_rf_band_t id;
+    uint8_t id;
     jp_gnss_jamming_state_t jamming_state;
     jp_gnss_antenna_status_t antenna_status;
     jp_gnss_antenna_power_t antenna_power;
@@ -240,6 +244,7 @@ typedef struct
     uint8_t mag_i;
     int8_t ofs_q;
     uint8_t mag_q;
+    jp_gnss_rf_band_t gnss_band;
 } jp_gnss_rf_block_t;
 
 typedef struct

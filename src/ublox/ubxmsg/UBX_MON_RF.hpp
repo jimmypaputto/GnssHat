@@ -40,7 +40,7 @@ public:
         {
             RfBlock rfBlock;
 
-            rfBlock.id = static_cast<EBand>(serialized[10 + i * 24]);
+            rfBlock.id = serialized[10 + i * 24];
             rfBlock.jammingState = static_cast<EJammingState>(
                 0b11 & serialized[11 + i * 24]);
             rfBlock.antennaStatus = static_cast<EAntennaStatus>(
@@ -57,6 +57,29 @@ public:
             rfBlock.magI = serialized[28 + i * 24];
             rfBlock.ofsQ = serialized[29 + i * 24];
             rfBlock.magQ = serialized[30 + i * 24];
+
+            uint8_t _gnssBand = serialized[31 + i * 24];
+
+            /*F10 vs M9 logic: on F10, the band is explicitly provided, on M9 it needs to be derived from the id*/
+            if(_gnssBand == static_cast<uint8_t>(EGnssBand::UNKNOWN) || _gnssBand > static_cast<uint8_t>(EGnssBand::L5))
+            {
+                if(rfBlock.id == static_cast<uint8_t>(EM9StrictGnssBandMapping::L1))
+                {
+                    rfBlock.gnssBand = EGnssBand::L1;
+                }
+                else if(rfBlock.id == static_cast<uint8_t>(EM9StrictGnssBandMapping::L2orL5))
+                {
+                    rfBlock.gnssBand = EGnssBand::L2orL5;
+                }
+                else
+                {
+                    rfBlock.gnssBand = EGnssBand::UNKNOWN;
+                }
+            }
+            else
+            {
+                rfBlock.gnssBand = static_cast<EGnssBand>(_gnssBand);
+            }
 
             rfBlocks_.push_back(rfBlock);
         }

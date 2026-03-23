@@ -26,7 +26,7 @@ GnssConfig createDefaultConfig()
 
 void printRfBlock(const RfBlock& rfBlock)
 {
-    printf("Band %s\r\n", Utils::eBand2string(rfBlock.id).c_str());
+    printf("Band %s\r\n", Utils::eBand2string(rfBlock.gnssBand).c_str());
     printf("    Noise per ms: %d\r\n", rfBlock.noisePerMS);
     printf("    AGC monitor, percentage of max gain: %.2f%%\r\n",
         rfBlock.agcMonitor);

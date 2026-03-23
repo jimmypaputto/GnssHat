@@ -58,9 +58,12 @@ static_assert(static_cast<int>(EGeofenceStatus::Outside) == JP_GNSS_GEOFENCE_STA
 static_assert(static_cast<int>(EGeofencingStatus::NotAvalaible) == JP_GNSS_GEOFENCING_STATUS_NOT_AVAILABLE);
 static_assert(static_cast<int>(EGeofencingStatus::Active) == JP_GNSS_GEOFENCING_STATUS_ACTIVE);
 
-static_assert(static_cast<int>(EBand::L1) == JP_GNSS_RF_BAND_L1);
-static_assert(static_cast<int>(EBand::L2orL5) == JP_GNSS_RF_BAND_L2_OR_L5);
-
+static_assert(static_cast<int>(EGnssBand::UNKNOWN) == JP_GNSS_RF_BAND_UNKNOWN);
+static_assert(static_cast<int>(EGnssBand::L1) == JP_GNSS_RF_BAND_L1);
+static_assert(static_cast<int>(EGnssBand::L2) == JP_GNSS_RF_BAND_L2);
+static_assert(static_cast<int>(EGnssBand::L3) == JP_GNSS_RF_BAND_L3);
+static_assert(static_cast<int>(EGnssBand::L5) == JP_GNSS_RF_BAND_L5);
+static_assert(static_cast<int>(EGnssBand::L2orL5) == JP_GNSS_RF_BAND_L2_OR_L5);
 static_assert(static_cast<int>(EJammingState::Unknown) == JP_GNSS_JAMMING_STATE_UNKNOWN);
 static_assert(static_cast<int>(EJammingState::Ok_NoSignifantJamming) == JP_GNSS_JAMMING_STATE_OK_NO_SIGNIFICANT_JAMMING);
 static_assert(static_cast<int>(EJammingState::Warning_InferenceVisibleButFixOk) == JP_GNSS_JAMMING_STATE_WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK);
@@ -186,12 +189,12 @@ jp_gnss_geofencing_status_t convert_geofencing_status(EGeofencingStatus status)
     return static_cast<jp_gnss_geofencing_status_t>(status);
 }
 
-EBand convert_rf_band(jp_gnss_rf_band_t band)
+EGnssBand convert_rf_band(jp_gnss_rf_band_t band)
 {
-    return static_cast<EBand>(band);
+    return static_cast<EGnssBand>(band);
 }
 
-jp_gnss_rf_band_t convert_rf_band(EBand band)
+jp_gnss_rf_band_t convert_rf_band(EGnssBand band)
 {
     return static_cast<jp_gnss_rf_band_t>(band);
 }
@@ -488,7 +491,7 @@ jp_gnss_navigation_t convert_navigation(const Navigation& cpp_nav)
         i < cpp_nav.rfBlocks.size() && i < UBLOX_MAX_RF_BLOCKS;
         i++)
     {
-        c_nav.rf_blocks[i].id = convert_rf_band(cpp_nav.rfBlocks[i].id);
+        c_nav.rf_blocks[i].id = cpp_nav.rfBlocks[i].id;
         c_nav.rf_blocks[i].jamming_state = convert_jamming_state(
             cpp_nav.rfBlocks[i].jammingState);
         c_nav.rf_blocks[i].antenna_status = convert_antenna_status(
@@ -504,6 +507,7 @@ jp_gnss_navigation_t convert_navigation(const Navigation& cpp_nav)
         c_nav.rf_blocks[i].mag_i = cpp_nav.rfBlocks[i].magI;
         c_nav.rf_blocks[i].ofs_q = cpp_nav.rfBlocks[i].ofsQ;
         c_nav.rf_blocks[i].mag_q = cpp_nav.rfBlocks[i].magQ;
+        c_nav.rf_blocks[i].gnss_band = convert_rf_band(cpp_nav.rfBlocks[i].gnssBand);
     }
 
     c_nav.num_satellites = static_cast<uint8_t>(

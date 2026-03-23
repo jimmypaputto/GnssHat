@@ -523,14 +523,18 @@ def nav_to_full_data(nav):
         int(gnsshat.AntennaPower.DONT_KNOW): "Unknown",
     }
     band_map = {
+        int(gnsshat.RfBand.UNKNOWN): "UNKNOWN",
         int(gnsshat.RfBand.L1): "L1",
+        int(gnsshat.RfBand.L2): "L2",
+        int(gnsshat.RfBand.L3): "L3",
+        int(gnsshat.RfBand.L5): "L5",
         int(gnsshat.RfBand.L2_OR_L5): "L2/L5",
     }
 
     rf_blocks_data = []
     for rf in nav.rf_blocks:
         rf_blocks_data.append({
-            'band': band_map.get(rf.id, "Unknown"),
+            'band': band_map.get(rf.gnss_band, "Unknown"),
             'jamming_state': jamming_map.get(rf.jamming_state, "Unknown"),
             'antenna_status': antenna_status_map.get(rf.antenna_status, "Unknown"),
             'antenna_power': antenna_power_map.get(rf.antenna_power, "Unknown"),

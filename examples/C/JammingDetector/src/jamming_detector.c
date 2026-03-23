@@ -43,7 +43,7 @@ jp_gnss_gnss_config_t create_config()
 
 void print_rf_block(const jp_gnss_rf_block_t* rf_block)
 {
-    printf("Band %s\r\n", jp_gnss_rf_band_to_string(rf_block->id));
+    printf("Band %s\r\n", jp_gnss_rf_band_to_string(rf_block->gnss_band));
     printf("    Noise per ms: %d\r\n", rf_block->noise_per_ms);
     printf("    AGC monitor, percentage of max gain: %.2f%%\r\n",
         rf_block->agc_monitor);

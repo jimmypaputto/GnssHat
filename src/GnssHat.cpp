@@ -731,13 +731,21 @@ std::string antennaPower2string(const EAntennaPower e)
     }
 }
 
-std::string eBand2string(const EBand e)
+std::string eBand2string(const EGnssBand e)
 {
     switch (e)
     {
-    case EBand::L1:
+    case EGnssBand::UNKNOWN:
+        return "Unknown";
+    case EGnssBand::L1:
         return "L1";
-    case EBand::L2orL5:
+    case EGnssBand::L2:
+        return "L2";
+    case EGnssBand::L3:
+        return "L3";
+    case EGnssBand::L5:
+        return "L5";
+    case EGnssBand::L2orL5:
         return "L2 or L5";
     default:
         return "Unknown";

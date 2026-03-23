@@ -45,6 +45,11 @@ public:
     virtual std::optional<TimeMark> timeMark() const = 0;
     virtual TimeMark waitAndGetFreshTimeMark() = 0;
 
+    virtual bool enableTimeMarkTrigger() = 0;
+    virtual void disableTimeMarkTrigger() = 0;
+    virtual void triggerTimeMark(
+        ETimeMarkTriggerEdge edge = ETimeMarkTriggerEdge::Toggle) = 0;
+
     static IGnssHat* create();
 
     virtual ~IGnssHat() = default;

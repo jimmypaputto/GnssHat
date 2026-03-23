@@ -15,5 +15,4 @@ add_executable(TimeMark ${SOURCES})
 target_link_libraries(
     TimeMark
     GnssHat
-    gpiod
 )

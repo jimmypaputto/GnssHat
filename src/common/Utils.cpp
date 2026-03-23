@@ -130,6 +130,113 @@ void setGpio(const char* chipname, const uint32_t line_num, int value)
 #endif
 }
 
+int getGpio(const char* chipname, const uint32_t line_num)
+{
+#if LIBGPIO_VERSION < 2
+    gpiod_chip* chip = gpiod_chip_open_by_name(chipname);
+    if (!chip)
+    {
+        fprintf(stderr, "[Utils] Error opening chip GPIO\r\n");
+        return -1;
+    }
+
+    gpiod_line* line = gpiod_chip_get_line(chip, line_num);
+    if (!line)
+    {
+        fprintf(stderr, "[Utils] Error getting GPIO line %d\r\n", line_num);
+        gpiod_chip_close(chip);
+        return -1;
+    }
+
+    if (gpiod_line_request_input(line, "GnssHat") < 0)
+    {
+        fprintf(stderr, "[Utils] Error requesting GPIO line %d as input\r\n", line_num);
+        gpiod_chip_close(chip);
+        return -1;
+    }
+
+    int value = gpiod_line_get_value(line);
+    gpiod_chip_close(chip);
+    return value;
+#else
+    struct gpiod_chip *chip;
+    struct gpiod_line_settings *settings;
+    struct gpiod_line_config *line_cfg;
+    struct gpiod_request_config *req_cfg;
+    struct gpiod_line_request *request;
+    int ret;
+
+    chip = gpiod_chip_open(chipname);
+    if (!chip)
+    {
+        fprintf(stderr, "[Utils] Error opening GPIO chip %s\r\n", chipname);
+        return -1;
+    }
+
+    settings = gpiod_line_settings_new();
+    if (!settings)
+    {
+        fprintf(stderr, "[Utils] Error creating line settings\r\n");
+        gpiod_chip_close(chip);
+        return -1;
+    }
+
+    gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_INPUT);
+
+    line_cfg = gpiod_line_config_new();
+    if (!line_cfg)
+    {
+        fprintf(stderr, "[Utils] Error creating line config\r\n");
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(chip);
+        return -1;
+    }
+
+    ret = gpiod_line_config_add_line_settings(line_cfg, &line_num, 1, settings);
+    if (ret)
+    {
+        fprintf(stderr, "[Utils] Error adding line settings\r\n");
+        gpiod_line_config_free(line_cfg);
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(chip);
+        return -1;
+    }
+
+    req_cfg = gpiod_request_config_new();
+    if (!req_cfg)
+    {
+        fprintf(stderr, "[Utils] Error creating request config\r\n");
+        gpiod_line_config_free(line_cfg);
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(chip);
+        return -1;
+    }
+
+    gpiod_request_config_set_consumer(req_cfg, "GnssHat");
+
+    request = gpiod_chip_request_lines(chip, req_cfg, line_cfg);
+    if (!request)
+    {
+        fprintf(stderr, "[Utils] Error requesting GPIO line %d\r\n", line_num);
+        gpiod_request_config_free(req_cfg);
+        gpiod_line_config_free(line_cfg);
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(chip);
+        return -1;
+    }
+
+    enum gpiod_line_value val = gpiod_line_request_get_value(request, line_num);
+    int value = (val == GPIOD_LINE_VALUE_ACTIVE) ? 1 : 0;
+
+    gpiod_line_request_release(request);
+    gpiod_request_config_free(req_cfg);
+    gpiod_line_config_free(line_cfg);
+    gpiod_line_settings_free(settings);
+    gpiod_chip_close(chip);
+    return value;
+#endif
+}
+
 bool getBit(uint8_t val, uint8_t pos)
 {
     return 1 == ((val >> pos) & 1);

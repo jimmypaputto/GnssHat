@@ -7,14 +7,11 @@
 #include <thread>
 
 #include <signal.h>
-#include <gpiod.h>
 
 #include <jimmypaputto/GnssHat.hpp>
 
 
 using namespace JimmyPaputto;
-
-#define EXTINT_PIN 17
 
 std::atomic<bool> running{true};
 
@@ -74,57 +71,6 @@ void printTimeMark(const TimeMark& tm)
     printf("\r\n");
 }
 
-void toggleExtintThread(const char* chipName)
-{
-    struct gpiod_chip* chip = gpiod_chip_open(chipName);
-    if (!chip)
-    {
-        fprintf(stderr, "[EXTINT] Failed to open %s\r\n", chipName);
-        return;
-    }
-
-    struct gpiod_line_settings* settings = gpiod_line_settings_new();
-    gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_OUTPUT);
-    gpiod_line_settings_set_output_value(settings, GPIOD_LINE_VALUE_INACTIVE);
-
-    struct gpiod_line_config* line_cfg = gpiod_line_config_new();
-    const unsigned int offset = EXTINT_PIN;
-    gpiod_line_config_add_line_settings(line_cfg, &offset, 1, settings);
-
-    struct gpiod_request_config* req_cfg = gpiod_request_config_new();
-    gpiod_request_config_set_consumer(req_cfg, "TimeMark_extint");
-
-    struct gpiod_line_request* request =
-        gpiod_chip_request_lines(chip, req_cfg, line_cfg);
-
-    gpiod_request_config_free(req_cfg);
-    gpiod_line_config_free(line_cfg);
-    gpiod_line_settings_free(settings);
-    gpiod_chip_close(chip);
-
-    if (!request)
-    {
-        fprintf(stderr, "[EXTINT] Failed to request GPIO %d\r\n", EXTINT_PIN);
-        return;
-    }
-
-    bool state = false;
-    while (running.load())
-    {
-        state = !state;
-        gpiod_line_request_set_value(request, offset,
-            state ? GPIOD_LINE_VALUE_ACTIVE : GPIOD_LINE_VALUE_INACTIVE);
-        printf("[EXTINT] GPIO %d -> %s\r\n", EXTINT_PIN,
-            state ? "HIGH" : "LOW");
-
-        for (int i = 0; i < 50 && running.load(); ++i)
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-
-    gpiod_line_request_set_value(request, offset, GPIOD_LINE_VALUE_INACTIVE);
-    gpiod_line_request_release(request);
-}
-
 GnssConfig createConfig()
 {
     return GnssConfig {
@@ -157,12 +103,20 @@ auto main() -> int
         return -1;
     }
     printf("Startup done, ublox configured\r\n");
-    printf("TimeMark enabled, toggling EXTINT (GPIO %d) every 5s\r\n\r\n",
-        EXTINT_PIN);
 
-    const char* chipName = "/dev/gpiochip4";
-    std::jthread toggleThread([chipName]([[maybe_unused]] std::stop_token stoken) {
-        toggleExtintThread(chipName);
+    ubxHat->enableTimeMarkTrigger();
+    printf("TimeMark trigger enabled, toggling EXTINT every 5s\r\n\r\n");
+
+    std::jthread toggleThread([ubxHat]([[maybe_unused]] std::stop_token stoken) {
+        while (running.load())
+        {
+            ubxHat->triggerTimeMark();
+            printf("[EXTINT] toggled\r\n");
+
+            for (int i = 0; i < 50 && running.load(); ++i)
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        ubxHat->triggerTimeMark();
     });
 
     while (running.load())
@@ -172,7 +126,7 @@ auto main() -> int
             printTimeMark(tm);
     }
 
-    running = false;
+    ubxHat->disableTimeMarkTrigger();
     toggleThread.request_stop();
     printf("Exiting...\r\n");
 

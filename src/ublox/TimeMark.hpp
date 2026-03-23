@@ -30,6 +30,13 @@ enum class ETimeMarkTimeBase : uint8_t
     UTC          = 0x02
 };
 
+enum class ETimeMarkTriggerEdge : uint8_t
+{
+    Rising  = 0x00,
+    Falling = 0x01,
+    Toggle  = 0x02
+};
+
 struct TimeMark
 {
     uint8_t channel;

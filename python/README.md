@@ -178,15 +178,15 @@ All navigation objects have `__str__` and `__repr__` for easy printing.
 
 ### DilutionOverPrecision
 
-| Field | Type |
-|-------|------|
-| `geometric` | `float` |
-| `position` | `float` |
-| `time` | `float` |
-| `vertical` | `float` |
-| `horizontal` | `float` |
-| `northing` | `float` |
-| `easting` | `float` |
+| Field | Type | Description |
+|-------|------|-------------|
+| `geometric` | `float` | GDOP — overall geometric quality |
+| `position` | `float` | PDOP — 3D position |
+| `time` | `float` | TDOP — time |
+| `vertical` | `float` | VDOP — vertical position |
+| `horizontal` | `float` | HDOP — horizontal position |
+| `northing` | `float` | NDOP — northing |
+| `easting` | `float` | EDOP — easting |
 
 ### RfBlock
 

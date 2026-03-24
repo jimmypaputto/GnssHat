@@ -96,6 +96,20 @@ static_assert(SatelliteInfo::maxNumberOfSatellites == UBLOX_MAX_SATELLITES);
 static_assert(static_cast<int>(ERtkMode::Base) == JP_GNSS_RTK_MODE_BASE);
 static_assert(static_cast<int>(ERtkMode::Rover) == JP_GNSS_RTK_MODE_ROVER);
 
+static_assert(static_cast<int>(ETimeMarkMode::Single) == JP_GNSS_TIME_MARK_MODE_SINGLE);
+static_assert(static_cast<int>(ETimeMarkMode::Running) == JP_GNSS_TIME_MARK_MODE_RUNNING);
+
+static_assert(static_cast<int>(ETimeMarkRun::Armed) == JP_GNSS_TIME_MARK_RUN_ARMED);
+static_assert(static_cast<int>(ETimeMarkRun::Stopped) == JP_GNSS_TIME_MARK_RUN_STOPPED);
+
+static_assert(static_cast<int>(ETimeMarkTimeBase::ReceiverTime) == JP_GNSS_TIME_MARK_TIME_BASE_RECEIVER);
+static_assert(static_cast<int>(ETimeMarkTimeBase::GnssTime) == JP_GNSS_TIME_MARK_TIME_BASE_GNSS);
+static_assert(static_cast<int>(ETimeMarkTimeBase::UTC) == JP_GNSS_TIME_MARK_TIME_BASE_UTC);
+
+static_assert(static_cast<int>(ETimeMarkTriggerEdge::Rising) == JP_GNSS_TIME_MARK_TRIGGER_EDGE_RISING);
+static_assert(static_cast<int>(ETimeMarkTriggerEdge::Falling) == JP_GNSS_TIME_MARK_TRIGGER_EDGE_FALLING);
+static_assert(static_cast<int>(ETimeMarkTriggerEdge::Toggle) == JP_GNSS_TIME_MARK_TRIGGER_EDGE_TOGGLE);
+
 namespace
 {
 
@@ -332,7 +346,9 @@ GnssConfig convert_gnss_config(const jp_gnss_gnss_config_t& c_config)
     {
         cpp_config.rtk = convert_rtk_config(c_config.rtk);
     }
-    
+
+    cpp_config.enableTimeMark = c_config.enable_time_mark;
+
     return cpp_config;
 }
 
@@ -462,6 +478,28 @@ jp_gnss_navigation_t convert_navigation(const Navigation& cpp_nav)
     }
 
     return c_nav;
+}
+
+jp_gnss_time_mark_t convert_time_mark(const TimeMark& cpp_tm)
+{
+    jp_gnss_time_mark_t c_tm;
+    c_tm.channel = cpp_tm.channel;
+    c_tm.mode = static_cast<jp_gnss_time_mark_mode_t>(cpp_tm.mode);
+    c_tm.run = static_cast<jp_gnss_time_mark_run_t>(cpp_tm.run);
+    c_tm.new_falling_edge = cpp_tm.newFallingEdge;
+    c_tm.time_base = static_cast<jp_gnss_time_mark_time_base_t>(cpp_tm.timeBase);
+    c_tm.utc_available = cpp_tm.utcAvailable;
+    c_tm.time_valid = cpp_tm.timeValid;
+    c_tm.new_rising_edge = cpp_tm.newRisingEdge;
+    c_tm.count = cpp_tm.count;
+    c_tm.week_number_rising = cpp_tm.weekNumberRising;
+    c_tm.week_number_falling = cpp_tm.weekNumberFalling;
+    c_tm.tow_rising_ms = cpp_tm.towRising_ms;
+    c_tm.tow_sub_rising_ns = cpp_tm.towSubRising_ns;
+    c_tm.tow_falling_ms = cpp_tm.towFalling_ms;
+    c_tm.tow_sub_falling_ns = cpp_tm.towSubFalling_ns;
+    c_tm.accuracy_estimate_ns = cpp_tm.accuracyEstimate_ns;
+    return c_tm;
 }
 
 }  // anonymous namespace
@@ -768,6 +806,7 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
     config->has_geofencing = false;
     config->has_rtk = false;
     std::memset(&config->rtk, 0, sizeof(config->rtk));
+    config->enable_time_mark = false;
 }
 
 void jp_gnss_hat_timepulse(jp_gnss_hat_t* hat)
@@ -994,6 +1033,91 @@ const char* jp_gnss_utc_time_iso8601(
     thread_local std::string result;
     result = Utils::utcTimeFromGnss_ISO8601(cpp_pvt);
     return result.c_str();
+}
+
+bool jp_gnss_hat_get_time_mark(jp_gnss_hat_t* hat,
+    jp_gnss_time_mark_t* time_mark)
+{
+    if (!hat || !time_mark || !hat->instance)
+        return false;
+
+    auto opt = hat->instance->timeMark();
+    if (!opt.has_value())
+        return false;
+
+    *time_mark = convert_time_mark(opt.value());
+    return true;
+}
+
+bool jp_gnss_hat_wait_and_get_fresh_time_mark(jp_gnss_hat_t* hat,
+    jp_gnss_time_mark_t* time_mark)
+{
+    if (!hat || !time_mark || !hat->instance)
+        return false;
+
+    *time_mark = convert_time_mark(
+        hat->instance->waitAndGetFreshTimeMark());
+    return true;
+}
+
+bool jp_gnss_hat_enable_time_mark_trigger(jp_gnss_hat_t* hat)
+{
+    if (!hat || !hat->instance)
+        return false;
+
+    return hat->instance->enableTimeMarkTrigger();
+}
+
+void jp_gnss_hat_disable_time_mark_trigger(jp_gnss_hat_t* hat)
+{
+    if (!hat || !hat->instance)
+        return;
+
+    hat->instance->disableTimeMarkTrigger();
+}
+
+void jp_gnss_hat_trigger_time_mark(jp_gnss_hat_t* hat,
+    jp_gnss_time_mark_trigger_edge_t edge)
+{
+    if (!hat || !hat->instance)
+        return;
+
+    hat->instance->triggerTimeMark(
+        static_cast<ETimeMarkTriggerEdge>(edge));
+}
+
+const char* jp_gnss_time_mark_mode_to_string(
+    jp_gnss_time_mark_mode_t mode)
+{
+    switch (mode)
+    {
+        case JP_GNSS_TIME_MARK_MODE_SINGLE:  return "Single";
+        case JP_GNSS_TIME_MARK_MODE_RUNNING: return "Running";
+        default:                             return "Unknown";
+    }
+}
+
+const char* jp_gnss_time_mark_run_to_string(
+    jp_gnss_time_mark_run_t run)
+{
+    switch (run)
+    {
+        case JP_GNSS_TIME_MARK_RUN_ARMED:   return "Armed";
+        case JP_GNSS_TIME_MARK_RUN_STOPPED: return "Stopped";
+        default:                            return "Unknown";
+    }
+}
+
+const char* jp_gnss_time_mark_time_base_to_string(
+    jp_gnss_time_mark_time_base_t time_base)
+{
+    switch (time_base)
+    {
+        case JP_GNSS_TIME_MARK_TIME_BASE_RECEIVER: return "Receiver";
+        case JP_GNSS_TIME_MARK_TIME_BASE_GNSS:     return "GNSS";
+        case JP_GNSS_TIME_MARK_TIME_BASE_UTC:      return "UTC";
+        default:                                   return "Unknown";
+    }
 }
 
 }  // extern "C"

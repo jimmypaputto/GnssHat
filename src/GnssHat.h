@@ -139,6 +139,32 @@ typedef enum
     JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_3        = 7
 } jp_gnss_sv_quality_t;
 
+typedef enum
+{
+    JP_GNSS_TIME_MARK_MODE_SINGLE  = 0x00,
+    JP_GNSS_TIME_MARK_MODE_RUNNING = 0x01
+} jp_gnss_time_mark_mode_t;
+
+typedef enum
+{
+    JP_GNSS_TIME_MARK_RUN_ARMED   = 0x00,
+    JP_GNSS_TIME_MARK_RUN_STOPPED = 0x01
+} jp_gnss_time_mark_run_t;
+
+typedef enum
+{
+    JP_GNSS_TIME_MARK_TIME_BASE_RECEIVER = 0x00,
+    JP_GNSS_TIME_MARK_TIME_BASE_GNSS     = 0x01,
+    JP_GNSS_TIME_MARK_TIME_BASE_UTC      = 0x02
+} jp_gnss_time_mark_time_base_t;
+
+typedef enum
+{
+    JP_GNSS_TIME_MARK_TRIGGER_EDGE_RISING  = 0x00,
+    JP_GNSS_TIME_MARK_TRIGGER_EDGE_FALLING = 0x01,
+    JP_GNSS_TIME_MARK_TRIGGER_EDGE_TOGGLE  = 0x02
+} jp_gnss_time_mark_trigger_edge_t;
+
 typedef struct
 {
     float geometric;
@@ -335,7 +361,28 @@ typedef struct
     jp_gnss_geofencing_config_t geofencing;
     bool has_rtk;
     jp_gnss_rtk_config_t rtk;
+    bool enable_time_mark;
 } jp_gnss_gnss_config_t;
+
+typedef struct
+{
+    uint8_t channel;
+    jp_gnss_time_mark_mode_t mode;
+    jp_gnss_time_mark_run_t run;
+    bool new_falling_edge;
+    jp_gnss_time_mark_time_base_t time_base;
+    bool utc_available;
+    bool time_valid;
+    bool new_rising_edge;
+    uint16_t count;
+    uint16_t week_number_rising;
+    uint16_t week_number_falling;
+    uint32_t tow_rising_ms;
+    uint32_t tow_sub_rising_ns;
+    uint32_t tow_falling_ms;
+    uint32_t tow_sub_falling_ns;
+    uint32_t accuracy_estimate_ns;
+} jp_gnss_time_mark_t;
 
 typedef struct
 {
@@ -396,6 +443,15 @@ void jp_gnss_hat_hard_reset_cold_start(jp_gnss_hat_t* hat);
 void jp_gnss_hat_soft_reset_hot_start(jp_gnss_hat_t* hat);
 void jp_gnss_hat_timepulse(jp_gnss_hat_t* hat);
 
+bool jp_gnss_hat_get_time_mark(jp_gnss_hat_t* hat,
+    jp_gnss_time_mark_t* time_mark);
+bool jp_gnss_hat_wait_and_get_fresh_time_mark(jp_gnss_hat_t* hat,
+    jp_gnss_time_mark_t* time_mark);
+bool jp_gnss_hat_enable_time_mark_trigger(jp_gnss_hat_t* hat);
+void jp_gnss_hat_disable_time_mark_trigger(jp_gnss_hat_t* hat);
+void jp_gnss_hat_trigger_time_mark(jp_gnss_hat_t* hat,
+    jp_gnss_time_mark_trigger_edge_t edge);
+
 void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config);
 bool jp_gnss_gnss_config_add_geofence(jp_gnss_gnss_config_t* config,
     jp_gnss_geofence_t geofence);
@@ -423,6 +479,13 @@ const char* jp_gnss_geofencing_status_to_string(
 const char* jp_gnss_geofence_status_to_string(jp_gnss_geofence_status_t status);
 const char* jp_gnss_gnss_id_to_string(jp_gnss_gnss_id_t id);
 const char* jp_gnss_sv_quality_to_string(jp_gnss_sv_quality_t quality);
+
+const char* jp_gnss_time_mark_mode_to_string(
+    jp_gnss_time_mark_mode_t mode);
+const char* jp_gnss_time_mark_run_to_string(
+    jp_gnss_time_mark_run_t run);
+const char* jp_gnss_time_mark_time_base_to_string(
+    jp_gnss_time_mark_time_base_t time_base);
 
 const char* jp_gnss_utc_time_iso8601(
     const jp_gnss_position_velocity_time_t* pvt);

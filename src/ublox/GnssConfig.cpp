@@ -93,6 +93,16 @@ bool checkGeofencing(const std::optional<GnssConfig::Geofencing>& geofencing)
     return true;
 }
 
+bool checkTimeBase(const std::optional<BaseConfig>& timeBase)
+{
+    if (!timeBase.has_value())
+    {
+        return true;
+    }
+
+    return checkBaseConfig(timeBase.value());
+}
+
 bool checkTimepulsePinConfig(const TimepulsePinConfig& timepulsePinConfig)
 {
     if (!timepulsePinConfig.active)

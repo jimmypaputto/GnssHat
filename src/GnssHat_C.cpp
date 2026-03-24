@@ -5,8 +5,10 @@
 #include "GnssHat.h"
 #include "GnssHat.hpp"
 
+#include <cstdio>
 #include <cstring>
 #include <new>
+#include <optional>
 
 
 using namespace JimmyPaputto;
@@ -240,61 +242,93 @@ TimepulsePinConfig convert_timepulse_config(
     return cpp_config;
 }
 
-RtkConfig convert_rtk_config(const jp_gnss_rtk_config_t& c_rtk)
+std::optional<BaseConfig> convert_base_config(
+    const jp_gnss_base_config_t& c_base)
+{
+    BaseConfig base;
+
+    if (c_base.base_mode == JP_GNSS_BASE_MODE_SURVEY_IN)
+    {
+        base.mode = BaseConfig::SurveyIn {
+            .minimumObservationTime_s =
+                c_base.survey_in.minimum_observation_time_s,
+            .requiredPositionAccuracy_m =
+                c_base.survey_in.required_position_accuracy_m
+        };
+    }
+    else if (c_base.base_mode == JP_GNSS_BASE_MODE_FIXED_POSITION)
+    {
+        BaseConfig::FixedPosition fp;
+        fp.positionAccuracy_m =
+            c_base.fixed_position.position_accuracy_m;
+
+        if (c_base.fixed_position.position_type ==
+            JP_GNSS_FIXED_POSITION_ECEF)
+        {
+            fp.position = BaseConfig::FixedPosition::Ecef {
+                .x_m = c_base.fixed_position.ecef.x_m,
+                .y_m = c_base.fixed_position.ecef.y_m,
+                .z_m = c_base.fixed_position.ecef.z_m
+            };
+        }
+        else if (c_base.fixed_position.position_type ==
+                 JP_GNSS_FIXED_POSITION_LLA)
+        {
+            fp.position = BaseConfig::FixedPosition::Lla {
+                .latitude_deg =
+                    c_base.fixed_position.lla.latitude_deg,
+                .longitude_deg =
+                    c_base.fixed_position.lla.longitude_deg,
+                .height_m =
+                    c_base.fixed_position.lla.height_m
+            };
+        }
+        else
+        {
+            fprintf(stderr,
+                "[GnssHat C API] Invalid fixed position type: %d, "
+                "expected ECEF (%d) or LLA (%d)\r\n",
+                c_base.fixed_position.position_type,
+                JP_GNSS_FIXED_POSITION_ECEF,
+                JP_GNSS_FIXED_POSITION_LLA);
+            return std::nullopt;
+        }
+
+        base.mode = fp;
+    }
+    else
+    {
+        fprintf(stderr,
+            "[GnssHat C API] Invalid base mode: %d, "
+            "expected SURVEY_IN (%d) or FIXED_POSITION (%d)\r\n",
+            c_base.base_mode,
+            JP_GNSS_BASE_MODE_SURVEY_IN,
+            JP_GNSS_BASE_MODE_FIXED_POSITION);
+        return std::nullopt;
+    }
+
+    return base;
+}
+
+std::optional<RtkConfig> convert_rtk_config(
+    const jp_gnss_rtk_config_t& c_rtk)
 {
     RtkConfig rtk;
     rtk.mode = static_cast<ERtkMode>(c_rtk.mode);
 
     if (c_rtk.has_base_config)
     {
-        BaseConfig base;
-
-        if (c_rtk.base.base_mode == JP_GNSS_BASE_MODE_SURVEY_IN)
-        {
-            base.mode = BaseConfig::SurveyIn {
-                .minimumObservationTime_s =
-                    c_rtk.base.survey_in.minimum_observation_time_s,
-                .requiredPositionAccuracy_m =
-                    c_rtk.base.survey_in.required_position_accuracy_m
-            };
-        }
-        else
-        {
-            BaseConfig::FixedPosition fp;
-            fp.positionAccuracy_m =
-                c_rtk.base.fixed_position.position_accuracy_m;
-
-            if (c_rtk.base.fixed_position.position_type ==
-                JP_GNSS_FIXED_POSITION_ECEF)
-            {
-                fp.position = BaseConfig::FixedPosition::Ecef {
-                    .x_m = c_rtk.base.fixed_position.ecef.x_m,
-                    .y_m = c_rtk.base.fixed_position.ecef.y_m,
-                    .z_m = c_rtk.base.fixed_position.ecef.z_m
-                };
-            }
-            else
-            {
-                fp.position = BaseConfig::FixedPosition::Lla {
-                    .latitude_deg =
-                        c_rtk.base.fixed_position.lla.latitude_deg,
-                    .longitude_deg =
-                        c_rtk.base.fixed_position.lla.longitude_deg,
-                    .height_m =
-                        c_rtk.base.fixed_position.lla.height_m
-                };
-            }
-
-            base.mode = fp;
-        }
-
-        rtk.base = base;
+        auto base = convert_base_config(c_rtk.base);
+        if (!base)
+            return std::nullopt;
+        rtk.base = *base;
     }
 
     return rtk;
 }
 
-GnssConfig convert_gnss_config(const jp_gnss_gnss_config_t& c_config)
+std::optional<GnssConfig> convert_gnss_config(
+    const jp_gnss_gnss_config_t& c_config)
 {
     GnssConfig cpp_config;
     cpp_config.measurementRate_Hz = c_config.measurement_rate_hz;
@@ -330,7 +364,18 @@ GnssConfig convert_gnss_config(const jp_gnss_gnss_config_t& c_config)
 
     if (c_config.has_rtk)
     {
-        cpp_config.rtk = convert_rtk_config(c_config.rtk);
+        auto rtk = convert_rtk_config(c_config.rtk);
+        if (!rtk)
+            return std::nullopt;
+        cpp_config.rtk = *rtk;
+    }
+
+    if (c_config.has_time_base)
+    {
+        auto timeBase = convert_base_config(c_config.time_base);
+        if (!timeBase)
+            return std::nullopt;
+        cpp_config.timeBase = *timeBase;
     }
     
     return cpp_config;
@@ -510,7 +555,11 @@ bool jp_gnss_hat_start(jp_gnss_hat_t* hat,
     if (!hat->instance)
         return false;
 
-    return hat->instance->start(convert_gnss_config(*config));
+    auto cpp_config = convert_gnss_config(*config);
+    if (!cpp_config)
+        return false;
+
+    return hat->instance->start(*cpp_config);
 }
 
 bool jp_gnss_hat_wait_and_get_fresh_navigation(jp_gnss_hat_t* hat,
@@ -768,6 +817,8 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
     config->has_geofencing = false;
     config->has_rtk = false;
     std::memset(&config->rtk, 0, sizeof(config->rtk));
+    config->has_time_base = false;
+    std::memset(&config->time_base, 0, sizeof(config->time_base));
 }
 
 void jp_gnss_hat_timepulse(jp_gnss_hat_t* hat)

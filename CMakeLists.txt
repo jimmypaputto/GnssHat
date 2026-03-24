@@ -62,6 +62,7 @@ set(LIB_SOURCES
     src/common/Utils.cpp
     src/ublox/ubxmsg/IUbxMsg.cpp
     src/ublox/ubxmsg/UBX_CFG_VALGET.cpp
+    src/ublox/BaseConfig.cpp
     src/ublox/Gnss.cpp
     src/ublox/GnssConfig.cpp
     src/ublox/NmeaForwarder.cpp
@@ -106,6 +107,7 @@ install(
         src/ublox/PositionVelocityTime.hpp
         src/ublox/RFBlock.hpp
         src/ublox/RTK.hpp
+        src/ublox/BaseConfig.hpp
         src/ublox/RtkConfig.hpp
         src/ublox/SatelliteInfo.hpp
         src/ublox/TimepulsePinConfig.hpp

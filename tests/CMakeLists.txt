@@ -39,6 +39,7 @@ set(LIB_SOURCES
     ${SRC_DIR}/common/GpioInterruptLine.cpp
     ${SRC_DIR}/ublox/ubxmsg/IUbxMsg.cpp
     ${SRC_DIR}/ublox/ubxmsg/UBX_CFG_VALGET.cpp
+    ${SRC_DIR}/ublox/BaseConfig.cpp
     ${SRC_DIR}/ublox/Gnss.cpp
     ${SRC_DIR}/ublox/GnssConfig.cpp
     ${SRC_DIR}/ublox/NmeaForwarder.cpp

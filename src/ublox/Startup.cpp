@@ -846,6 +846,12 @@ F10TStartup::F10TStartup(ICommDriver& commDriver,
         timeBaseEnabled_ = true;
         baseConfig2Registers(config.timeBase.value());
     }
+    else
+    {
+        auto& ecv = StartupBase::expectedConfigValues_;
+        ecv[UbxCfgKeys::CFG_TMODE_MODE] =
+            {static_cast<uint8_t>(CFG_TMODE_MODE::DISABLED)};
+    }
 }
 
 bool F10TStartup::execute()
@@ -890,6 +896,15 @@ bool F10TStartup::execute()
     if (timeBaseEnabled_)
     {
         result = timeBaseStartup();
+        if (!result)
+            return false;
+    }
+    else
+    {
+        constexpr std::array<uint32_t, 1> tmodeDisableKey = {
+            UbxCfgKeys::CFG_TMODE_MODE
+        };
+        result = configure(tmodeDisableKey);
         if (!result)
             return false;
     }

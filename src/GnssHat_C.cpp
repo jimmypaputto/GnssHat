@@ -832,6 +832,7 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
     config->enable_time_mark = false;
     config->has_time_base = false;
     std::memset(&config->time_base, 0, sizeof(config->time_base));
+    config->enable_time_mark = false;
 }
 
 void jp_gnss_hat_timepulse(jp_gnss_hat_t* hat)

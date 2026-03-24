@@ -1420,6 +1420,22 @@ static bool validate_base_config_dict(PyObject* base_dict, const char* prefix)
                     "position_type is ECEF");
                 return false;
             }
+
+            static const char* ecef_fields[] =
+                {"x_m", "y_m", "z_m"};
+            for (int i = 0; i < 3; i++)
+            {
+                PyObject* val = PyDict_GetItemString(ecef_dict,
+                    ecef_fields[i]);
+                if (val && !PyFloat_Check(val) &&
+                    !PyLong_Check(val))
+                {
+                    PyErr_Format(PyExc_TypeError,
+                        "fixed_position.ecef.%s must be a number",
+                        ecef_fields[i]);
+                    return false;
+                }
+            }
         }
         else
         {
@@ -1430,6 +1446,22 @@ static bool validate_base_config_dict(PyObject* base_dict, const char* prefix)
                     "fixed_position.lla is required when "
                     "position_type is LLA");
                 return false;
+            }
+
+            static const char* lla_fields[] =
+                {"latitude_deg", "longitude_deg", "height_m"};
+            for (int i = 0; i < 3; i++)
+            {
+                PyObject* val = PyDict_GetItemString(lla_dict,
+                    lla_fields[i]);
+                if (val && !PyFloat_Check(val) &&
+                    !PyLong_Check(val))
+                {
+                    PyErr_Format(PyExc_TypeError,
+                        "fixed_position.lla.%s must be a number",
+                        lla_fields[i]);
+                    return false;
+                }
             }
         }
 
@@ -1765,18 +1797,39 @@ static void populate_base_config_from_dict(PyObject* base_dict,
                 {
                     PyObject* x = PyDict_GetItemString(
                         ecef_dict, "x_m");
-                    if (x) base->fixed_position.ecef.x_m =
-                        PyFloat_AsDouble(x);
+                    if (x)
+                    {
+                        if (PyFloat_Check(x))
+                            base->fixed_position.ecef.x_m =
+                                PyFloat_AsDouble(x);
+                        else if (PyLong_Check(x))
+                            base->fixed_position.ecef.x_m =
+                                PyLong_AsDouble(x);
+                    }
 
                     PyObject* y = PyDict_GetItemString(
                         ecef_dict, "y_m");
-                    if (y) base->fixed_position.ecef.y_m =
-                        PyFloat_AsDouble(y);
+                    if (y)
+                    {
+                        if (PyFloat_Check(y))
+                            base->fixed_position.ecef.y_m =
+                                PyFloat_AsDouble(y);
+                        else if (PyLong_Check(y))
+                            base->fixed_position.ecef.y_m =
+                                PyLong_AsDouble(y);
+                    }
 
                     PyObject* z = PyDict_GetItemString(
                         ecef_dict, "z_m");
-                    if (z) base->fixed_position.ecef.z_m =
-                        PyFloat_AsDouble(z);
+                    if (z)
+                    {
+                        if (PyFloat_Check(z))
+                            base->fixed_position.ecef.z_m =
+                                PyFloat_AsDouble(z);
+                        else if (PyLong_Check(z))
+                            base->fixed_position.ecef.z_m =
+                                PyLong_AsDouble(z);
+                    }
                 }
             }
             else /* LLA */
@@ -1787,18 +1840,39 @@ static void populate_base_config_from_dict(PyObject* base_dict,
                 {
                     PyObject* lat = PyDict_GetItemString(
                         lla_dict, "latitude_deg");
-                    if (lat) base->fixed_position.lla.latitude_deg =
-                        PyFloat_AsDouble(lat);
+                    if (lat)
+                    {
+                        if (PyFloat_Check(lat))
+                            base->fixed_position.lla.latitude_deg =
+                                PyFloat_AsDouble(lat);
+                        else if (PyLong_Check(lat))
+                            base->fixed_position.lla.latitude_deg =
+                                PyLong_AsDouble(lat);
+                    }
 
                     PyObject* lon = PyDict_GetItemString(
                         lla_dict, "longitude_deg");
-                    if (lon) base->fixed_position.lla.longitude_deg =
-                        PyFloat_AsDouble(lon);
+                    if (lon)
+                    {
+                        if (PyFloat_Check(lon))
+                            base->fixed_position.lla.longitude_deg =
+                                PyFloat_AsDouble(lon);
+                        else if (PyLong_Check(lon))
+                            base->fixed_position.lla.longitude_deg =
+                                PyLong_AsDouble(lon);
+                    }
 
                     PyObject* h = PyDict_GetItemString(
                         lla_dict, "height_m");
-                    if (h) base->fixed_position.lla.height_m =
-                        PyFloat_AsDouble(h);
+                    if (h)
+                    {
+                        if (PyFloat_Check(h))
+                            base->fixed_position.lla.height_m =
+                                PyFloat_AsDouble(h);
+                        else if (PyLong_Check(h))
+                            base->fixed_position.lla.height_m =
+                                PyLong_AsDouble(h);
+                    }
                 }
             }
 

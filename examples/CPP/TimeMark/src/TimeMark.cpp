@@ -107,7 +107,7 @@ auto main() -> int
     ubxHat->enableTimeMarkTrigger();
     printf("TimeMark trigger enabled, toggling EXTINT every 5s\r\n\r\n");
 
-    std::jthread toggleThread([ubxHat]([[maybe_unused]] std::stop_token stoken) {
+    std::thread toggleThread([ubxHat]() {
         while (running.load())
         {
             ubxHat->triggerTimeMark();
@@ -116,20 +116,27 @@ auto main() -> int
             for (int i = 0; i < 50 && running.load(); ++i)
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-        ubxHat->triggerTimeMark();
+    });
+
+    std::thread timeMarkThread([ubxHat]() {
+        while (running.load())
+        {
+            const auto tm = ubxHat->waitAndGetFreshTimeMark();
+            if (!running.load())
+                return;
+            printTimeMark(tm);
+        }
     });
 
     while (running.load())
-    {
-        const auto tm = ubxHat->waitAndGetFreshTimeMark();
-        if (running.load())
-            printTimeMark(tm);
-    }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     ubxHat->disableTimeMarkTrigger();
-    toggleThread.request_stop();
-    printf("Exiting...\r\n");
-
     delete ubxHat;
+
+    printf("Exiting...\r\n");
+    toggleThread.join();
+    timeMarkThread.join();
+
     return 0;
 }

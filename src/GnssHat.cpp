@@ -156,9 +156,7 @@ class GnssL1L5TimeHat : public GnssHat
 {
 public:
     explicit GnssL1L5TimeHat()
-    :   GnssHat(
-            std::make_unique<UartDriver>()
-        )
+    :   GnssHat(std::make_unique<UartDriver>())
     {}
 
     ~GnssL1L5TimeHat() override

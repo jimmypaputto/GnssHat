@@ -1403,7 +1403,7 @@ function buildConfigFromForm() {
         } else {
             config.geofencing = null;
         }
-    } else {
+    } else if (geoEnEl) {
         config.geofencing = null;
     }
 
@@ -1446,7 +1446,7 @@ function buildConfigFromForm() {
             rtk.base = base;
         }
         config.rtk = rtk;
-    } else {
+    } else if (rtkEn) {
         config.rtk = null;
     }
 

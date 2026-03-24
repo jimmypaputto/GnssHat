@@ -8,6 +8,7 @@
 #include <optional>
 #include <vector>
 
+#include "BaseConfig.hpp"
 #include "EDynamicModel.hpp"
 #include "Geofence.hpp"
 #include "RtkConfig.hpp"
@@ -36,11 +37,13 @@ struct GnssConfig
     std::optional<RtkConfig> rtk;
 
     bool enableTimeMark{false};
+    std::optional<BaseConfig> timeBase;
 };
 
 bool checkMeasurmentRate(const uint16_t measurmentRate);
 bool checkTimepulsePinConfig(const TimepulsePinConfig& timepulsePinConfig);
 bool checkGeofencing(const std::optional<GnssConfig::Geofencing>& geofencing);
+bool checkTimeBase(const std::optional<BaseConfig>& timeBase);
 
 }  // JimmyPaputto
 

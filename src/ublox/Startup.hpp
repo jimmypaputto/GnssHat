@@ -37,6 +37,7 @@ protected:
 
     void rate2Registers(const uint16_t measurementRate_Hz);
     void timepulsePinConfig2Registers(const TimepulsePinConfig& tpc);
+    void baseConfig2Registers(const BaseConfig& baseConfig);
     bool saveCurrentConfigToFlash();
 
     bool configure(std::span<const uint32_t> keys);
@@ -80,6 +81,9 @@ public:
 private:
     bool reconfigureCommPort() override;
     int pollRxData(uint8_t* rxBuff, uint32_t size, int timeoutMs) override;
+    bool timeBaseStartup();
+
+    bool timeBaseEnabled_{false};
 };
 
 class F9PStartup: public M9NStartup

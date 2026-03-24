@@ -1,105 +1,85 @@
 # JP_GNSS_HAT
 
-The `JP_GNSS_HAT` library integrates our GNSS HATs with the Raspberry Pi via SPI or UART. The aim of this software is to provide an easy way to configure u-blox GNSS modules and read all necessary data, without the need to study the whole UBX protocol specification and implementation insights of u-blox. You can buy our HATs here: https://jimmypaputto.com, if you have your custom hardware it might be beneficial for you too as most of the code is handling the UBX related stuff. This lib can be easily integrated with any environment as it provides the C++ API, C headers, Python module and all core threads/jobs are independent of the destination system architecture.
+Driver library for Jimmy Paputto GNSS HATs on Raspberry Pi. Handles the full u-blox UBX protocol and provides a high-level API in C++, C and Python. Buy our HATs at [jimmypaputto.com](https://jimmypaputto.com) -- if you have custom u-blox hardware, most of the code will still be useful.
 
-## Table of Contents
+## Supported Hardware
 
-- [Introduction](#introduction)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Structures](#structures)
-- [Threads](#threads)
-- [Hat Specs](#hat-specs)
-- [License](#license)
+The library auto-detects the HAT variant via `/proc/device-tree/hat/product`.
 
-## Introduction
-
-The `JP_GNSS_HAT` library is a complete driver for u-blox GNSS modules mounted on Jimmy Paputto GNSS HATs for the Raspberry Pi. It communicates with the receiver via SPI (L1 HAT, L1/L5 RTK HAT) or UART (L1/L5 TIME HAT), handles the full UBX binary protocol and provides a clean, high-level API in **C++**, **C** and **Python**.
-
-Key features:
-- **Plug-and-play** — auto-detects the HAT variant (NEO-M9N / NEO-F10T / NEO-F9P) and configures the communication interface accordingly
-- **Configurable measurement rate** (1–25 Hz), dynamic models, timepulse output and geofencing (up to 4 zones)
-- **Navigation data** — latitude, longitude, altitude, speed, heading, UTC time, DOP values, satellite info (up to 64), RF/jamming diagnostics
-- **RTK support** — base-station survey-in / fixed-position modes and rover correction injection (L1/L5 RTK HAT with NEO-F9P)
-- **GPSD integration** — built-in NMEA forwarding to a virtual serial port (`/tmp/ttyJPGNSS`) for the gpsd daemon
-- **Multi-threaded, event-driven architecture** — interrupt/epoll-based data flow with no busy-wait loops
-- **Thread-safe** — all navigation accessors are mutex-protected; multiple consumer threads are supported out of the box
-- **Utility functions** — string converters for all enum types (`eFixQuality2string`, `jammingState2string`, etc.) and ISO 8601 time formatting (`utcTimeFromGnss_ISO8601`)
+| HAT | u-blox Module | Interface | RTK | Time Base | Geofencing |
+|-----|---------------|-----------|-----|-----------|------------|
+| L1 GNSS HAT | NEO-M9N | SPI | -- | -- | Up to 4 zones |
+| L1/L5 GNSS TIME HAT | NEO-F10T | UART | -- | Survey-In / Fixed Position | -- |
+| L1/L5 GNSS RTK HAT | NEO-F9P | SPI + UART | Base & Rover | -- | Up to 4 zones |
 
 ## Installation
 
-Before you start, make sure you have those installed:
+### Dependencies
 
+```sh
+sudo apt-get install build-essential cmake libgpiod-dev
 ```
-sudo apt-get install cmake git libgpiod-dev
+
+For Python bindings you also need:
+
+```sh
+sudo apt-get install python3-dev
 ```
-To install the library, follow these steps:
 
-1. Clone the repository:
-    ```sh
-    git clone https://github.com/jimmypaputto/GnssHat.git
-    cd GnssHat
-    ```
+### Build & install the library
 
-2. Build and install the library:
-    ```sh
-    mkdir -p build
-    cd build
-    cmake ..
-    make
-    sudo make install
-    sudo ldconfig
-    ```
+```sh
+git clone https://github.com/jimmypaputto/GnssHat.git
+cd GnssHat
+mkdir -p build && cd build
+cmake ..
+make -j$(nproc)
+sudo make install
+sudo ldconfig
+```
 
-3. Optional, build and install python module"
-    ```sh
-    cd python
-    mkdir -p build
-    cd build
-    cmake ..
-    make
-    sudo make install
-    sudo ldconfig
-    ```
+### Build & install Python module (optional)
 
-4. Optional, build samples:
-    ```sh
-    ../../scripts/build_all_examples.sh
-    ```
+Requires the C++ library to be installed first.
 
-## Usage
+```sh
+cd python
+mkdir -p build && cd build
+cmake ..
+make -j$(nproc)
+sudo make install
+```
 
-To use the `GnssHat` library in your project, include the header `GnssHat.hpp`, link library and use the `IGnssHat` interface. For advices in usage check examples dir. For C language use `GnssHat.h`.
+### Build examples (optional)
 
-### Usage Example (TLDR)
+```sh
+# All at once (from repo root):
+scripts/build_all_examples.sh
 
-Here's a basic example to get you started quickly:
+# Or a single example:
+cd examples/CPP/PrintNavigation
+mkdir -p build && cd build
+cmake .. && make
+```
 
-#### C++ Example
+## Quick Start
+
+### C++
 
 ```cpp
-#include <chrono>
 #include <cstdio>
-#include <thread>
-
 #include <jimmypaputto/GnssHat.hpp>
 
 using namespace JimmyPaputto;
 
-void print(const Navigation& navigation)
-{
-    printf("Latitude: %f\n", navigation.pvt.latitude);
-    printf("Longitude: %f\n", navigation.pvt.longitude);
-    printf("Altitude: %f\n", navigation.pvt.altitude);
-}
-
 auto main() -> int
 {
-    auto* ubxHat = IGnssHat::create();
+    auto* hat = IGnssHat::create();
+    hat->softResetUbloxSom_HotStart();
 
     GnssConfig config {
         .measurementRate_Hz = 1,
-        .dynamicModel = EDynamicModel::Portable,
+        .dynamicModel = EDynamicModel::Stationary,
         .timepulsePinConfig = TimepulsePinConfig {
             .active = true,
             .fixedPulse = { .frequency = 1, .pulseWidth = 0.1f },
@@ -110,506 +90,263 @@ auto main() -> int
         .rtk = std::nullopt
     };
 
-    const bool isStartupDone = ubxHat->start(config);
-    if (!isStartupDone)
+    if (!hat->start(config))
     {
-        printf("Failed to start GNSS\r\n");
+        printf("Failed to start GNSS\n");
         return -1;
     }
 
     while (true)
     {
-        const auto navigation = ubxHat->waitAndGetFreshNavigation();
-        print(navigation);
+        const auto nav = hat->waitAndGetFreshNavigation();
+        printf("%.6f, %.6f  alt=%.1fm  sats=%d\n",
+            nav.pvt.latitude, nav.pvt.longitude,
+            nav.pvt.altitude, nav.pvt.visibleSatellites);
     }
-
-    return 0;
 }
 ```
 
-#### Python Example
+### Python
 
 ```python
 from jimmypaputto import gnsshat
 
-def print_position(navigation):
-    print(f"Latitude: {navigation.pvt.latitude}")
-    print(f"Longitude: {navigation.pvt.longitude}")
-    print(f"Altitude: {navigation.pvt.altitude}")
+hat = gnsshat.GnssHat()
+hat.soft_reset_hot_start()
 
-def main():
-    hat = gnsshat.GnssHat()
-    
-    config = {
-        'measurement_rate_hz': 1,
-        'dynamic_model': gnsshat.DynamicModel.PORTABLE,
-        'timepulse_pin_config': {
-            'active': True,
-            'fixed_pulse': {
-                'frequency': 1,
-                'pulse_width': 0.1
-            },
-            'pulse_when_no_fix': None,
-            'polarity': gnsshat.TimepulsePolarity.RISING_EDGE
-        },
-        'geofencing': None,
-        'rtk': None
-    }
-    
-    if not hat.start(config):
-        print("Failed to start GNSS")
-        return
-    
-    while True:
-        navigation = hat.wait_and_get_fresh_navigation()
-        print_position(navigation)
+config = {
+    'measurement_rate_hz': 1,
+    'dynamic_model': gnsshat.DynamicModel.PORTABLE,
+    'timepulse_pin_config': {
+        'active': True,
+        'fixed_pulse': { 'frequency': 1, 'pulse_width': 0.1 },
+        'polarity': gnsshat.TimepulsePolarity.RISING_EDGE
+    },
+    'geofencing': None
+}
 
-if __name__ == "__main__":
-    main()
+if not hat.start(config):
+    print("Failed to start GNSS")
+    exit(1)
+
+while True:
+    nav = hat.wait_and_get_fresh_navigation()
+    print(nav)
 ```
 
-**That's it!** For more detailed configuration options, structures description, threading patterns, and advanced features, see the sections below and check examples dir.
+### C
 
-### Structures
+```c
+#include <stdio.h>
+#include <jimmypaputto/GnssHat.h>
 
-The library provides several key structures. First one is `GnssConfig` which stores configuration data for u-blox, for example measurementRate \[Hz\]. The second one is `Navigation` which stores all data from GNSS, like lat, lon, UTC, etc. Detailed description below. 
+int main(void)
+{
+    jp_gnss_hat_t* hat = jp_gnss_hat_create();
+    jp_gnss_hat_soft_reset_hot_start(hat);
 
-- `GnssConfig`: Configuration for the GNSS module. It includes settings:
-  - `measurementRate_Hz` (uint16_t): GNSS measurement rate in Hz (1-25 Hz). Determines how frequently the GNSS module takes measurements.
-  - `dynamicModel` (EDynamicModel): Motion model for the receiver. Options include:
-    - `Portable`: For general handheld devices
-    - `Stationary`: For fixed installations
-    - `Pedestrian`: For walking applications
-    - `Automotive`: For car navigation
-    - `Sea`: For marine applications
-    - `Airborne1G`, `Airborne2G`, `Airborne4G`: For different aircraft applications
-    - `Wrist`: For wearable devices
-    - `Bike`: For bicycle navigation
-    - `Mower`: For robotic lawn mowers
-    - `Escooter`: For electric scooter navigation
-  - `timepulsePinConfig` (TimepulsePinConfig): Time pulse signal configuration:
-    - `active` (bool): Enable/disable time pulse output
-    - `fixedPulse` (Pulse): Pulse settings when GNSS has a fix
-      - `frequency` (uint32_t): Pulse frequency in Hz
-      - `pulseWidth` (float): Pulse width as fraction (0.0-0.99, typical value is 0.1)
-    - `pulseWhenNoFix` (optional\<Pulse\>): Pulse settings when no GNSS fix available
-    - `polarity` (ETimepulsePinPolarity): Pulse edge polarity (`FallingEdgeAtTopOfSecond` or `RisingEdgeAtTopOfSecond`)
-  - `geofencing` (optional\<Geofencing\>): Geofencing configuration (optional, **not supported on L1/L5 TIME HAT**):
-    - `geofences` (vector\<Geofence\>): List of geofences (max 4):
-      - `lat` (float): Latitude in degrees (-90.0 to 90.0)
-      - `lon` (float): Longitude in degrees (-180.0 to 180.0)
-      - `radius` (float): Radius in meters (must be positive)
-    - `confidenceLevel` (uint8_t): Confidence level for geofencing (0-5). Determines the statistical confidence required for geofence state detection:
-      - `0`: No confidence required (immediate detection)
-      - `1`: 68% confidence level (1 sigma)
-      - `2`: 95% confidence level (2 sigma)
-      - `3`: 99.7% confidence level (3 sigma)
-      - `4`: 99.99% confidence level (4 sigma)
-      - `5`: 99.9999% confidence level (5 sigma)
-    - `pioPinPolarity` (optional\<EPioPinPolarity\>): PIO pin output polarity for geofencing output signal (optional):
-      - `LowMeansInside`: Low signal when inside geofence, high when outside
-      - `LowMeansOutside`: Low signal when outside geofence, high when inside
-  - `rtk` (optional\<RtkConfig\>): RTK configuration (optional, **only for L1/L5 RTK HAT**):
-    - `mode` (ERtkMode): RTK operating mode (`Base` or `Rover`)
-    - `base` (optional\<BaseConfig\>): Base station configuration (required when mode is `Base`):
-      - `mode` (variant\<SurveyIn, FixedPosition\>): Base station position determination method:
-        - `SurveyIn`: Automatic position determination:
-          - `minimumObservationTime_s` (uint32_t): Minimum observation time in seconds
-          - `requiredPositionAccuracy_m` (double): Required position accuracy in meters
-        - `FixedPosition`: Known position:
-          - `position` (variant\<Ecef, Lla\>): Position coordinates:
-            - `Ecef`: Earth-Centered Earth-Fixed coordinates (`x_m`, `y_m`, `z_m`)
-            - `Lla`: Geodetic coordinates (`latitude_deg`, `longitude_deg`, `height_m`)
-          - `positionAccuracy_m` (double): Position accuracy in meters
+    jp_gnss_gnss_config_t config;
+    jp_gnss_gnss_config_init(&config);
+    config.measurement_rate_hz = 1;
+    config.dynamic_model = JP_GNSS_DYNAMIC_MODEL_STATIONARY;
+    config.timepulse_pin_config.active = true;
+    config.timepulse_pin_config.fixed_pulse.frequency = 1;
+    config.timepulse_pin_config.fixed_pulse.pulse_width = 0.1f;
+    config.timepulse_pin_config.polarity = JP_GNSS_TIMEPULSE_POLARITY_RISING_EDGE;
 
-- `Navigation`: Contains GNSS data:
-  - `dop` (DilutionOverPrecision): Dilution of Precision values indicating GNSS accuracy:
-    - `geometric` (float): Geometric DOP - overall satellite geometry quality
-    - `position` (float): Position DOP - 3D position accuracy
-    - `time` (float): Time DOP - time accuracy
-    - `vertical` (float): Vertical DOP - altitude accuracy
-    - `horizontal` (float): Horizontal DOP - horizontal position accuracy
-    - `northing` (float): Northing DOP - north-south position accuracy
-    - `easting` (float): Easting DOP - east-west position accuracy
-  - `pvt` (PositionVelocityTime): Position, velocity, and time data:
-    - `fixQuality` (EFixQuality): GNSS fix quality (determined by correction method, not accuracy, use `horizontalAccuracy` and `verticalAccuracy` fields for real-time precision estimates):
-      - `Invalid`: No valid fix
-      - `GpsFix2D3D`: Standard GPS 2D/3D fix (typical 3-10m, but can vary). Uses satellite signals only
-      - `DGNSS`: Differential GPS fix (typical 1-5m). Uses reference stations for real-time error correction (u-blox automatically connects with SBAS by geostationary satellites)
-      - `PpsFix`: Precise Positioning Service fix (typical 0.1-1m). Military/commercial high-precision service
-      - `FixedRTK`: RTK fixed solution (typical 1-10cm). Uses carrier phase measurements with ambiguity resolution
-      - `FloatRtk`: RTK float solution (typical 10-100cm). Uses carrier phase but without full ambiguity resolution
-      - `DeadReckoning`: Dead reckoning only. Uses inertial sensors when GNSS unavailable
-    - `fixStatus` (EFixStatus): Fix status (`Void` or `Active`)
-    - `fixType` (EFixType): Type of fix:
-      - `NoFix`: No position fix
-      - `DeadReckoningOnly`: Dead reckoning only
-      - `Fix2D`: 2D position fix
-      - `Fix3D`: 3D position fix
-      - `GnssWithDeadReckoning`: GNSS + dead reckoning combined
-      - `TimeOnlyFix`: Time-only fix
-    - `utc` (UTC): UTC time information:
-      - `hh` (uint8_t): Hours (0-23)
-      - `mm` (uint8_t): Minutes (0-59)
-      - `ss` (uint8_t): Seconds (0-59)
-      - `valid` (bool): Time validity flag
-      - `accuracy` (int32_t): Time accuracy in nanoseconds
-    - `date` (Date): Date information:
-      - `day` (uint8_t): Day of month (1-31)
-      - `month` (uint8_t): Month (1-12)
-      - `year` (uint16_t): Year
-      - `valid` (bool): Date validity flag
-    - `altitude` (float): Altitude above ellipsoid in meters
-    - `altitudeMSL` (float): Altitude above mean sea level in meters
-    - `latitude` (double): Latitude in degrees (-90.0 to 90.0)
-    - `longitude` (double): Longitude in degrees (-180.0 to 180.0)
-    - `speedOverGround` (float): Ground speed in m/s
-    - `speedAccuracy` (float): Speed accuracy estimate in m/s
-    - `heading` (float): Heading of motion in degrees (0-360)
-    - `headingAccuracy` (float): Heading accuracy estimate in degrees
-    - `visibleSatellites` (uint8_t): Number of visible satellites
-    - `horizontalAccuracy` (float): Horizontal position accuracy in meters
-    - `verticalAccuracy` (float): Vertical position accuracy in meters
-  - `geofencing` (Geofencing): Geofencing data with configuration and navigation:
-    - `cfg` (Geofencing::Cfg): Geofencing configuration (from UBX-CFG-GEOFENCE):
-      - `pioPinNumber` (uint8_t): PIO pin number for geofencing output signal (pin 6 is hardcoded, drives LED and relay on HAT)
-      - `pinPolarity` (EPioPinPolarity): PIO pin output polarity:
-        - `LowMeansInside`: Low signal when inside geofence, high when outside
-        - `LowMeansOutside`: Low signal when outside geofence, high when inside
-      - `pioEnabled` (bool): Enable/disable PIO pin output for geofencing status
-      - `confidenceLevel` (uint8_t): Confidence level for geofencing (0-5). Same as in GnssConfig:
-        - `0`: No confidence required (immediate detection)
-        - `1`: 68% confidence level (1 sigma)
-        - `2`: 95% confidence level (2 sigma) 
-        - `3`: 99.7% confidence level (3 sigma)
-        - `4`: 99.99% confidence level (4 sigma)
-        - `5`: 99.9999% confidence level (5 sigma)
-      - `geofences` (vector\<Geofence\>): List of configured geofences (max 4), each with lat, lon, radius \[m\]
-    - `nav` (Geofencing::Nav): Real-time geofencing navigation data:
-      - `iTOW` (uint32_t): Time of week in milliseconds
-      - `geofencingStatus` (EGeofencingStatus): Overall geofencing status (`NotAvalaible` or `Active`)
-      - `numberOfGeofences` (uint8_t): Number of active geofences
-      - `combinedState` (EGeofenceStatus): Combined state of all geofences (`Unknown`, `Inside`, or `Outside`)
-      - `geofencesStatus` (array\<EGeofenceStatus, 4\>): Individual status of each geofence
-  - `rfBlocks` (vector\<RfBlock\>, max 2): RF block data for interference monitoring:
-    - `id` (ERfBlockIdBand): RF block id
-    - `jammingState` (EJammingState): Jamming detection status:
-      - `Unknown`: Jamming state unknown
-      - `Ok_NoSignifantJamming`: No significant jamming detected
-      - `Warning_InferenceVisibleButFixOk`: Interference visible but fix OK
-      - `Critical_InferenceVisibleAndNoFix`: Critical interference, no fix
-    - `antennaStatus` (EAntennaStatus): Antenna status (`Init`, `DontKnow`, `Ok`, `Short`, `Open`)
-    - `antennaPower` (EAntennaPower): Antenna power status (`Off`, `On`, `DontKnow`)
-    - `postStatus` (uint32_t): POST (Power-On Self Test) status
-    - `noisePerMS` (uint16_t): Noise level per millisecond
-    - `agcMonitor` (float): AGC monitor value (percentage of max gain)
-    - `cwInterferenceSuppressionLevel` (float): CW interference suppression level
-    - `ofsI` (int8_t), `magI` (uint8_t), `ofsQ` (int8_t), `magQ` (uint8_t): I/Q imbalance values for RF calibration
-    - `rfBlockGnssBand` (uint8_t): RF band identifier (UNKNOWN/L1/L2/L3/L5)
-  - `satellites` (vector\<SatelliteInfo\>, max 64): Per-satellite information:
-    - `gnssId` (EGnssId): GNSS constellation (`GPS`, `SBAS`, `Galileo`, `BeiDou`, `IMES`, `QZSS`, `GLONASS`)
-    - `svId` (uint8_t): Satellite vehicle ID
-    - `cno` (uint8_t): Carrier-to-noise ratio in dBHz
-    - `elevation` (int8_t): Elevation in degrees (-90 to 90)
-    - `azimuth` (int16_t): Azimuth in degrees (0-360)
-    - `quality` (ESvQuality): Signal quality indicator (`NoSignal`, `Searching`, `SignalAcquired`, `SignalDetectedButUnusable`, `CodeLockedAndTimeSynchronized`, `CodeAndCarrierLocked1`-`3`)
-    - `usedInFix` (bool): Whether satellite is used in navigation fix
-    - `healthy` (bool): Satellite health status
-    - `diffCorr` (bool): Differential correction available
-    - `ephAvail` (bool): Ephemeris data available
-    - `almAvail` (bool): Almanac data available
+    if (!jp_gnss_hat_start(hat, &config))
+    {
+        printf("Failed to start GNSS\n");
+        jp_gnss_hat_destroy(hat);
+        return -1;
+    }
 
-### Threads
+    jp_gnss_navigation_t nav;
+    while (jp_gnss_hat_wait_and_get_fresh_navigation(hat, &nav))
+    {
+        printf("%.6f, %.6f  alt=%.1fm  sats=%d\n",
+            nav.pvt.latitude, nav.pvt.longitude,
+            nav.pvt.altitude, nav.pvt.visible_satellites);
+    }
 
-The library implements a sophisticated multi-threaded architecture designed for high-performance, real-time GNSS data processing. Understanding this architecture is crucial for optimal integration and performance tuning.
+    jp_gnss_hat_destroy(hat);
+    return 0;
+}
+```
 
-#### Thread Architecture Overview
+## API Overview
 
-The library's thread architecture varies depending on the HAT type:
+### C++ (IGnssHat)
 
-##### L1 GNSS HAT (SPI-based)
-The library operates with **5 distinct threads** that work together to provide seamless GNSS data flow:
+Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 
-1. **Main Application Thread** - Your application code
-2. **Ublox Data Processing Thread** - Core GNSS data acquisition and parsing
-3. **TxReady Interrupt Thread** - Hardware interrupt handling for data synchronization
-4. **Timepulse Interrupt Thread** - Precise timing signal processing (optional)
-5. **NMEA Forwarder Thread** - NMEA data streaming to virtual serial port for gpsd (optional)
+| Method | Description |
+|--------|-------------|
+| `IGnssHat::create()` | Factory -- detects HAT and returns the right implementation |
+| `start(config)` | Configure the u-blox module and start data acquisition |
+| `name()` | HAT name (e.g. `"L1 GNSS HAT"`) |
+| `waitAndGetFreshNavigation()` | Block until new data arrives, return `Navigation` |
+| `navigation()` | Return last known `Navigation` immediately |
+| `softResetUbloxSom_HotStart()` | Soft reset (keeps ephemeris/almanac) |
+| `hardResetUbloxSom_ColdStart()` | Full cold reset (clears stored data) |
+| `rtk()` | RTK interface (`IRtk*`, non-null only on RTK HAT) |
+| `enableTimepulse()` / `disableTimepulse()` | Enable/disable timepulse GPIO (pin 5) |
+| `timepulse()` | Block until next timepulse |
+| `startForwardForGpsd()` / `stopForwardForGpsd()` | NMEA forwarding to virtual serial port for gpsd |
+| `joinForwardForGpsd()` | Block until forwarder thread finishes |
+| `getGpsdDevicePath()` | Virtual serial port path (for gpsd config) |
 
-##### L1/L5 GNSS TIME HAT (UART-based)
-The library operates with **4 distinct threads** that work together to provide seamless GNSS data flow:
+Utility functions in `JimmyPaputto::Utils`: `eFixQuality2string()`, `jammingState2string()`, `utcTimeFromGnss_ISO8601()`, etc.
 
-1. **Main Application Thread** - Your application code
-2. **Ublox Data Processing Thread** - Core GNSS data acquisition and parsing (uses epoll for non-blocking I/O)
-3. **Timepulse Interrupt Thread** - Precise timing signal processing (optional)
-4. **NMEA Forwarder Thread** - optional, you can use our forwarder or connect directly to the u-blox via UART without our software
+### C
 
-**Key Difference**: L1/L5 GNSS TIME HAT does not require a TxReady interrupt thread as it uses UART with epoll-based polling instead of SPI with hardware synchronization.
+Include `<jimmypaputto/GnssHat.h>`. All functions are prefixed with `jp_gnss_hat_` (lifecycle/navigation) or `jp_gnss_` (config helpers, string converters). See the C example above and the header for the full list.
 
-##### L1/L5 GNSS RTK HAT (SPI + UART)
-The library operates with **6 distinct threads** that work together to provide seamless GNSS data flow:
+### Python
 
-1. **Main Application Thread** - Your application code
-2. **Ublox Data Processing Thread** - Core GNSS data acquisition and parsing via SPI
-3. **TxReady Interrupt Thread** - Hardware interrupt handling for SPI data synchronization
-4. **UART Thread** - Dedicated thread for RTCM3 correction data:
-   - **Base mode**: Reads RTCM3 frames from the u-blox via UART and stores them for retrieval
-   - **Rover mode**: Receives correction data from the application and forwards it to the u-blox via UART
-5. **Timepulse Interrupt Thread** - Precise timing signal processing (optional)
-6. **NMEA Forwarder Thread** - NMEA data streaming to virtual serial port for gpsd (optional)
+`from jimmypaputto import gnsshat`. Config is passed as a plain `dict`. Navigation is returned as nested Python objects with `__repr__`/`__str__`. All enums are available as `IntEnum` (e.g. `gnsshat.DynamicModel.PORTABLE`). See [python/README.md](python/README.md) for the full Python API reference.
 
-**Key Difference**: The L1/L5 RTK HAT uses both SPI (for navigation/RF data) and UART (for RTCM3 corrections) simultaneously. The UART thread uses `std::jthread` with `std::stop_token` for clean cooperative cancellation.
+## Configuration
 
-#### Detailed Thread Analysis
+`GnssConfig` (C++: struct, Python: dict, C: `jp_gnss_gnss_config_t`) has the following fields:
 
-##### 1. Ublox Data Processing Thread
-**Purpose**: Core GNSS data acquisition and UBX protocol handling
-**Lifecycle**: Created in `start()`, runs continuously until destruction
-**Key Responsibilities**:
-- Executes `Ublox::run()` in a continuous loop
-- **L1 GNSS HAT**: Waits for TxReady hardware interrupt via `txReadyNotifier_.wait()`
-- **L1/L5 GNSS TIME HAT**: Uses epoll-based non-blocking I/O on UART interface
-- Reads raw GNSS data from SPI (L1 HAT) or UART (L1/L5 TIME HAT) interface
-- Parses UBX protocol messages using `UbxParser`
-- Updates internal `Gnss` navigation state
-- Triggers `navigationNotifier_.notify()` after each successful data update
+| Field | Type | Description |
+|-------|------|-------------|
+| `measurementRate_Hz` | `uint16_t` | GNSS measurement rate, 1--25 Hz |
+| `dynamicModel` | `EDynamicModel` | Receiver motion model (Portable, Stationary, Pedestrian, Automotive, Sea, Airborne1G/2G/4G, Wrist, Bike, Mower, Escooter) |
+| `timepulsePinConfig` | `TimepulsePinConfig` | Time pulse output on GPIO 5: enable/disable, frequency, pulse width (0.0--0.99), polarity, optional separate pulse config when no fix |
+| `geofencing` | `optional` | Up to 4 geofences (lat, lon, radius), confidence level (0--5 sigma), optional PIO pin polarity. **Not supported on TIME HAT** |
+| `rtk` | `optional` | RTK mode (Base or Rover). Base supports Survey-In or Fixed Position (ECEF/LLA). **Only for RTK HAT** |
+| `timeBase` | `optional` | Time base mode for improved time accuracy. Survey-In or Fixed Position (ECEF/LLA). **Only for TIME HAT** |
+
+## Navigation Data
+
+`Navigation` contains everything the receiver reports:
+
+| Field | Source UBX Message | Contents |
+|-------|-------------------|----------|
+| `pvt` | UBX-NAV-PVT | Fix quality/status/type, latitude, longitude, altitude (ellipsoid & MSL), speed, heading, accuracy estimates, visible satellites, UTC time & date |
+| `dop` | UBX-NAV-DOP | Geometric, position, time, vertical, horizontal, northing, easting DOP |
+| `satellites` | UBX-NAV-SAT | Per-satellite info (up to 64): constellation, SV ID, C/N0, elevation, azimuth, signal quality, health, used-in-fix flag |
+| `rfBlocks` | UBX-MON-RF | Per-RF-band (up to 2): jamming state, antenna status/power, noise, AGC, I/Q imbalance |
+| `geofencing` | UBX-NAV-GEOFENCE | Combined and per-fence state (Unknown/Inside/Outside), geofence config readback |
+
+Full field documentation is in the C++ headers: [`Navigation.hpp`](src/ublox/Navigation.hpp), [`PositionVelocityTime.hpp`](src/ublox/PositionVelocityTime.hpp), [`DilutionOverPrecision.hpp`](src/ublox/DilutionOverPrecision.hpp), [`SatelliteInfo.hpp`](src/ublox/SatelliteInfo.hpp), [`RFBlock.hpp`](src/ublox/RFBlock.hpp), [`Geofencing.hpp`](src/ublox/Geofencing.hpp).
+
+## Features
+
+### RTK (L1/L5 RTK HAT only)
+
+The RTK HAT (NEO-F9P) supports centimeter-level positioning. Access RTK functionality via `hat->rtk()`:
+
+**Base station** -- configure Survey-In (auto-determine position) or Fixed Position (known ECEF/LLA coordinates), then retrieve RTCM3 corrections:
 
 ```cpp
-// Thread creation in start() method
-ubloxThread_ = std::jthread([this](std::stop_token stoken){
-    while (!stoken.stop_requested()) {
-        ublox_->run();  // Behavior depends on HAT type
+auto corrections = hat->rtk()->base()->getTinyCorrections();  // compact set (M4M)
+auto corrections = hat->rtk()->base()->getFullCorrections();   // full set (M7M)
+auto frame = hat->rtk()->base()->getRtcm3Frame(1077);          // specific message
+```
+
+**Rover** -- inject corrections received from a base station:
+
+```cpp
+hat->rtk()->rover()->applyCorrections(corrections);
+```
+
+See the RTK examples in `examples/CPP/RTK/` and `examples/Python/rtk_base.py` / `rtk_rover.py` for complete base+rover setups including NTRIP client usage.
+
+### Time Base (L1/L5 TIME HAT only)
+
+The TIME HAT (NEO-F10T) supports a time base mode that improves time accuracy by entering a TimeOnlyFix. This works similarly to an RTK base station -- the receiver first determines (or is given) a precise position, then uses that knowledge to focus entirely on time solution.
+
+Two modes are available:
+
+- **Survey-In** -- the module auto-determines its position over a configurable observation period and accuracy threshold
+- **Fixed Position** -- provide known coordinates (ECEF or LLA) directly, skipping the survey phase
+
+```cpp
+// C++ Survey-In example
+GnssConfig config {
+    .measurementRate_Hz = 1,
+    .dynamicModel = EDynamicModel::Stationary,
+    .timepulsePinConfig = { .active = true, .fixedPulse = { 1, 0.1 },
+        .pulseWhenNoFix = std::nullopt,
+        .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond },
+    .geofencing = std::nullopt,
+    .rtk = std::nullopt,
+    .timeBase = BaseConfig {
+        .mode = BaseConfig::SurveyIn {
+            .minimumObservationTime_s = 120,
+            .requiredPositionAccuracy_m = 50.0
+        }
     }
-});
+};
 ```
 
-##### 2. TxReady Interrupt Thread
-**Purpose**: Hardware synchronization for optimal SPI timing
-**Hardware**: Monitors GPIO pin 17 (TxReady signal from Ublox module)
-**Availability**: L1 GNSS HAT and L1/L5 GNSS RTK HAT (SPI-based)
-**Key Responsibilities**:
-- Waits for rising edge interrupt from Ublox module indicating data ready
-- Calculates adaptive timeout based on measurement rate: `timeout = 2s / measurementRate_Hz`
-- Notifies Ublox thread when new data batch is available via `txReadyNotifier_.notify()`
-- Prevents unnecessary SPI polling, reducing CPU usage and improving power efficiency
+See the TimeBase examples in `examples/CPP/TimeBase/`, `examples/C/TimeBase/` and `examples/Python/time_base.py`.
 
-**Note**: L1/L5 GNSS TIME HAT does not use TxReady interrupts. Instead, it relies on UART with epoll-based polling for efficient data acquisition without blocking.
+### Geofencing
 
-##### 3. Timepulse Interrupt Thread
-**Purpose**: High-precision timing synchronization, can be used standalone without navigation data
-**Hardware**: Monitors GPIO pin 5 (Timepulse signal from Ublox module)
-**Availability**: Available on all HAT types
-**Key Responsibilities**:
-- Captures precise timing pulses (typically 1 PPS - pulse per second)
-- Provides microsecond-accurate time synchronization via `timepulseNotifier_`
-- Enables applications requiring precise timing (e.g., time servers, scientific measurements)
+Configure up to 4 circular geofences (lat, lon, radius). The receiver reports per-fence and combined Inside/Outside/Unknown state. Supports PIO pin output for hardware signaling (drives LED and relay on HAT). Not available on the TIME HAT.
 
-##### 4. Main Application Thread
-**Your Code**: Where you call navigation methods
-**Synchronization Options**:
-- `name()`: **Info** - returns the detected HAT name (e.g. `"L1 GNSS HAT"`, `"L1/L5 GNSS TIME HAT"`, `"L1/L5 GNSS RTK HAT"`)
-- `waitAndGetFreshNavigation()`: **Blocking** - waits for next data update via `navigationNotifier_.wait()`
-- `navigation()`: **Non-blocking** - returns immediately with current data
-- `hardResetUbloxSom_ColdStart()`: **Reset** - performs a full hardware cold reset of the u-blox module (clears all stored data)
-- `softResetUbloxSom_HotStart()`: **Reset** - performs a soft hot-start reset (preserves ephemeris and almanac for faster reacquisition)
-- `rtk()`: **RTK** - returns pointer to `IRtk` interface (non-null only on L1/L5 RTK HAT):
-  - `base()` → `IBase*`: Access base station functionality:
-    - `getFullCorrections()`: Get all RTCM3 correction frames (M7M)
-    - `getTinyCorrections()`: Get compact RTCM3 correction frames (M4M)
-    - `getRtcm3Frame(id)`: Get a specific RTCM3 frame by message ID
-  - `rover()` → `IRover*`: Access rover functionality:
-    - `applyCorrections(corrections)`: Inject RTCM3 correction data from base station
-- `enableTimepulse()`: **Setup** - enables timepulse functionality (GPIO 5). **Note**: Call this only if not using gpsd/pps to avoid GPIO conflicts
-- `disableTimepulse()`: **Cleanup** - disables timepulse and releases GPIO resources
-- `timepulse()`: **Blocking** - waits for next timepulse signal (requires `enableTimepulse()` first)
-- `startForwardForGpsd()`: **Setup** - creates virtual serial port (`/tmp/ttyJPGNSS`) and starts NMEA forwarding for gpsd integration
-- `stopForwardForGpsd()`: **Cleanup** - stops NMEA forwarding and releases virtual serial port
-- `joinForwardForGpsd()`: **Blocking** - waits for the NMEA forwarder thread to finish
-- `getGpsdDevicePath()`: **Info** - returns the virtual serial port path for gpsd configuration
+### Timepulse
 
-#### Thread Synchronization Flow
+The u-blox module outputs a configurable pulse signal on GPIO 5. Use `enableTimepulse()` and `timepulse()` to synchronize your application to PPS. **Do not use `enableTimepulse()` when gpsd/pps is managing the same GPIO pin.**
 
-##### L1 GNSS HAT (SPI-based):
+### GPSD Integration
+
+The library can forward NMEA sentences (GGA, RMC, GSA, GSV, ZDA) to a virtual serial port for gpsd. Call `startForwardForGpsd()` to create the virtual TTY, then point gpsd at the path returned by `getGpsdDevicePath()`. The TIME HAT can also be used directly with gpsd via UART (`/dev/ttyAMA0`).
+
+See [`examples/GpsdIntegration/`](examples/GpsdIntegration/) for a ready-to-use systemd daemon and setup scripts.
+
+### Time Server
+
+A complete guide for setting up a PPS-disciplined time server using chrony + gpsd is available in [`examples/TimeServer/`](examples/TimeServer/).
+
+## Examples
+
+| Directory | Language | Description |
+|-----------|----------|-------------|
+| `examples/CPP/PrintNavigation` | C++ | Print position, speed, time, fix info |
+| `examples/CPP/PrintSatellites` | C++ | Per-satellite table with signal quality |
+| `examples/CPP/Geofencing` | C++ | Configure and monitor geofences |
+| `examples/CPP/JammingDetector` | C++ | RF interference monitoring |
+| `examples/CPP/TimepulseInterrupt` | C++ | Timepulse synchronization |
+| `examples/CPP/HotStart` | C++ | Cold vs hot start timing benchmark |
+| `examples/CPP/RTK` | C++ | RTK base station and rover |
+| `examples/CPP/TimeBase` | C++ | Time base mode for improved time accuracy |
+| `examples/C/` | C | Same set of examples using the C API |
+| `examples/Python/` | Python | Same set + JSON config loader + NTRIP rover ([README](examples/Python/README.md)) |
+| `examples/GpsdIntegration/` | C++ | Systemd daemon for gpsd bridging ([README](examples/GpsdIntegration/README.md)) |
+| `examples/TimeServer/` | -- | PPS time server setup guide ([README](examples/TimeServer/README.md)) |
+| `examples/Visualization/` | Python/JS | Flask web app with live maps, skyview, and config editor ([README](examples/Visualization/README.md)) |
+
+## Architecture
+
+The library is multi-threaded and thread-safe. All navigation data access is mutex-protected -- multiple consumer threads can call `navigation()` or `waitAndGetFreshNavigation()` concurrently. The data flow is event-driven (GPIO interrupts on SPI HATs, epoll on UART HAT) with no busy-wait loops.
+
+| HAT | Threads | Data Flow |
+|-----|---------|-----------|
+| L1 (SPI) | Up to 5 | TxReady interrupt (GPIO 17) wakes SPI reader, parser updates navigation, notifies your thread |
+| L1/L5 TIME (UART) | Up to 4 | epoll on UART, parser updates navigation, notifies your thread |
+| L1/L5 RTK (SPI+UART) | Up to 6 | Same as L1 for navigation + dedicated UART thread for RTCM3 corrections |
+
+Optional threads: timepulse interrupt (GPIO 5), NMEA forwarder for gpsd.
+
+## Project Structure
+
 ```
-Hardware → Interrupt Threads → Data Thread → Application Thread
-   ↓              ↓               ↓              ↓
-Ublox      TxReady Thread    Ublox Thread   Your Code
-Module  →  (GPIO 17)     →   Data Parser  → navigation()
-   ↓              ↓               ↓              ↓
-Timepulse → Timepulse Thread → Notification → timepulse()
-(GPIO 5)       
-```
-
-##### L1/L5 GNSS TIME HAT (UART-based):
-```
-Hardware → Data Thread → Application Thread
-   ↓           ↓              ↓
-Ublox    Ublox Thread   Your Code
-Module →  (epoll I/O) → navigation()
-   ↓           ↓              ↓
-Timepulse → Timepulse Thread → timepulse()
-(GPIO 5)
+GnssHat/
+├── src/
+│   ├── GnssHat.hpp / .cpp          C++ API and implementation
+│   ├── GnssHat.h / GnssHat_C.cpp   C API wrapper
+│   ├── ublox/                       UBX protocol, drivers, parsers, data structures
+│   └── common/                      GPIO, synchronization, utilities
+├── python/                          Python CPython extension module
+├── examples/                        C, C++, Python examples + Visualization + GPSD + TimeServer
+└── scripts/                         Build and dependency scripts
 ```
 
-##### L1/L5 GNSS RTK HAT (SPI + UART):
-```
-Hardware → Interrupt Threads → Data Threads → Application Thread
-   ↓              ↓               ↓                ↓
-Ublox      TxReady Thread    Ublox Thread      Your Code
-Module  →  (GPIO 17)     →   SPI Parser    →  navigation()
-   ↓              ↓               ↓                ↓
-   └──────── UART Thread ──── RTCM3 Parser → rtk()->base/rover
-   ↓                                               ↓
-Timepulse → Timepulse Thread ─────────────→ timepulse()
-(GPIO 5)
-```
+## License
 
-#### Performance Characteristics
-
-##### L1 GNSS HAT:
-- No polling loops - all threads are interrupt/event-driven
-- SPI reads only when data is actually available (TxReady signaling)
-- Adaptive timeouts based on configured measurement rate
-
-##### L1/L5 GNSS TIME HAT:
-- Uses efficient epoll mechanism for non-blocking I/O
-- Simpler data flow with fewer synchronization points
-
-##### L1/L5 GNSS RTK HAT:
-- Combined SPI + UART architecture for maximum throughput
-- Navigation data via SPI with TxReady interrupt synchronization
-- RTCM3 correction data via dedicated UART thread
-- Clean shutdown via `std::jthread` with cooperative `std::stop_token` cancellation
-
-#### Thread Safety
-- All navigation data access is mutex-protected via `gnss_.lock()/unlock()`
-- `std::jthread` with `std::stop_token` used for cooperative thread cancellation
-- Condition variables (via `Notifier`) ensure proper thread synchronization
-
-#### Best Practices for Integration
-
-**General practices**:
-
-1. **Real-time Applications**: Use `waitAndGetFreshNavigation()` for guaranteed fresh data
-   ```cpp
-   while (running) {
-       auto nav = hat->waitAndGetFreshNavigation();  // Always fresh data
-       processRealTimeData(nav);
-   }
-   ```
-
-2. **UI/Monitoring Applications**: Use `navigation()` for non-blocking updates
-   ```cpp
-   // Update UI every 100ms without blocking
-   auto nav = hat->navigation();  // Immediate return
-   updateDisplay(nav);
-   ```
-
-3. **Timing-Critical Applications**: Enable timepulse first, then combine with navigation data
-   ```cpp
-   // Enable timepulse functionality (GPIO 5)
-   if (hat->enableTimepulse()) {
-       hat->timepulse();  // Blocks until next 1PPS pulse
-       auto nav = hat->navigation();  // Get synchronized data
-   }
-   ```
-
-4. **GPSD/PPS Integration**: DO NOT call `enableTimepulse()` when using gpsd/pps to avoid GPIO conflicts
-   ```cpp
-   // When using gpsd/pps, only use navigation methods:
-   auto nav = hat->waitAndGetFreshNavigation();  // Safe with gpsd/pps
-   // Do NOT call hat->enableTimepulse() or hat->timepulse()
-   ```
-
-5. **RTK Base Station** (L1/L5 RTK HAT only): Configure as base, wait for TimeOnlyFix and retrieve corrections
-   ```cpp
-   GnssConfig config {
-       .measurementRate_Hz = 1,
-       .dynamicModel = EDynamicModel::Stationary,
-       .timepulsePinConfig = { .active = true, .fixedPulse = { 1, 0.1f },
-           .pulseWhenNoFix = std::nullopt,
-           .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond },
-       .geofencing = std::nullopt,
-       .rtk = RtkConfig {
-           .mode = ERtkMode::Base,
-           .base = BaseConfig {
-               .mode = BaseConfig::SurveyIn {
-                   .minimumObservationTime_s = 120,
-                   .requiredPositionAccuracy_m = 50.0 } } }
-   };
-   hat->start(config);
-   // ...wait for TimeOnlyFix, then:
-   auto corrections = hat->rtk()->base()->getTinyCorrections();  // or getFullCorrections()
-   ```
-
-6. **RTK Rover** (L1/L5 RTK HAT only): Configure as rover and inject corrections from base
-   ```cpp
-   GnssConfig config { /* ... */ .rtk = RtkConfig { .mode = ERtkMode::Rover } };
-   hat->start(config);
-   // Receive corrections from base and apply:
-   hat->rtk()->rover()->applyCorrections(corrections);
-   ```
-
-7. **Multiple Consumers**: Multiple threads can safely call navigation methods simultaneously
-   ```cpp
-   // Thread 1: Real-time processing
-   std::thread realtime([&]() {
-       while (running) {
-           processData(hat->waitAndGetFreshNavigation());
-       }
-   });
-   
-   // Thread 2: UI updates
-   std::thread ui([&]() {
-       while (running) {
-           updateUI(hat->navigation());
-           std::this_thread::sleep_for(100ms);
-       }
-   });
-   ```
-
-The thread architecture ensures optimal performance while maintaining ease of use, allowing applications to choose the most appropriate data access pattern for their specific requirements.
-
-### Hat Specs
-
-The JP_GNSS_HAT library automatically detects and supports three different HAT variants by reading `/proc/device-tree/hat/product`:
-
-#### L1 GNSS HAT
-- **Communication**: SPI interface (5 MHz, `/dev/spidev0.0`)
-- **GNSS Module**: u-blox NEO-M9N (L1 band)
-- **Thread Architecture**: Up to 5 threads (main + ublox + TxReady + timepulse + NMEA forwarder [optional])
-- **Data Synchronization**: Hardware TxReady interrupt (GPIO 17)
-- **Features**: Geofencing (up to 4 zones), timepulse, NMEA forwarding for gpsd
-- **Performance**: Interrupt-driven data acquisition with predictable timing
-- **Use Cases**: General GNSS applications, robotics, vehicle tracking
-
-#### L1/L5 GNSS TIME HAT  
-- **Communication**: UART interface (115200 baud, `/dev/ttyAMA0`)
-- **GNSS Module**: u-blox NEO-F10T (L1/L5 dual-band)
-- **Thread Architecture**: Up to 4 threads (main + ublox + timepulse + NMEA forwarder [optional])
-- **Data Synchronization**: epoll-based non-blocking I/O
-- **Features**: Timepulse, NMEA forwarding for gpsd. **No geofencing support** (config must be `std::nullopt`)
-- **Performance**: Lower latency, simplified architecture
-- **Use Cases**: High-precision timing applications (NTP/PPS), time servers, applications requiring dual-band GNSS
-
-#### L1/L5 GNSS RTK HAT
-- **Communication**: SPI interface (5 MHz, `/dev/spidev0.0`) for navigation + UART (`/dev/ttyAMA0`) for RTCM3 corrections
-- **GNSS Module**: u-blox NEO-F9P (L1/L5 dual-band, RTK-capable)
-- **Thread Architecture**: Up to 6 threads (main + ublox + TxReady + UART + timepulse + NMEA forwarder [optional])
-- **Data Synchronization**: Hardware TxReady interrupt (GPIO 17) for SPI, dedicated thread for UART
-- **Features**: Full RTK support (Base + Rover modes), geofencing (up to 4 zones), timepulse, NMEA forwarding
-- **RTK Base Modes**:
-  - **Survey-In**: The module automatically determines its position over a configurable observation period and accuracy threshold
-  - **Fixed Position**: Provide known coordinates in ECEF (x, y, z) or LLA (latitude, longitude, height) format
-- **RTK Rover**: Receives RTCM3 correction data from a base station to achieve centimeter-level positioning
-- **Correction Data**:
-  - `getFullCorrections()`: All RTCM3 frames (M7M — full message set)
-  - `getTinyCorrections()`: Compact RTCM3 frames (M4M — reduced message set)
-  - `getRtcm3Frame(id)`: Specific RTCM3 frame by message ID
-  - `applyCorrections()`: Inject correction data into rover
-- **Performance**: Combined SPI + UART architecture, interrupt-driven SPI with parallel RTCM3 processing on UART
-- **Use Cases**: Surveying, precision agriculture, autonomous vehicles, any application requiring centimeter-level accuracy
-
-### License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+MIT License -- see [LICENSE](LICENSE).

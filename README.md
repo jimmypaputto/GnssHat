@@ -6,11 +6,11 @@ Driver library for Jimmy Paputto GNSS HATs on Raspberry Pi. Handles the full u-b
 
 The library auto-detects the HAT variant via `/proc/device-tree/hat/product`.
 
-| HAT | u-blox Module | Interface | RTK | Geofencing |
-|-----|---------------|-----------|-----|------------|
-| L1 GNSS HAT | NEO-M9N | SPI | -- | Up to 4 zones |
-| L1/L5 GNSS TIME HAT | NEO-F10T | UART | -- | -- |
-| L1/L5 GNSS RTK HAT | NEO-F9P | SPI + UART | Base & Rover | Up to 4 zones |
+| HAT | u-blox Module | Interface | RTK | Time Base | Geofencing |
+|-----|---------------|-----------|-----|-----------|------------|
+| L1 GNSS HAT | NEO-M9N | SPI | -- | -- | Up to 4 zones |
+| L1/L5 GNSS TIME HAT | NEO-F10T | UART | -- | Survey-In / Fixed Position | -- |
+| L1/L5 GNSS RTK HAT | NEO-F9P | SPI + UART | Base & Rover | -- | Up to 4 zones |
 
 ## Installation
 
@@ -217,6 +217,7 @@ Include `<jimmypaputto/GnssHat.h>`. All functions are prefixed with `jp_gnss_hat
 | `timepulsePinConfig` | `TimepulsePinConfig` | Time pulse output on GPIO 5: enable/disable, frequency, pulse width (0.0--0.99), polarity, optional separate pulse config when no fix |
 | `geofencing` | `optional` | Up to 4 geofences (lat, lon, radius), confidence level (0--5 sigma), optional PIO pin polarity. **Not supported on TIME HAT** |
 | `rtk` | `optional` | RTK mode (Base or Rover). Base supports Survey-In or Fixed Position (ECEF/LLA). **Only for RTK HAT** |
+| `timeBase` | `optional` | Time base mode for improved time accuracy. Survey-In or Fixed Position (ECEF/LLA). **Only for TIME HAT** |
 
 ## Navigation Data
 
@@ -254,6 +255,36 @@ hat->rtk()->rover()->applyCorrections(corrections);
 
 See the RTK examples in `examples/CPP/RTK/` and `examples/Python/rtk_base.py` / `rtk_rover.py` for complete base+rover setups including NTRIP client usage.
 
+### Time Base (L1/L5 TIME HAT only)
+
+The TIME HAT (NEO-F10T) supports a time base mode that improves time accuracy by entering a TimeOnlyFix. This works similarly to an RTK base station -- the receiver first determines (or is given) a precise position, then uses that knowledge to focus entirely on time solution.
+
+Two modes are available:
+
+- **Survey-In** -- the module auto-determines its position over a configurable observation period and accuracy threshold
+- **Fixed Position** -- provide known coordinates (ECEF or LLA) directly, skipping the survey phase
+
+```cpp
+// C++ Survey-In example
+GnssConfig config {
+    .measurementRate_Hz = 1,
+    .dynamicModel = EDynamicModel::Stationary,
+    .timepulsePinConfig = { .active = true, .fixedPulse = { 1, 0.1 },
+        .pulseWhenNoFix = std::nullopt,
+        .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond },
+    .geofencing = std::nullopt,
+    .rtk = std::nullopt,
+    .timeBase = BaseConfig {
+        .mode = BaseConfig::SurveyIn {
+            .minimumObservationTime_s = 120,
+            .requiredPositionAccuracy_m = 50.0
+        }
+    }
+};
+```
+
+See the TimeBase examples in `examples/CPP/TimeBase/`, `examples/C/TimeBase/` and `examples/Python/time_base.py`.
+
 ### Geofencing
 
 Configure up to 4 circular geofences (lat, lon, radius). The receiver reports per-fence and combined Inside/Outside/Unknown state. Supports PIO pin output for hardware signaling (drives LED and relay on HAT). Not available on the TIME HAT.
@@ -283,6 +314,7 @@ A complete guide for setting up a PPS-disciplined time server using chrony + gps
 | `examples/CPP/TimepulseInterrupt` | C++ | Timepulse synchronization |
 | `examples/CPP/HotStart` | C++ | Cold vs hot start timing benchmark |
 | `examples/CPP/RTK` | C++ | RTK base station and rover |
+| `examples/CPP/TimeBase` | C++ | Time base mode for improved time accuracy |
 | `examples/C/` | C | Same set of examples using the C API |
 | `examples/Python/` | Python | Same set + JSON config loader + NTRIP rover ([README](examples/Python/README.md)) |
 | `examples/GpsdIntegration/` | C++ | Systemd daemon for gpsd bridging ([README](examples/GpsdIntegration/README.md)) |

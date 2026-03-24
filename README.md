@@ -30,7 +30,7 @@ sudo apt-get install python3-dev
 
 ```sh
 git clone https://github.com/jimmypaputto/GnssHat.git
-cd GnssHat/UbloxNeoM9N_Hat
+cd GnssHat
 mkdir -p build && cd build
 cmake ..
 make -j$(nproc)
@@ -336,7 +336,7 @@ Optional threads: timepulse interrupt (GPIO 5), NMEA forwarder for gpsd.
 ## Project Structure
 
 ```
-UbloxNeoM9N_Hat/
+GnssHat/
 ├── src/
 │   ├── GnssHat.hpp / .cpp          C++ API and implementation
 │   ├── GnssHat.h / GnssHat_C.cpp   C API wrapper

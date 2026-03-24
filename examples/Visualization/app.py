@@ -829,6 +829,11 @@ def ros2_reader_thread():
 
     def nav_callback(nav_msg):
         try:
+            frame_id = nav_msg.header.frame_id
+            if frame_id and frame_id != gps_state.get('hat_name'):
+                gps_state['hat_name'] = frame_id
+                socketio.emit('hat_changed', {'hat_name': frame_id}, namespace='/')
+
             pvt_data = ros2_nav_to_pvt_data(nav_msg)
 
             if gps_state['reference_position'] is None:
@@ -1322,6 +1327,7 @@ def start_gps_ros2():
     print(f"Starting in ROS 2 mode — subscribing to {nav_topic}...")
     try:
         rclpy.init()
+        gps_state['hat_name'] = 'L1 GNSS HAT'
         gps_state['running'] = True
         gps_state['thread'] = threading.Thread(target=ros2_reader_thread, daemon=True)
         gps_state['thread'].start()

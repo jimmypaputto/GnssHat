@@ -445,6 +445,11 @@ function initializeSocket() {
     socket.on('config_progress', function(data) {
         handleConfigProgress(data);
     });
+
+    // HAT type changed (ros2 mode — frame_id detection)
+    socket.on('hat_changed', function(data) {
+        location.reload();
+    });
 }
 
 function setupUIHandlers() {

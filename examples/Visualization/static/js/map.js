@@ -1160,6 +1160,32 @@ function setupConfigPanel() {
         });
     }
 
+    // Time Base toggles
+    const tbEn = document.getElementById('cfg-tb-en');
+    const tbDetails = document.getElementById('cfg-tb-details');
+    const tbBaseMode = document.getElementById('cfg-tb-basemode');
+    const tbSiDetails = document.getElementById('cfg-tb-si-details');
+    const tbFpDetails = document.getElementById('cfg-tb-fp-details');
+    const tbFpType = document.getElementById('cfg-tb-fp-type');
+    const tbEcefDetails = document.getElementById('cfg-tb-ecef-details');
+    const tbLlaDetails = document.getElementById('cfg-tb-lla-details');
+
+    if (tbEn) {
+        tbEn.addEventListener('change', () => {
+            tbDetails.style.display = tbEn.checked ? '' : 'none';
+        });
+
+        tbBaseMode.addEventListener('change', () => {
+            tbSiDetails.style.display = tbBaseMode.value === '0' ? '' : 'none';
+            tbFpDetails.style.display = tbBaseMode.value === '1' ? '' : 'none';
+        });
+
+        tbFpType.addEventListener('change', () => {
+            tbEcefDetails.style.display = tbFpType.value === '0' ? '' : 'none';
+            tbLlaDetails.style.display = tbFpType.value === '1' ? '' : 'none';
+        });
+    }
+
     // Load config button
     document.getElementById('cfg-load-btn').addEventListener('click', loadConfig);
 
@@ -1336,6 +1362,50 @@ function populateFormFromConfig(config) {
         }
     }
 
+    // Time Base
+    const tb = config.time_base;
+    const tbEn = document.getElementById('cfg-tb-en');
+    if (tbEn) {
+        if (tb && tb.base_mode !== undefined && tb.base_mode !== null) {
+            tbEn.checked = true;
+            document.getElementById('cfg-tb-details').style.display = '';
+            const baseMode = tb.base_mode ?? 0;
+            document.getElementById('cfg-tb-basemode').value = baseMode;
+
+            document.getElementById('cfg-tb-si-details').style.display = parseInt(baseMode) === 0 ? '' : 'none';
+            document.getElementById('cfg-tb-fp-details').style.display = parseInt(baseMode) === 1 ? '' : 'none';
+
+            if (parseInt(baseMode) === 0 && tb.survey_in) {
+                document.getElementById('cfg-tb-si-obs').value = tb.survey_in.minimum_observation_time_s ?? 120;
+                document.getElementById('cfg-tb-si-acc').value = tb.survey_in.required_position_accuracy_m ?? 50.0;
+            }
+
+            if (parseInt(baseMode) === 1 && tb.fixed_position) {
+                const fp = tb.fixed_position;
+                const posType = fp.position_type ?? 1;
+                document.getElementById('cfg-tb-fp-type').value = posType;
+                document.getElementById('cfg-tb-fp-acc').value = fp.position_accuracy_m ?? 0.5;
+
+                document.getElementById('cfg-tb-ecef-details').style.display = parseInt(posType) === 0 ? '' : 'none';
+                document.getElementById('cfg-tb-lla-details').style.display = parseInt(posType) === 1 ? '' : 'none';
+
+                if (parseInt(posType) === 0 && fp.ecef) {
+                    document.getElementById('cfg-tb-ecef-x').value = fp.ecef.x_m ?? 0;
+                    document.getElementById('cfg-tb-ecef-y').value = fp.ecef.y_m ?? 0;
+                    document.getElementById('cfg-tb-ecef-z').value = fp.ecef.z_m ?? 0;
+                }
+                if (parseInt(posType) === 1 && fp.lla) {
+                    document.getElementById('cfg-tb-lla-lat').value = fp.lla.latitude_deg ?? 0;
+                    document.getElementById('cfg-tb-lla-lon').value = fp.lla.longitude_deg ?? 0;
+                    document.getElementById('cfg-tb-lla-h').value = fp.lla.height_m ?? 0;
+                }
+            }
+        } else {
+            tbEn.checked = false;
+            document.getElementById('cfg-tb-details').style.display = 'none';
+        }
+    }
+
     // ROS 2 specific fields
     const ros2StdTopics = document.getElementById('cfg-ros2-stdtopics');
     if (ros2StdTopics) {
@@ -1448,6 +1518,43 @@ function buildConfigFromForm() {
         config.rtk = rtk;
     } else {
         config.rtk = null;
+    }
+
+    // Time Base
+    const tbEn = document.getElementById('cfg-tb-en');
+    if (tbEn && tbEn.checked) {
+        const baseMode = parseInt(document.getElementById('cfg-tb-basemode').value);
+        const tb = { base_mode: baseMode };
+
+        if (baseMode === 0) { // Survey-In
+            tb.survey_in = {
+                minimum_observation_time_s: parseInt(document.getElementById('cfg-tb-si-obs').value) || 120,
+                required_position_accuracy_m: parseFloat(document.getElementById('cfg-tb-si-acc').value) || 50.0,
+            };
+        } else { // Fixed Position
+            const posType = parseInt(document.getElementById('cfg-tb-fp-type').value);
+            const fp = {
+                position_type: posType,
+                position_accuracy_m: parseFloat(document.getElementById('cfg-tb-fp-acc').value) || 0.5,
+            };
+            if (posType === 0) { // ECEF
+                fp.ecef = {
+                    x_m: parseFloat(document.getElementById('cfg-tb-ecef-x').value) || 0,
+                    y_m: parseFloat(document.getElementById('cfg-tb-ecef-y').value) || 0,
+                    z_m: parseFloat(document.getElementById('cfg-tb-ecef-z').value) || 0,
+                };
+            } else { // LLA
+                fp.lla = {
+                    latitude_deg: parseFloat(document.getElementById('cfg-tb-lla-lat').value) || 0,
+                    longitude_deg: parseFloat(document.getElementById('cfg-tb-lla-lon').value) || 0,
+                    height_m: parseFloat(document.getElementById('cfg-tb-lla-h').value) || 0,
+                };
+            }
+            tb.fixed_position = fp;
+        }
+        config.time_base = tb;
+    } else if (tbEn) {
+        config.time_base = null;
     }
 
     // ROS 2 specific fields

@@ -182,6 +182,7 @@ def create_default_config():
         },
         'geofencing': None,
         'rtk': None,
+        'time_base': None,
     }
 
 
@@ -1056,6 +1057,43 @@ def json_to_native_config(data):
         config['rtk'] = rtk_cfg
     else:
         config['rtk'] = None
+
+    # Time Base
+    time_base = data.get('time_base')
+    if time_base and time_base.get('base_mode') is not None:
+        tb_cfg = {
+            'base_mode': int(time_base['base_mode']),
+        }
+        if int(time_base['base_mode']) == 0:  # SURVEY_IN
+            si = time_base.get('survey_in', {})
+            tb_cfg['survey_in'] = {
+                'minimum_observation_time_s': int(si.get('minimum_observation_time_s', 120)),
+                'required_position_accuracy_m': float(si.get('required_position_accuracy_m', 50.0)),
+            }
+        else:  # FIXED_POSITION
+            fp = time_base.get('fixed_position', {})
+            fp_cfg = {
+                'position_type': int(fp.get('position_type', 1)),
+                'position_accuracy_m': float(fp.get('position_accuracy_m', 0.5)),
+            }
+            if int(fp.get('position_type', 1)) == 0:  # ECEF
+                ecef = fp.get('ecef', {})
+                fp_cfg['ecef'] = {
+                    'x_m': float(ecef.get('x_m', 0.0)),
+                    'y_m': float(ecef.get('y_m', 0.0)),
+                    'z_m': float(ecef.get('z_m', 0.0)),
+                }
+            else:  # LLA
+                lla = fp.get('lla', {})
+                fp_cfg['lla'] = {
+                    'latitude_deg': float(lla.get('latitude_deg', 0.0)),
+                    'longitude_deg': float(lla.get('longitude_deg', 0.0)),
+                    'height_m': float(lla.get('height_m', 0.0)),
+                }
+            tb_cfg['fixed_position'] = fp_cfg
+        config['time_base'] = tb_cfg
+    else:
+        config['time_base'] = None
 
     return config
 

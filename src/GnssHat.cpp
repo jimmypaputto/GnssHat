@@ -271,6 +271,15 @@ bool validateConfig(const GnssConfig& config)
     if constexpr (std::is_same_v<StartupStrategy, M9NStartup> ||
         std::is_same_v<StartupStrategy, F9PStartup>)
     {
+        if (config.timeBase.has_value())
+        {
+            fprintf(
+                stderr,
+                "[GnssConfig] timeBase is only supported on F10T - "
+                "must be nullopt\r\n"
+            );
+            return false;
+        }
         return checkGeofencing(config.geofencing);
     }
     else if constexpr (std::is_same_v<StartupStrategy, F10TStartup>)
@@ -284,7 +293,16 @@ bool validateConfig(const GnssConfig& config)
             );
             return false;
         }
-        return true;
+        if (config.rtk.has_value())
+        {
+            fprintf(
+                stderr,
+                "[GnssConfig] F10T does not support RTK - "
+                "must be nullopt\r\n"
+            );
+            return false;
+        }
+        return checkTimeBase(config.timeBase);
     }
 
     return false;

@@ -1,172 +1,245 @@
-# GNSS HAT - Python Interface
+# GNSS HAT - Python Bindings
 
-Python bindings for the GNSS HAT C++ Library.
-
-## Features
-
-- **Full Object-Oriented Interface** - Clean, Pythonic API with classes and methods  
-- **Real-time Navigation Data** - Position, velocity, time with high precision  
-- **GPSD Integration** - Seamless integration with GPSD ecosystem  
-- **Timepulse Support** - Precision timing for synchronization applications  
-- **High Performance** - Direct C bindings for minimal overhead  
-
-## Installation
-
-### Prerequisites
-
-```bash
-# Install development tools
-sudo apt-get update
-sudo apt-get install build-essential python3-dev python3-setuptools
-
-# Install Jimmy Paputto GNSS HAT C library first
-cd GnssHat
-mkdir -p build && cd build
-cmake ..
-make
-sudo make install
-sudo ldconfig
-```
-
-### Build and Install Python Interface
-
-```bash
-cd GnssHat/python
-mkdir build && cd build
-cmake ..
-make
-sudo make install
-sudo ldconfig
-```
-
-## Quick Start
+CPython extension module for the Jimmy Paputto GNSS HAT library. Wraps the C API (`libGnssHat.so`) as a native Python module.
 
 ```python
 from jimmypaputto import gnsshat
 
-# Simple usage with context manager
-with gnsshat.GnssHat() as hat:
-    # Configure and start
-    config = {
-        'measurement_rate_hz': 1,
-        'dynamic_model': gnsshat.DynamicModel.PORTABLE,
-        'timepulse_pin_config': {
-            'active': True,
-            'fixed_pulse': {
-                'frequency': 1,
-                'pulse_width': 0.1
-            },
-            'polarity': gnsshat.TimepulsePolarity.RISING_EDGE
-        },
-        'geofencing': None
+hat = gnsshat.GnssHat()
+hat.soft_reset_hot_start()
+hat.start({
+    'measurement_rate_hz': 1,
+    'dynamic_model': gnsshat.DynamicModel.PORTABLE,
+    'timepulse_pin_config': {
+        'active': True,
+        'fixed_pulse': {'frequency': 1, 'pulse_width': 0.1},
+        'polarity': gnsshat.TimepulsePolarity.RISING_EDGE
     }
-    
-    hat.start(config)
-    
-    # Get navigation data
-    nav = hat.wait_and_get_fresh_navigation()
-    pvt = nav.pvt
+})
 
-    print(f"Position: {pvt.latitude:.6f}, {pvt.longitude:.6f}")
-    print(f"Altitude: {pvt.altitude:.1f}m")
-    print(f"Satellites: {pvt.visible_satellites}")
-    print(f"Accuracy: {pvt.horizontal_accuracy:.1f}m")
+nav = hat.wait_and_get_fresh_navigation()
+print(f"{nav.pvt.latitude:.6f}, {nav.pvt.longitude:.6f}")
 ```
 
-## API Reference
+## Installation
 
-### GnssHat Class
+Requires the C++ library to be installed first.
 
-Main interface to the GNSS HAT hardware.
+```bash
+# 1. Install dependencies
+sudo apt install build-essential cmake libgpiod-dev python3-dev
 
-#### Methods
+# 2. Build and install the C++ library
+cd GnssHat/UbloxNeoM9N_Hat
+mkdir -p build && cd build
+cmake .. && make -j$(nproc)
+sudo make install && sudo ldconfig
 
-- `start(config)` - Start GNSS with configuration dict
-- `get_navigation()` - Get current navigation data (non-blocking)
-- `wait_and_get_fresh_navigation()` - Wait for fresh navigation data (blocking)
-- `enable_timepulse()` - Enable 1PPS timepulse output
-- `disable_timepulse()` - Disable timepulse output
-- `timepulse()` - Block until next timepulse interrupt (call `enable_timepulse()` first)
-- `start_forward_for_gpsd()` - Start NMEA forwarding to GPSD
-- `stop_forward_for_gpsd()` - Stop GPSD forwarding
-- `join_forward_for_gpsd()` - Join (wait for) GPSD forwarding thread
-- `get_gpsd_device_path()` - Get virtual device path for GPSD
-- `hard_reset_cold_start()` - Perform hardware reset (cold start)
-- `soft_reset_hot_start()` - Perform software reset (hot start)
-- `rtk_get_full_corrections()` - Get full RTK base corrections (RTCM3 frames)
-- `rtk_get_tiny_corrections()` - Get tiny RTK base corrections (RTCM3 frames)
-- `rtk_get_rtcm3_frame(msg_id)` - Get a specific RTCM3 frame by message ID
-- `rtk_apply_corrections(frames)` - Apply RTK corrections to a rover
+# 3. Build and install Python bindings
+cd GnssHat/UbloxNeoM9N_Hat/python
+mkdir -p build && cd build
+cmake .. && make -j$(nproc)
+sudo make install
+```
 
-### Navigation Class
+Installs to `~/.local/lib/pythonX.Y/site-packages/jimmypaputto/`.
 
-Complete navigation information container.
+## Configuration
 
-#### Properties
+The `start()` method accepts a Python dict. All fields except `measurement_rate_hz`, `dynamic_model`, and `timepulse_pin_config` are optional.
 
-- `pvt` - PositionVelocityTime object
-- `dop` - Dilution of Precision information
-- `geofencing` - Geofencing status and configuration
-- `rf_blocks` - RF interference and antenna status
+```python
+config = {
+    'measurement_rate_hz': 10,                    # 1-25 Hz
+    'dynamic_model': gnsshat.DynamicModel.AUTOMOTIVE,
+    'timepulse_pin_config': {
+        'active': True,
+        'fixed_pulse': {'frequency': 1, 'pulse_width': 0.1},
+        'pulse_when_no_fix': {'frequency': 1, 'pulse_width': 0.5},  # optional
+        'polarity': gnsshat.TimepulsePolarity.RISING_EDGE
+    },
 
-### IntEnum Constants
+    # Geofencing (L1 HAT, RTK HAT only) — None or omit to disable
+    'geofencing': {
+        'confidence_level': 3,          # 0-5
+        'pin_polarity': gnsshat.PioPinPolarity.LOW_MEANS_INSIDE,  # optional
+        'geofences': [
+            {'lat': 52.2297, 'lon': 21.0122, 'radius': 100.0},   # max 4
+        ]
+    },
 
-All enum-like values are exposed as Python `IntEnum` types. Use them via `gnsshat.<EnumName>.<MEMBER>`.
+    # RTK (RTK HAT only) — None or omit to disable
+    'rtk': {
+        'mode': gnsshat.RtkMode.BASE,
+        'base': {
+            'base_mode': gnsshat.BaseMode.SURVEY_IN,
+            'survey_in': {
+                'minimum_observation_time_s': 60,
+                'required_position_accuracy_m': 2.0
+            }
+            # OR for fixed position:
+            # 'base_mode': gnsshat.BaseMode.FIXED_POSITION,
+            # 'fixed_position': {
+            #     'position_type': gnsshat.FixedPositionType.LLA,
+            #     'lla': {'latitude_deg': 52.2, 'longitude_deg': 21.0, 'height_m': 120.0},
+            #     'position_accuracy_m': 0.01
+            # }
+        }
+    },
 
-#### DynamicModel
-- `DynamicModel.PORTABLE` - General purpose
-- `DynamicModel.STATIONARY` - Stationary applications
-- `DynamicModel.PEDESTRIAN` - Walking/hiking
-- `DynamicModel.AUTOMOTIVE` - Car/truck
-- `DynamicModel.SEA` - Marine applications
-- `DynamicModel.AIRBORNE_1G` - Aircraft < 1g acceleration
-- `DynamicModel.AIRBORNE_2G` - Aircraft < 2g acceleration
-- `DynamicModel.AIRBORNE_4G` - Aircraft < 4g acceleration
-- `DynamicModel.WRIST` - Wrist-worn devices
-- `DynamicModel.BIKE` - Bicycle
-- `DynamicModel.MOWER` - Robotic mower
-- `DynamicModel.ESCOOTER` - Electric scooter
+    # Time Base (TIME HAT only) — None or omit to disable
+    # Same structure as rtk.base:
+    'time_base': {
+        'base_mode': gnsshat.BaseMode.SURVEY_IN,
+        'survey_in': {
+            'minimum_observation_time_s': 60,
+            'required_position_accuracy_m': 5.0
+        }
+    }
+}
+```
 
-#### TimepulsePolarity
-- `TimepulsePolarity.FALLING_EDGE`
-- `TimepulsePolarity.RISING_EDGE`
+## GnssHat Methods
 
-#### FixQuality
-- `FixQuality.INVALID` - No fix available
-- `FixQuality.GPS_FIX_2D_3D` - Standard GPS fix
-- `FixQuality.DGNSS` - Differential GPS fix
-- `FixQuality.PPS_FIX` - PPS fix
-- `FixQuality.FIXED_RTK` - RTK fixed solution
-- `FixQuality.FLOAT_RTK` - RTK float solution
-- `FixQuality.DEAD_RECKONING` - Dead reckoning
+| Method | Description |
+|--------|-------------|
+| `start(config)` | Configure and start the GNSS module. Returns `True` on success. |
+| `get_navigation()` | Get current navigation data (non-blocking). |
+| `wait_and_get_fresh_navigation()` | Block until new navigation data arrives. Releases GIL. |
+| `name()` | Get detected HAT name (e.g. `'L1/L5 GNSS TIME HAT'`). |
+| `soft_reset_hot_start()` | Software reset — preserves almanac/ephemeris for fast TTFF. |
+| `hard_reset_cold_start()` | Hardware reset — full cold start. |
+| `enable_timepulse()` | Enable 1PPS output on GPIO 5. |
+| `disable_timepulse()` | Disable 1PPS output. |
+| `timepulse()` | Block until next 1PPS interrupt. Call `enable_timepulse()` first. Releases GIL. |
+| `start_forward_for_gpsd()` | Start NMEA forwarding to a virtual TTY for gpsd. |
+| `stop_forward_for_gpsd()` | Stop NMEA forwarding. |
+| `join_forward_for_gpsd()` | Block until forwarding thread exits. Releases GIL. |
+| `get_gpsd_device_path()` | Get the virtual TTY path (e.g. `/dev/pts/3`). Returns `None` if not active. |
+| `rtk_get_full_corrections()` | Get full RTCM3 correction frames from RTK base. Returns `list[bytes]`. |
+| `rtk_get_tiny_corrections()` | Get compact RTCM3 correction frames from RTK base. Returns `list[bytes]`. |
+| `rtk_get_rtcm3_frame(msg_id)` | Get a specific RTCM3 frame by message ID. Returns `bytes`. |
+| `rtk_apply_corrections(frames)` | Send RTCM3 correction frames to RTK rover. Takes `list[bytes]`. |
 
-#### FixStatus
-- `FixStatus.VOID` - No fix
-- `FixStatus.ACTIVE` - Active fix
+Supports context manager:
 
-#### FixType
-- `FixType.NO_FIX` - No position fix
-- `FixType.DEAD_RECKONING_ONLY` - Dead reckoning only
-- `FixType.FIX_2D` - 2D fix
-- `FixType.FIX_3D` - 3D fix
-- `FixType.GNSS_WITH_DEAD_RECKONING` - GNSS + dead reckoning
-- `FixType.TIME_ONLY_FIX` - Time-only fix
+```python
+with gnsshat.GnssHat() as hat:
+    hat.start(config)
+    nav = hat.wait_and_get_fresh_navigation()
+# __exit__ automatically stops GPSD forwarding and disables timepulse
+```
 
-#### GeofenceStatus / GeofencingStatus
-- `GeofenceStatus.UNKNOWN`, `GeofenceStatus.INSIDE`, `GeofenceStatus.OUTSIDE`
-- `GeofencingStatus.NOT_AVAILABLE`, `GeofencingStatus.ACTIVE`
+## Module Functions and Constants
 
-#### RfBand / JammingState / AntennaStatus / AntennaPower
-- `RfBand.L1`, `RfBand.L2_OR_L5`
-- `JammingState.UNKNOWN`, `JammingState.OK_NO_SIGNIFICANT_JAMMING`, `JammingState.WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK`, `JammingState.CRITICAL_INTERFERENCE_VISIBLE_AND_NO_FIX`
-- `AntennaStatus.INIT`, `AntennaStatus.DONT_KNOW`, `AntennaStatus.OK`, `AntennaStatus.SHORT`, `AntennaStatus.OPEN`
-- `AntennaPower.OFF`, `AntennaPower.ON`, `AntennaPower.DONT_KNOW`
+```python
+gnsshat.version()              # Returns '1.0.0'
+gnsshat.utc_time_iso8601(nav)  # Convert Navigation or PVT to ISO 8601 string
 
-#### RTK Enums
-- `RtkMode.BASE`, `RtkMode.ROVER`
-- `BaseMode.SURVEY_IN`, `BaseMode.FIXED_POSITION`
-- `FixedPositionType.ECEF`, `FixedPositionType.LLA`
+gnsshat.MAX_GEOFENCES   # 4
+gnsshat.MAX_RF_BLOCKS    # 2
+gnsshat.MAX_SATELLITES   # 64
+```
 
-#### GnssId / SvQuality
-- `GnssId.GPS`, `GnssId.SBAS`, `GnssId.GALILEO`, `GnssId.BEIDOU`, `GnssId.IMES`, `GnssId.QZSS`, `GnssId.GLONASS`
-- `SvQuality.NO_SIGNAL`, `SvQuality.SEARCHING`, `SvQuality.SIGNAL_ACQUIRED`, `SvQuality.SIGNAL_DETECTED_BUT_UNUSABLE`, `SvQuality.CODE_LOCKED_AND_TIME_SYNCHRONIZED`, `SvQuality.CODE_AND_CARRIER_LOCKED_1`, `SvQuality.CODE_AND_CARRIER_LOCKED_2`, `SvQuality.CODE_AND_CARRIER_LOCKED_3`
+## Navigation Data
+
+`wait_and_get_fresh_navigation()` and `get_navigation()` return a `Navigation` object:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pvt` | `PositionVelocityTime` | Position, velocity, time, fix info |
+| `dop` | `DilutionOverPrecision` | Dilution of precision values |
+| `geofencing` | `Geofencing` | Geofencing config and status |
+| `rf_blocks` | `list[RfBlock]` | RF band info (up to 2) |
+| `satellites` | `list[SatelliteInfo]` | Tracked satellites (up to 64) |
+
+All navigation objects have `__str__` and `__repr__` for easy printing.
+
+### PositionVelocityTime
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `latitude` | `float` | Degrees |
+| `longitude` | `float` | Degrees |
+| `altitude` | `float` | Above WGS84 ellipsoid (m) |
+| `altitude_msl` | `float` | Above mean sea level (m) |
+| `speed_over_ground` | `float` | m/s |
+| `speed_accuracy` | `float` | m/s |
+| `heading` | `float` | Degrees |
+| `heading_accuracy` | `float` | Degrees |
+| `horizontal_accuracy` | `float` | Meters |
+| `vertical_accuracy` | `float` | Meters |
+| `visible_satellites` | `int` | Number of satellites used |
+| `fix_quality` | `int` | `FixQuality` enum value |
+| `fix_status` | `int` | `FixStatus` enum value |
+| `fix_type` | `int` | `FixType` enum value |
+| `utc_time` | `UtcTime` | `.hours`, `.minutes`, `.seconds`, `.valid`, `.accuracy` (ns) |
+| `date` | `Date` | `.day`, `.month`, `.year`, `.valid` |
+
+### DilutionOverPrecision
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `geometric` | `float` | GDOP — overall geometric quality |
+| `position` | `float` | PDOP — 3D position |
+| `time` | `float` | TDOP — time |
+| `vertical` | `float` | VDOP — vertical position |
+| `horizontal` | `float` | HDOP — horizontal position |
+| `northing` | `float` | NDOP — northing |
+| `easting` | `float` | EDOP — easting |
+
+### RfBlock
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `int` | `RfBand` enum value |
+| `jamming_state` | `int` | `JammingState` enum value |
+| `antenna_status` | `int` | `AntennaStatus` enum value |
+| `antenna_power` | `int` | `AntennaPower` enum value |
+| `noise_per_ms` | `int` | Noise level |
+| `agc_monitor` | `float` | AGC monitor percentage |
+| `cw_interference_suppression_level` | `float` | CW suppression level |
+
+### SatelliteInfo
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `gnss_id` | `int` | `GnssId` enum value |
+| `sv_id` | `int` | Satellite vehicle ID |
+| `cno` | `int` | Carrier-to-noise ratio (dBHz) |
+| `elevation` | `int` | Degrees (-90 to 90) |
+| `azimuth` | `int` | Degrees (0 to 360) |
+| `quality` | `int` | `SvQuality` enum value |
+| `used_in_fix` | `bool` | Whether satellite is used in fix |
+| `healthy` | `bool` | Satellite health flag |
+
+### Geofencing
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cfg` | `GeofencingCfg` | `.confidence_level`, `.geofences` (list of `Geofence`) |
+| `nav` | `GeofencingNav` | `.status`, `.number_of_geofences`, `.combined_state`, `.geofences` (list of status ints) |
+
+## Enums
+
+All enums are `IntEnum` types accessed as `gnsshat.<EnumName>.<MEMBER>`.
+
+| Enum | Members |
+|------|---------|
+| `DynamicModel` | `PORTABLE`, `STATIONARY`, `PEDESTRIAN`, `AUTOMOTIVE`, `SEA`, `AIRBORNE_1G`, `AIRBORNE_2G`, `AIRBORNE_4G`, `WRIST`, `BIKE`, `MOWER`, `ESCOOTER` |
+| `TimepulsePolarity` | `FALLING_EDGE`, `RISING_EDGE` |
+| `PioPinPolarity` | `LOW_MEANS_INSIDE`, `LOW_MEANS_OUTSIDE` |
+| `FixQuality` | `INVALID`, `GPS_FIX_2D_3D`, `DGNSS`, `PPS_FIX`, `FIXED_RTK`, `FLOAT_RTK`, `DEAD_RECKONING` |
+| `FixStatus` | `VOID`, `ACTIVE` |
+| `FixType` | `NO_FIX`, `DEAD_RECKONING_ONLY`, `FIX_2D`, `FIX_3D`, `GNSS_WITH_DEAD_RECKONING`, `TIME_ONLY_FIX` |
+| `GeofenceStatus` | `UNKNOWN`, `INSIDE`, `OUTSIDE` |
+| `GeofencingStatus` | `NOT_AVAILABLE`, `ACTIVE` |
+| `RfBand` | `L1`, `L2_OR_L5` |
+| `JammingState` | `UNKNOWN`, `OK_NO_SIGNIFICANT_JAMMING`, `WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK`, `CRITICAL_INTERFERENCE_VISIBLE_AND_NO_FIX` |
+| `AntennaStatus` | `INIT`, `DONT_KNOW`, `OK`, `SHORT`, `OPEN` |
+| `AntennaPower` | `OFF`, `ON`, `DONT_KNOW` |
+| `RtkMode` | `BASE`, `ROVER` |
+| `BaseMode` | `SURVEY_IN`, `FIXED_POSITION` |
+| `FixedPositionType` | `ECEF`, `LLA` |
+| `GnssId` | `GPS`, `SBAS`, `GALILEO`, `BEIDOU`, `IMES`, `QZSS`, `GLONASS` |
+| `SvQuality` | `NO_SIGNAL`, `SEARCHING`, `SIGNAL_ACQUIRED`, `SIGNAL_DETECTED_BUT_UNUSABLE`, `CODE_LOCKED_AND_TIME_SYNCHRONIZED`, `CODE_AND_CARRIER_LOCKED_1`, `CODE_AND_CARRIER_LOCKED_2`, `CODE_AND_CARRIER_LOCKED_3` |

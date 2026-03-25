@@ -67,6 +67,11 @@ std::string antennaStatus2string(const EAntennaStatus e);
 std::string antennaPower2string(const EAntennaPower e);
 std::string geofencingStatus2string(const EGeofencingStatus e);
 std::string geofenceStatus2string(const EGeofenceStatus e);
+std::string gnssId2string(const EGnssId e);
+std::string svQuality2string(const ESvQuality e);
+std::string timeMarkMode2string(const ETimeMarkMode e);
+std::string timeMarkRun2string(const ETimeMarkRun e);
+std::string timeMarkTimeBase2string(const ETimeMarkTimeBase e);
 
 std::string utcTimeFromGnss_ISO8601(const PositionVelocityTime& pvt);
 

@@ -750,42 +750,16 @@ const char* jp_gnss_geofence_status_to_string(jp_gnss_geofence_status_t status)
 
 const char* jp_gnss_gnss_id_to_string(jp_gnss_gnss_id_t id)
 {
-    switch (id)
-    {
-        case JP_GNSS_GNSS_ID_GPS:     return "GPS";
-        case JP_GNSS_GNSS_ID_SBAS:    return "SBAS";
-        case JP_GNSS_GNSS_ID_GALILEO: return "Galileo";
-        case JP_GNSS_GNSS_ID_BEIDOU:  return "BeiDou";
-        case JP_GNSS_GNSS_ID_IMES:    return "IMES";
-        case JP_GNSS_GNSS_ID_QZSS:    return "QZSS";
-        case JP_GNSS_GNSS_ID_GLONASS: return "GLONASS";
-        default:                       return "Unknown";
-    }
+    thread_local std::string result;
+    result = Utils::gnssId2string(static_cast<EGnssId>(id));
+    return result.c_str();
 }
 
 const char* jp_gnss_sv_quality_to_string(jp_gnss_sv_quality_t quality)
 {
-    switch (quality)
-    {
-        case JP_GNSS_SV_QUALITY_NO_SIGNAL:
-            return "No signal";
-        case JP_GNSS_SV_QUALITY_SEARCHING:
-            return "Searching";
-        case JP_GNSS_SV_QUALITY_SIGNAL_ACQUIRED:
-            return "Signal acquired";
-        case JP_GNSS_SV_QUALITY_SIGNAL_DETECTED_BUT_UNUSABLE:
-            return "Signal detected but unusable";
-        case JP_GNSS_SV_QUALITY_CODE_LOCKED_AND_TIME_SYNCHRONIZED:
-            return "Code locked and time synchronized";
-        case JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_1:
-            return "Code and carrier locked (1)";
-        case JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_2:
-            return "Code and carrier locked (2)";
-        case JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_3:
-            return "Code and carrier locked (3)";
-        default:
-            return "Unknown";
-    }
+    thread_local std::string result;
+    result = Utils::svQuality2string(static_cast<ESvQuality>(quality));
+    return result.c_str();
 }
 
 void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
@@ -1089,35 +1063,26 @@ void jp_gnss_hat_trigger_time_mark(jp_gnss_hat_t* hat,
 const char* jp_gnss_time_mark_mode_to_string(
     jp_gnss_time_mark_mode_t mode)
 {
-    switch (mode)
-    {
-        case JP_GNSS_TIME_MARK_MODE_SINGLE:  return "Single";
-        case JP_GNSS_TIME_MARK_MODE_RUNNING: return "Running";
-        default:                             return "Unknown";
-    }
+    thread_local std::string result;
+    result = Utils::timeMarkMode2string(static_cast<ETimeMarkMode>(mode));
+    return result.c_str();
 }
 
 const char* jp_gnss_time_mark_run_to_string(
     jp_gnss_time_mark_run_t run)
 {
-    switch (run)
-    {
-        case JP_GNSS_TIME_MARK_RUN_ARMED:   return "Armed";
-        case JP_GNSS_TIME_MARK_RUN_STOPPED: return "Stopped";
-        default:                            return "Unknown";
-    }
+    thread_local std::string result;
+    result = Utils::timeMarkRun2string(static_cast<ETimeMarkRun>(run));
+    return result.c_str();
 }
 
 const char* jp_gnss_time_mark_time_base_to_string(
     jp_gnss_time_mark_time_base_t time_base)
 {
-    switch (time_base)
-    {
-        case JP_GNSS_TIME_MARK_TIME_BASE_RECEIVER: return "Receiver";
-        case JP_GNSS_TIME_MARK_TIME_BASE_GNSS:     return "GNSS";
-        case JP_GNSS_TIME_MARK_TIME_BASE_UTC:      return "UTC";
-        default:                                   return "Unknown";
-    }
+    thread_local std::string result;
+    result = Utils::timeMarkTimeBase2string(
+        static_cast<ETimeMarkTimeBase>(time_base));
+    return result.c_str();
 }
 
 }  // extern "C"

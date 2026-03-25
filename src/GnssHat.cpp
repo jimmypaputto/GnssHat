@@ -761,6 +761,95 @@ std::string geofenceStatus2string(const EGeofenceStatus e)
     }
 }
 
+std::string gnssId2string(const EGnssId e)
+{
+    switch (e)
+    {
+    case EGnssId::GPS:
+        return "GPS";
+    case EGnssId::SBAS:
+        return "SBAS";
+    case EGnssId::Galileo:
+        return "Galileo";
+    case EGnssId::BeiDou:
+        return "BeiDou";
+    case EGnssId::IMES:
+        return "IMES";
+    case EGnssId::QZSS:
+        return "QZSS";
+    case EGnssId::GLONASS:
+        return "GLONASS";
+    default:
+        return "Unknown";
+    }
+}
+
+std::string svQuality2string(const ESvQuality e)
+{
+    switch (e)
+    {
+    case ESvQuality::NoSignal:
+        return "No signal";
+    case ESvQuality::Searching:
+        return "Searching";
+    case ESvQuality::SignalAcquired:
+        return "Signal acquired";
+    case ESvQuality::SignalDetectedButUnusable:
+        return "Signal detected but unusable";
+    case ESvQuality::CodeLockedAndTimeSynchronized:
+        return "Code locked and time synchronized";
+    case ESvQuality::CodeAndCarrierLocked1:
+        return "Code and carrier locked (1)";
+    case ESvQuality::CodeAndCarrierLocked2:
+        return "Code and carrier locked (2)";
+    case ESvQuality::CodeAndCarrierLocked3:
+        return "Code and carrier locked (3)";
+    default:
+        return "Unknown";
+    }
+}
+
+std::string timeMarkMode2string(const ETimeMarkMode e)
+{
+    switch (e)
+    {
+    case ETimeMarkMode::Single:
+        return "Single";
+    case ETimeMarkMode::Running:
+        return "Running";
+    default:
+        return "Unknown";
+    }
+}
+
+std::string timeMarkRun2string(const ETimeMarkRun e)
+{
+    switch (e)
+    {
+    case ETimeMarkRun::Armed:
+        return "Armed";
+    case ETimeMarkRun::Stopped:
+        return "Stopped";
+    default:
+        return "Unknown";
+    }
+}
+
+std::string timeMarkTimeBase2string(const ETimeMarkTimeBase e)
+{
+    switch (e)
+    {
+    case ETimeMarkTimeBase::ReceiverTime:
+        return "Receiver";
+    case ETimeMarkTimeBase::GnssTime:
+        return "GNSS";
+    case ETimeMarkTimeBase::UTC:
+        return "UTC";
+    default:
+        return "Unknown";
+    }
+}
+
 std::string utcTimeFromGnss_ISO8601(const PositionVelocityTime& pvt)
 {
     char buffer[32];

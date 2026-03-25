@@ -82,8 +82,8 @@ def main():
 
         hat.disable_time_mark_trigger()
 
-    toggle.join(timeout=2)
-    tm_reader.join(timeout=2)
+    toggle.join()
+    tm_reader.join()
 
     print("Exiting...")
     return 0

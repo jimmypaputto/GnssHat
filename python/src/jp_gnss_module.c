@@ -2918,6 +2918,8 @@ static PyObject* GnssHat_exit(GnssHat* self, PyObject* args)
         jp_gnss_hat_stop_forward_for_gpsd(self->hat);
         jp_gnss_hat_disable_timepulse(self->hat);
         jp_gnss_hat_disable_time_mark_trigger(self->hat);
+        jp_gnss_hat_destroy(self->hat);
+        self->hat = NULL;
     }
     Py_RETURN_NONE;
 }

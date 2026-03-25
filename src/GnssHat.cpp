@@ -161,6 +161,7 @@ public:
 
     ~GnssL1L5TimeHat() override
     {
+        disableTimeMarkTrigger();
         stopSource_.request_stop();
     }
 

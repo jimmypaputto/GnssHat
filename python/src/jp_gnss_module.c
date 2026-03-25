@@ -23,6 +23,7 @@ static PyTypeObject PulseType;
 static PyTypeObject TimepulsePinConfigType;
 static PyTypeObject UtcTimeType;
 static PyTypeObject DateType;
+static PyTypeObject TimeMarkType;
 
 typedef struct
 {
@@ -161,6 +162,27 @@ typedef struct
 typedef struct
 {
     PyObject_HEAD
+    uint8_t channel;
+    int mode;
+    int run;
+    PyObject* new_falling_edge;
+    int time_base;
+    PyObject* utc_available;
+    PyObject* time_valid;
+    PyObject* new_rising_edge;
+    uint16_t count;
+    uint16_t week_number_rising;
+    uint16_t week_number_falling;
+    uint32_t tow_rising_ms;
+    uint32_t tow_sub_rising_ns;
+    uint32_t tow_falling_ms;
+    uint32_t tow_sub_falling_ns;
+    uint32_t accuracy_estimate_ns;
+} TimeMark;
+
+typedef struct
+{
+    PyObject_HEAD
     uint32_t frequency;
     float pulse_width;
 } Pulse;
@@ -291,6 +313,128 @@ static PyTypeObject DateType = {
     .tp_str = (reprfunc)Date_str,
     .tp_repr = (reprfunc)Date_str,
     .tp_members = Date_members,
+};
+
+/* ---- TimeMark ---- */
+
+static PyObject* TimeMark_new(PyTypeObject* type, PyObject* args,
+    PyObject* kwds)
+{
+    TimeMark* self = (TimeMark*)type->tp_alloc(type, 0);
+    if (self)
+    {
+        self->channel = 0;
+        self->mode = 0;
+        self->run = 0;
+        self->new_falling_edge = Py_False;
+        Py_INCREF(Py_False);
+        self->time_base = 0;
+        self->utc_available = Py_False;
+        Py_INCREF(Py_False);
+        self->time_valid = Py_False;
+        Py_INCREF(Py_False);
+        self->new_rising_edge = Py_False;
+        Py_INCREF(Py_False);
+        self->count = 0;
+        self->week_number_rising = 0;
+        self->week_number_falling = 0;
+        self->tow_rising_ms = 0;
+        self->tow_sub_rising_ns = 0;
+        self->tow_falling_ms = 0;
+        self->tow_sub_falling_ns = 0;
+        self->accuracy_estimate_ns = 0;
+    }
+    return (PyObject*)self;
+}
+
+static void TimeMark_dealloc(TimeMark* self)
+{
+    Py_XDECREF(self->new_falling_edge);
+    Py_XDECREF(self->utc_available);
+    Py_XDECREF(self->time_valid);
+    Py_XDECREF(self->new_rising_edge);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject* TimeMark_str(TimeMark* self)
+{
+    char buffer[1024];
+    snprintf(
+        buffer,
+        sizeof(buffer),
+        "TimeMark(\n"
+        "    channel=%u\n"
+        "    mode=%s\n"
+        "    run=%s\n"
+        "    time_base=%s\n"
+        "    new_rising_edge=%s\n"
+        "    new_falling_edge=%s\n"
+        "    utc_available=%s\n"
+        "    time_valid=%s\n"
+        "    count=%u\n"
+        "    week_number_rising=%u\n"
+        "    week_number_falling=%u\n"
+        "    tow_rising_ms=%u\n"
+        "    tow_sub_rising_ns=%u\n"
+        "    tow_falling_ms=%u\n"
+        "    tow_sub_falling_ns=%u\n"
+        "    accuracy_estimate_ns=%u\n"
+        ")",
+        self->channel,
+        jp_gnss_time_mark_mode_to_string(
+            (jp_gnss_time_mark_mode_t)self->mode),
+        jp_gnss_time_mark_run_to_string(
+            (jp_gnss_time_mark_run_t)self->run),
+        jp_gnss_time_mark_time_base_to_string(
+            (jp_gnss_time_mark_time_base_t)self->time_base),
+        PyObject_IsTrue(self->new_rising_edge) ? "True" : "False",
+        PyObject_IsTrue(self->new_falling_edge) ? "True" : "False",
+        PyObject_IsTrue(self->utc_available) ? "True" : "False",
+        PyObject_IsTrue(self->time_valid) ? "True" : "False",
+        self->count,
+        self->week_number_rising,
+        self->week_number_falling,
+        self->tow_rising_ms,
+        self->tow_sub_rising_ns,
+        self->tow_falling_ms,
+        self->tow_sub_falling_ns,
+        self->accuracy_estimate_ns
+    );
+    return PyUnicode_FromString(buffer);
+}
+
+static PyMemberDef TimeMark_members[] = {
+    {"channel",              T_UBYTE,     offsetof(TimeMark, channel),              0, "Time mark channel"},
+    {"mode",                 T_INT,       offsetof(TimeMark, mode),                 0, "Mode (use TimeMarkMode IntEnum)"},
+    {"run",                  T_INT,       offsetof(TimeMark, run),                  0, "Run state (use TimeMarkRun IntEnum)"},
+    {"new_falling_edge",     T_OBJECT_EX, offsetof(TimeMark, new_falling_edge),     0, "New falling edge detected"},
+    {"time_base",            T_INT,       offsetof(TimeMark, time_base),            0, "Time base (use TimeMarkTimeBase IntEnum)"},
+    {"utc_available",        T_OBJECT_EX, offsetof(TimeMark, utc_available),        0, "UTC available"},
+    {"time_valid",           T_OBJECT_EX, offsetof(TimeMark, time_valid),           0, "Time valid"},
+    {"new_rising_edge",      T_OBJECT_EX, offsetof(TimeMark, new_rising_edge),      0, "New rising edge detected"},
+    {"count",                T_USHORT,    offsetof(TimeMark, count),                0, "Time mark count"},
+    {"week_number_rising",   T_USHORT,    offsetof(TimeMark, week_number_rising),   0, "Week number of rising edge"},
+    {"week_number_falling",  T_USHORT,    offsetof(TimeMark, week_number_falling),  0, "Week number of falling edge"},
+    {"tow_rising_ms",        T_UINT,      offsetof(TimeMark, tow_rising_ms),        0, "TOW of rising edge (ms)"},
+    {"tow_sub_rising_ns",    T_UINT,      offsetof(TimeMark, tow_sub_rising_ns),    0, "Sub-millisecond TOW of rising edge (ns)"},
+    {"tow_falling_ms",       T_UINT,      offsetof(TimeMark, tow_falling_ms),       0, "TOW of falling edge (ms)"},
+    {"tow_sub_falling_ns",   T_UINT,      offsetof(TimeMark, tow_sub_falling_ns),   0, "Sub-millisecond TOW of falling edge (ns)"},
+    {"accuracy_estimate_ns", T_UINT,      offsetof(TimeMark, accuracy_estimate_ns), 0, "Accuracy estimate (ns)"},
+    {NULL}
+};
+
+static PyTypeObject TimeMarkType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "jimmypaputto.gnsshat.TimeMark",
+    .tp_doc = "Time mark data from TIM-TM2",
+    .tp_basicsize = sizeof(TimeMark),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_new = TimeMark_new,
+    .tp_dealloc = (destructor)TimeMark_dealloc,
+    .tp_str = (reprfunc)TimeMark_str,
+    .tp_repr = (reprfunc)TimeMark_str,
+    .tp_members = TimeMark_members,
 };
 
 static PyObject* Geofence_new(PyTypeObject* type, PyObject* args,
@@ -1801,6 +1945,12 @@ static void populate_config_from_dict(PyObject* config_dict, jp_gnss_gnss_config
         config->has_geofencing = false;
     }
 
+    /* ── TimeMark config ────────────────────────────────────────────── */
+    config->enable_time_mark = false;
+    PyObject* enable_tm = PyDict_GetItemString(config_dict, "enable_time_mark");
+    if (enable_tm)
+        config->enable_time_mark = PyObject_IsTrue(enable_tm);
+
     /* ── RTK config ─────────────────────────────────────────────────── */
     config->has_rtk = false;
     PyObject* rtk_dict = PyDict_GetItemString(config_dict, "rtk");
@@ -2059,6 +2209,58 @@ static inline Navigation* Navigation_alloc(void)
         self->satellites = NULL;
     }
     return self;
+}
+
+static inline TimeMark* TimeMark_alloc(void)
+{
+    TimeMark* self =
+        (TimeMark*)TimeMarkType.tp_alloc(&TimeMarkType, 0);
+    if (self)
+    {
+        self->new_falling_edge = Py_False; Py_INCREF(Py_False);
+        self->utc_available = Py_False; Py_INCREF(Py_False);
+        self->time_valid = Py_False; Py_INCREF(Py_False);
+        self->new_rising_edge = Py_False; Py_INCREF(Py_False);
+    }
+    return self;
+}
+
+static PyObject* convert_time_mark_to_python(const jp_gnss_time_mark_t* tm)
+{
+    TimeMark* obj = TimeMark_alloc();
+    if (!obj)
+        return NULL;
+
+    obj->channel = tm->channel;
+    obj->mode = (int)tm->mode;
+    obj->run = (int)tm->run;
+    obj->time_base = (int)tm->time_base;
+    obj->count = tm->count;
+    obj->week_number_rising = tm->week_number_rising;
+    obj->week_number_falling = tm->week_number_falling;
+    obj->tow_rising_ms = tm->tow_rising_ms;
+    obj->tow_sub_rising_ns = tm->tow_sub_rising_ns;
+    obj->tow_falling_ms = tm->tow_falling_ms;
+    obj->tow_sub_falling_ns = tm->tow_sub_falling_ns;
+    obj->accuracy_estimate_ns = tm->accuracy_estimate_ns;
+
+    Py_DECREF(obj->new_falling_edge);
+    obj->new_falling_edge = tm->new_falling_edge ? Py_True : Py_False;
+    Py_INCREF(obj->new_falling_edge);
+
+    Py_DECREF(obj->utc_available);
+    obj->utc_available = tm->utc_available ? Py_True : Py_False;
+    Py_INCREF(obj->utc_available);
+
+    Py_DECREF(obj->time_valid);
+    obj->time_valid = tm->time_valid ? Py_True : Py_False;
+    Py_INCREF(obj->time_valid);
+
+    Py_DECREF(obj->new_rising_edge);
+    obj->new_rising_edge = tm->new_rising_edge ? Py_True : Py_False;
+    Py_INCREF(obj->new_rising_edge);
+
+    return (PyObject*)obj;
 }
 
 /* Private function to convert C navigation data to Python objects */
@@ -2635,6 +2837,74 @@ static PyObject* GnssHat_rtk_apply_corrections(GnssHat* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
+static PyObject* GnssHat_get_time_mark(GnssHat* self, PyObject* args)
+{
+    CHECK_HAT(self);
+    jp_gnss_time_mark_t tm;
+
+    bool result = jp_gnss_hat_get_time_mark(self->hat, &tm);
+    if (!result)
+        Py_RETURN_NONE;
+
+    return convert_time_mark_to_python(&tm);
+}
+
+static PyObject* GnssHat_wait_and_get_fresh_time_mark(GnssHat* self,
+    PyObject* args)
+{
+    CHECK_HAT(self);
+    jp_gnss_time_mark_t tm;
+    bool result;
+
+    Py_BEGIN_ALLOW_THREADS
+    result = jp_gnss_hat_wait_and_get_fresh_time_mark(self->hat, &tm);
+    Py_END_ALLOW_THREADS
+
+    if (!result)
+    {
+        PyErr_SetString(PyExc_RuntimeError,
+            "Failed to wait for time mark data");
+        return NULL;
+    }
+
+    return convert_time_mark_to_python(&tm);
+}
+
+static PyObject* GnssHat_enable_time_mark_trigger(GnssHat* self,
+    PyObject* args)
+{
+    CHECK_HAT(self);
+    bool result = jp_gnss_hat_enable_time_mark_trigger(self->hat);
+    if (!result)
+    {
+        PyErr_SetString(PyExc_RuntimeError,
+            "Failed to enable time mark trigger");
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject* GnssHat_disable_time_mark_trigger(GnssHat* self,
+    PyObject* args)
+{
+    CHECK_HAT(self);
+    jp_gnss_hat_disable_time_mark_trigger(self->hat);
+    Py_RETURN_NONE;
+}
+
+static PyObject* GnssHat_trigger_time_mark(GnssHat* self, PyObject* args)
+{
+    CHECK_HAT(self);
+    int edge = JP_GNSS_TIME_MARK_TRIGGER_EDGE_TOGGLE;
+
+    if (!PyArg_ParseTuple(args, "|i", &edge))
+        return NULL;
+
+    jp_gnss_hat_trigger_time_mark(self->hat,
+        (jp_gnss_time_mark_trigger_edge_t)edge);
+    Py_RETURN_NONE;
+}
+
 static PyObject* GnssHat_enter(GnssHat* self, PyObject* args)
 {
     Py_INCREF(self);
@@ -2647,6 +2917,7 @@ static PyObject* GnssHat_exit(GnssHat* self, PyObject* args)
     {
         jp_gnss_hat_stop_forward_for_gpsd(self->hat);
         jp_gnss_hat_disable_timepulse(self->hat);
+        jp_gnss_hat_disable_time_mark_trigger(self->hat);
     }
     Py_RETURN_NONE;
 }
@@ -2759,6 +3030,37 @@ static PyMethodDef GnssHat_methods[] = {
         METH_VARARGS,
         "Apply RTK corrections to a rover. "
         "Takes a list of bytes objects (RTCM3 frames)."
+    },
+    {
+        "get_time_mark",
+        (PyCFunction)GnssHat_get_time_mark,
+        METH_NOARGS,
+        "Get current time mark data. Returns TimeMark or None."
+    },
+    {
+        "wait_and_get_fresh_time_mark",
+        (PyCFunction)GnssHat_wait_and_get_fresh_time_mark,
+        METH_NOARGS,
+        "Wait for fresh time mark data (blocking)."
+    },
+    {
+        "enable_time_mark_trigger",
+        (PyCFunction)GnssHat_enable_time_mark_trigger,
+        METH_NOARGS,
+        "Enable time mark trigger on the EXTINT pin."
+    },
+    {
+        "disable_time_mark_trigger",
+        (PyCFunction)GnssHat_disable_time_mark_trigger,
+        METH_NOARGS,
+        "Disable time mark trigger."
+    },
+    {
+        "trigger_time_mark",
+        (PyCFunction)GnssHat_trigger_time_mark,
+        METH_VARARGS,
+        "Trigger a time mark event. Optional edge argument "
+        "(TimeMarkTriggerEdge, default TOGGLE)."
     },
     {
         "__enter__",
@@ -3113,6 +3415,8 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
         return NULL;
     if (PyType_Ready(&DateType) < 0)
         return NULL;
+    if (PyType_Ready(&TimeMarkType) < 0)
+        return NULL;
     
     m = PyModule_Create(&jimmypaputto_gnss_module);
     if (!m)
@@ -3163,6 +3467,9 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
 
     Py_INCREF(&GeofencingType);
     PyModule_AddObject(m, "Geofencing", (PyObject*)&GeofencingType);
+
+    Py_INCREF(&TimeMarkType);
+    PyModule_AddObject(m, "TimeMark", (PyObject*)&TimeMarkType);
 
     /* ── IntEnum helper ─────────────────────────────────────────────── */
     PyObject *enum_mod = PyImport_ImportModule("enum");
@@ -3303,6 +3610,32 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
     MAKE_ENUM("FixedPositionType",
         {"ECEF", JP_GNSS_FIXED_POSITION_ECEF},
         {"LLA",  JP_GNSS_FIXED_POSITION_LLA}
+    );
+
+    /* ── TimeMarkMode ───────────────────────────────────────────────── */
+    MAKE_ENUM("TimeMarkMode",
+        {"SINGLE",  JP_GNSS_TIME_MARK_MODE_SINGLE},
+        {"RUNNING", JP_GNSS_TIME_MARK_MODE_RUNNING}
+    );
+
+    /* ── TimeMarkRun ────────────────────────────────────────────────── */
+    MAKE_ENUM("TimeMarkRun",
+        {"ARMED",   JP_GNSS_TIME_MARK_RUN_ARMED},
+        {"STOPPED", JP_GNSS_TIME_MARK_RUN_STOPPED}
+    );
+
+    /* ── TimeMarkTimeBase ───────────────────────────────────────────── */
+    MAKE_ENUM("TimeMarkTimeBase",
+        {"RECEIVER", JP_GNSS_TIME_MARK_TIME_BASE_RECEIVER},
+        {"GNSS",     JP_GNSS_TIME_MARK_TIME_BASE_GNSS},
+        {"UTC",      JP_GNSS_TIME_MARK_TIME_BASE_UTC}
+    );
+
+    /* ── TimeMarkTriggerEdge ────────────────────────────────────────── */
+    MAKE_ENUM("TimeMarkTriggerEdge",
+        {"RISING",  JP_GNSS_TIME_MARK_TRIGGER_EDGE_RISING},
+        {"FALLING", JP_GNSS_TIME_MARK_TRIGGER_EDGE_FALLING},
+        {"TOGGLE",  JP_GNSS_TIME_MARK_TRIGGER_EDGE_TOGGLE}
     );
 
     /* ── GnssId ─────────────────────────────────────────────────────── */

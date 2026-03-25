@@ -116,3 +116,17 @@ Satellite visibility and signal quality example demonstrating:
 ```bash
 python print_satellites.py
 ```
+
+### 10. time_mark.py
+TimeMark example demonstrating:
+- Configuring the GNSS HAT with TimeMark enabled
+- Enabling the TimeMark trigger on the EXTINT pin
+- Toggling the EXTINT pin periodically to generate time mark events
+- Reading time mark data (TIM-TM2) with precise timestamps
+- Multi-threaded operation: trigger thread + reader thread
+
+**Requires:** L1/L5 GNSS TIME HAT (NEO-F10T)
+
+```bash
+python time_mark.py
+```

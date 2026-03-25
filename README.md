@@ -6,11 +6,11 @@ Driver library for Jimmy Paputto GNSS HATs on Raspberry Pi. Handles the full u-b
 
 The library auto-detects the HAT variant via `/proc/device-tree/hat/product`.
 
-| HAT | u-blox Module | Interface | RTK | Time Base | Geofencing |
-|-----|---------------|-----------|-----|-----------|------------|
-| L1 GNSS HAT | NEO-M9N | SPI | -- | -- | Up to 4 zones |
-| L1/L5 GNSS TIME HAT | NEO-F10T | UART | -- | Survey-In / Fixed Position | -- |
-| L1/L5 GNSS RTK HAT | NEO-F9P | SPI + UART | Base & Rover | -- | Up to 4 zones |
+| HAT | u-blox Module | Interface | RTK | Time Base | Time Mark | Geofencing |
+|-----|---------------|-----------|-----|-----------|-----------|------------|
+| L1 GNSS HAT | NEO-M9N | SPI | -- | -- | -- | Up to 4 zones |
+| L1/L5 GNSS TIME HAT | NEO-F10T | UART | -- | Survey-In / Fixed Position | EXTINT GPIO 17 | -- |
+| L1/L5 GNSS RTK HAT | NEO-F9P | SPI + UART | Base & Rover | -- | -- | Up to 4 zones |
 
 ## Installation
 
@@ -192,6 +192,10 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 | `rtk()` | RTK interface (`IRtk*`, non-null only on RTK HAT) |
 | `enableTimepulse()` / `disableTimepulse()` | Enable/disable timepulse GPIO (pin 5) |
 | `timepulse()` | Block until next timepulse |
+| `timeMark()` | Return last `TimeMark` or `std::nullopt` (non-blocking) |
+| `waitAndGetFreshTimeMark()` | Block until new TimeMark event arrives |
+| `enableTimeMarkTrigger()` / `disableTimeMarkTrigger()` | Enable/disable EXTINT trigger on GPIO 17 |
+| `triggerTimeMark(edge)` | Manually toggle/raise/lower EXTINT pin |
 | `startForwardForGpsd()` / `stopForwardForGpsd()` | NMEA forwarding to virtual serial port for gpsd |
 | `joinForwardForGpsd()` | Block until forwarder thread finishes |
 | `getGpsdDevicePath()` | Virtual serial port path (for gpsd config) |
@@ -217,6 +221,7 @@ Include `<jimmypaputto/GnssHat.h>`. All functions are prefixed with `jp_gnss_hat
 | `timepulsePinConfig` | `TimepulsePinConfig` | Time pulse output on GPIO 5: enable/disable, frequency, pulse width (0.0--0.99), polarity, optional separate pulse config when no fix |
 | `geofencing` | `optional` | Up to 4 geofences (lat, lon, radius), confidence level (0--5 sigma), optional PIO pin polarity. **Not supported on TIME HAT** |
 | `rtk` | `optional` | RTK mode (Base or Rover). Base supports Survey-In or Fixed Position (ECEF/LLA). **Only for RTK HAT** |
+| `enableTimeMark` | `bool` | Enable UBX-TIM-TM2 time mark messages. **Only for TIME HAT** |
 | `timeBase` | `optional` | Time base mode for improved time accuracy. Survey-In or Fixed Position (ECEF/LLA). **Only for TIME HAT** |
 
 ## Navigation Data
@@ -232,6 +237,8 @@ Include `<jimmypaputto/GnssHat.h>`. All functions are prefixed with `jp_gnss_hat
 | `geofencing` | UBX-NAV-GEOFENCE | Combined and per-fence state (Unknown/Inside/Outside), geofence config readback |
 
 Full field documentation is in the C++ headers: [`Navigation.hpp`](src/ublox/Navigation.hpp), [`PositionVelocityTime.hpp`](src/ublox/PositionVelocityTime.hpp), [`DilutionOverPrecision.hpp`](src/ublox/DilutionOverPrecision.hpp), [`SatelliteInfo.hpp`](src/ublox/SatelliteInfo.hpp), [`RFBlock.hpp`](src/ublox/RFBlock.hpp), [`Geofencing.hpp`](src/ublox/Geofencing.hpp).
+
+`TimeMark` (UBX-TIM-TM2) is a separate data stream, not part of `Navigation`. Access it via `timeMark()` or `waitAndGetFreshTimeMark()`. See [`TimeMark.hpp`](src/ublox/TimeMark.hpp).
 
 ## Features
 
@@ -285,6 +292,38 @@ GnssConfig config {
 
 See the TimeBase examples in `examples/CPP/TimeBase/`, `examples/C/TimeBase/` and `examples/Python/time_base.py`.
 
+### TimeMark (L1/L5 TIME HAT only)
+
+Precise event timestamping via the UBX-TIM-TM2 message. The receiver detects rising and falling edges on the EXTINT pin (GPIO 17) and timestamps them with nanosecond accuracy using GNSS time.
+
+Enable with `enableTimeMark = true` in config, then read events with `waitAndGetFreshTimeMark()` (blocking) or `timeMark()` (polling). The library can also drive the EXTINT pin itself via `enableTimeMarkTrigger()` + `triggerTimeMark()` for software-triggered time marks.
+
+Each `TimeMark` contains: rising/falling edge TOW (ms + sub-ms ns), week number, event count, accuracy estimate (ns), time base (Receiver/GNSS/UTC), and edge detection flags.
+
+```cpp
+// C++ -- enable and read time marks
+GnssConfig config {
+    .measurementRate_Hz = 1,
+    .dynamicModel = EDynamicModel::Stationary,
+    .timepulsePinConfig = { .active = true, .fixedPulse = { 1, 0.1 },
+        .pulseWhenNoFix = std::nullopt,
+        .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond },
+    .geofencing = std::nullopt,
+    .rtk = std::nullopt,
+    .enableTimeMark = true
+};
+
+hat->start(config);
+hat->enableTimeMarkTrigger();
+hat->triggerTimeMark();  // toggle EXTINT
+
+auto tm = hat->waitAndGetFreshTimeMark();
+printf("rising TOW: %u ms + %u ns, accuracy: %u ns\n",
+    tm.towRising_ms, tm.towSubRising_ns, tm.accuracyEstimate_ns);
+```
+
+See the TimeMark examples in `examples/CPP/TimeMark/`, `examples/C/TimeMark/` and `examples/Python/time_mark.py`.
+
 ### Geofencing
 
 Configure up to 4 circular geofences (lat, lon, radius). The receiver reports per-fence and combined Inside/Outside/Unknown state. Supports PIO pin output for hardware signaling (drives LED and relay on HAT). Not available on the TIME HAT.
@@ -315,6 +354,7 @@ A complete guide for setting up a PPS-disciplined time server using chrony + gps
 | `examples/CPP/HotStart` | C++ | Cold vs hot start timing benchmark |
 | `examples/CPP/RTK` | C++ | RTK base station and rover |
 | `examples/CPP/TimeBase` | C++ | Time base mode for improved time accuracy |
+| `examples/CPP/TimeMark` | C++ | EXTINT time mark event timestamping |
 | `examples/C/` | C | Same set of examples using the C API |
 | `examples/Python/` | Python | Same set + JSON config loader + NTRIP rover ([README](examples/Python/README.md)) |
 | `examples/GpsdIntegration/` | C++ | Systemd daemon for gpsd bridging ([README](examples/GpsdIntegration/README.md)) |

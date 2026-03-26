@@ -29,10 +29,12 @@ GnssConfig createSurveyInConfig()
         },
         .geofencing = std::nullopt,
         .rtk = std::nullopt,
-        .timeBase = BaseConfig {
-            .mode = BaseConfig::SurveyIn {
-                .minimumObservationTime_s = 120,
-                .requiredPositionAccuracy_m = 50.0
+        .timing = TimingConfig {
+            .timeBase = BaseConfig {
+                .mode = BaseConfig::SurveyIn {
+                    .minimumObservationTime_s = 120,
+                    .requiredPositionAccuracy_m = 50.0
+                }
             }
         }
     };
@@ -51,14 +53,16 @@ GnssConfig createFixedPositionConfig_Lla()
         },
         .geofencing = std::nullopt,
         .rtk = std::nullopt,
-        .timeBase = BaseConfig {
-            .mode = BaseConfig::FixedPosition {
-                .position = BaseConfig::FixedPosition::Lla {
-                    .latitude_deg  = 52.232222222,
-                    .longitude_deg = 21.008055556,
-                    .height_m      = 110.0
-                },
-                .positionAccuracy_m = 0.5
+        .timing = TimingConfig {
+            .timeBase = BaseConfig {
+                .mode = BaseConfig::FixedPosition {
+                    .position = BaseConfig::FixedPosition::Lla {
+                        .latitude_deg  = 52.232222222,
+                        .longitude_deg = 21.008055556,
+                        .height_m      = 110.0
+                    },
+                    .positionAccuracy_m = 0.5
+                }
             }
         }
     };
@@ -77,14 +81,16 @@ GnssConfig createFixedPositionConfig_Ecef()
         },
         .geofencing = std::nullopt,
         .rtk = std::nullopt,
-        .timeBase = BaseConfig {
-            .mode = BaseConfig::FixedPosition {
-                .position = BaseConfig::FixedPosition::Ecef {
-                    .x_m = 3656215.987,
-                    .y_m = 1409547.654,
-                    .z_m = 5049982.321
-                },
-                .positionAccuracy_m = 0.5
+        .timing = TimingConfig {
+            .timeBase = BaseConfig {
+                .mode = BaseConfig::FixedPosition {
+                    .position = BaseConfig::FixedPosition::Ecef {
+                        .x_m = 3656215.987,
+                        .y_m = 1409547.654,
+                        .z_m = 5049982.321
+                    },
+                    .positionAccuracy_m = 0.5
+                }
             }
         }
     };

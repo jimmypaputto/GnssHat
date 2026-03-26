@@ -63,7 +63,8 @@ jp_gnss_gnss_config_t create_config(void)
     config.timepulse_pin_config.polarity =
         JP_GNSS_TIMEPULSE_POLARITY_RISING_EDGE;
 
-    config.enable_time_mark = true;
+    config.has_timing = true;
+    config.timing.enable_time_mark = true;
 
     return config;
 }

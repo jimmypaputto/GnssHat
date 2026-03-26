@@ -1390,10 +1390,11 @@ function populateFormFromConfig(config) {
         }
     }
 
-    // Time Base
-    const tb = config.time_base;
+    // Timing (enable_time_mark + time_base)
+    const timing = config.timing;
     const tbEn = document.getElementById('cfg-tb-en');
     if (tbEn) {
+        const tb = timing && timing.time_base ? timing.time_base : null;
         if (tb && tb.base_mode !== undefined && tb.base_mode !== null) {
             tbEn.checked = true;
             document.getElementById('cfg-tb-details').style.display = '';
@@ -1437,7 +1438,7 @@ function populateFormFromConfig(config) {
     // Enable Time Mark
     const tmEn = document.getElementById('cfg-tm-en');
     if (tmEn) {
-        tmEn.checked = !!config.enable_time_mark;
+        tmEn.checked = !!(timing && timing.enable_time_mark);
     }
 
     // ROS 2 specific fields
@@ -1554,47 +1555,55 @@ function buildConfigFromForm() {
         config.rtk = null;
     }
 
-    // Time Base
+    // Timing (enable_time_mark + time_base)
     const tbEn = document.getElementById('cfg-tb-en');
-    if (tbEn && tbEn.checked) {
-        const baseMode = parseInt(document.getElementById('cfg-tb-basemode').value);
-        const tb = { base_mode: baseMode };
-
-        if (baseMode === 0) { // Survey-In
-            tb.survey_in = {
-                minimum_observation_time_s: parseInt(document.getElementById('cfg-tb-si-obs').value) || 120,
-                required_position_accuracy_m: parseFloat(document.getElementById('cfg-tb-si-acc').value) || 50.0,
-            };
-        } else { // Fixed Position
-            const posType = parseInt(document.getElementById('cfg-tb-fp-type').value);
-            const fp = {
-                position_type: posType,
-                position_accuracy_m: parseFloat(document.getElementById('cfg-tb-fp-acc').value) || 0.5,
-            };
-            if (posType === 0) { // ECEF
-                fp.ecef = {
-                    x_m: parseFloat(document.getElementById('cfg-tb-ecef-x').value) || 0,
-                    y_m: parseFloat(document.getElementById('cfg-tb-ecef-y').value) || 0,
-                    z_m: parseFloat(document.getElementById('cfg-tb-ecef-z').value) || 0,
-                };
-            } else { // LLA
-                fp.lla = {
-                    latitude_deg: parseFloat(document.getElementById('cfg-tb-lla-lat').value) || 0,
-                    longitude_deg: parseFloat(document.getElementById('cfg-tb-lla-lon').value) || 0,
-                    height_m: parseFloat(document.getElementById('cfg-tb-lla-h').value) || 0,
-                };
-            }
-            tb.fixed_position = fp;
-        }
-        config.time_base = tb;
-    } else if (tbEn) {
-        config.time_base = null;
-    }
-
-    // Enable Time Mark
     const tmEnEl = document.getElementById('cfg-tm-en');
-    if (tmEnEl) {
-        config.enable_time_mark = tmEnEl.checked;
+    const hasTimeBase = tbEn && tbEn.checked;
+    const hasTimeMark = tmEnEl && tmEnEl.checked;
+
+    if (hasTimeBase || hasTimeMark) {
+        const timing = {
+            enable_time_mark: !!hasTimeMark,
+        };
+
+        if (hasTimeBase) {
+            const baseMode = parseInt(document.getElementById('cfg-tb-basemode').value);
+            const tb = { base_mode: baseMode };
+
+            if (baseMode === 0) { // Survey-In
+                tb.survey_in = {
+                    minimum_observation_time_s: parseInt(document.getElementById('cfg-tb-si-obs').value) || 120,
+                    required_position_accuracy_m: parseFloat(document.getElementById('cfg-tb-si-acc').value) || 50.0,
+                };
+            } else { // Fixed Position
+                const posType = parseInt(document.getElementById('cfg-tb-fp-type').value);
+                const fp = {
+                    position_type: posType,
+                    position_accuracy_m: parseFloat(document.getElementById('cfg-tb-fp-acc').value) || 0.5,
+                };
+                if (posType === 0) { // ECEF
+                    fp.ecef = {
+                        x_m: parseFloat(document.getElementById('cfg-tb-ecef-x').value) || 0,
+                        y_m: parseFloat(document.getElementById('cfg-tb-ecef-y').value) || 0,
+                        z_m: parseFloat(document.getElementById('cfg-tb-ecef-z').value) || 0,
+                    };
+                } else { // LLA
+                    fp.lla = {
+                        latitude_deg: parseFloat(document.getElementById('cfg-tb-lla-lat').value) || 0,
+                        longitude_deg: parseFloat(document.getElementById('cfg-tb-lla-lon').value) || 0,
+                        height_m: parseFloat(document.getElementById('cfg-tb-lla-h').value) || 0,
+                    };
+                }
+                tb.fixed_position = fp;
+            }
+            timing.time_base = tb;
+        } else {
+            timing.time_base = null;
+        }
+
+        config.timing = timing;
+    } else {
+        config.timing = null;
     }
 
     // ROS 2 specific fields

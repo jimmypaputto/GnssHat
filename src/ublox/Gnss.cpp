@@ -70,6 +70,26 @@ void Gnss::satellites(const std::vector<SatelliteInfo>& satellites)
     }
 }
 
+void Gnss::timeMark(const TimeMark& timeMark)
+{
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        timeMark_ = timeMark;
+        xSemaphore_.releaseResource();
+    }
+}
+
+std::optional<TimeMark> Gnss::timeMark() const
+{
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        auto tm = timeMark_;
+        xSemaphore_.releaseResource();
+        return tm;
+    }
+    return std::nullopt;
+}
+
 bool Gnss::lock() const
 {
     return xSemaphore_.takeResource(SEMAPHORE_TIMEOUT);

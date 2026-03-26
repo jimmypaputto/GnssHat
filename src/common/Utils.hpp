@@ -18,6 +18,7 @@
 bool try3times(std::function<bool()> configureFunction);
 
 void setGpio(const char* chipname, const uint32_t line_num, int value);
+int getGpio(const char* chipname, const uint32_t line_num);
 
 template<typename E, E beginVal, E endVal>
 constexpr uint8_t countEnum()

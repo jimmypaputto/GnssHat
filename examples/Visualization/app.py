@@ -183,6 +183,7 @@ def create_default_config():
         'geofencing': None,
         'rtk': None,
         'time_base': None,
+        'enable_time_mark': False,
     }
 
 
@@ -194,6 +195,45 @@ def format_time_accuracy(accuracy_ns):
         return f"{accuracy_ns / 1000:.1f} µs"
     else:
         return f"{accuracy_ns / 1_000_000:.1f} ms"
+
+
+def time_mark_to_data(tm):
+    """Convert TimeMark object from GnssHat to dict for the frontend"""
+    from jimmypaputto import gnsshat
+
+    mode_map = {
+        int(gnsshat.TimeMarkMode.SINGLE): "Single",
+        int(gnsshat.TimeMarkMode.RUNNING): "Running",
+    }
+    run_map = {
+        int(gnsshat.TimeMarkRun.ARMED): "Armed",
+        int(gnsshat.TimeMarkRun.STOPPED): "Stopped",
+    }
+    time_base_map = {
+        int(gnsshat.TimeMarkTimeBase.RECEIVER): "Receiver",
+        int(gnsshat.TimeMarkTimeBase.GNSS): "GNSS",
+        int(gnsshat.TimeMarkTimeBase.UTC): "UTC",
+    }
+
+    return {
+        'channel': int(tm.channel),
+        'mode': mode_map.get(tm.mode, "Unknown"),
+        'run': run_map.get(tm.run, "Unknown"),
+        'new_falling_edge': bool(tm.new_falling_edge),
+        'time_base': time_base_map.get(tm.time_base, "Unknown"),
+        'utc_available': bool(tm.utc_available),
+        'time_valid': bool(tm.time_valid),
+        'new_rising_edge': bool(tm.new_rising_edge),
+        'count': int(tm.count),
+        'week_number_rising': int(tm.week_number_rising),
+        'week_number_falling': int(tm.week_number_falling),
+        'tow_rising_ms': int(tm.tow_rising_ms),
+        'tow_sub_rising_ns': int(tm.tow_sub_rising_ns),
+        'tow_falling_ms': int(tm.tow_falling_ms),
+        'tow_sub_falling_ns': int(tm.tow_sub_falling_ns),
+        'accuracy_estimate_ns': int(tm.accuracy_estimate_ns),
+        'accuracy_estimate': format_time_accuracy(int(tm.accuracy_estimate_ns)),
+    }
 
 
 def nav_to_pvt_data(nav):
@@ -409,6 +449,15 @@ def native_reader_thread():
                 data.update(extra)
             except Exception as e:
                 print(f"Error serializing extra nav data: {e}")
+
+            # Check for time mark data (non-blocking)
+            if gps_state.get('time_mark_enabled'):
+                try:
+                    tm = hat.get_time_mark()
+                    if tm is not None:
+                        data['time_mark'] = time_mark_to_data(tm)
+                except Exception as e:
+                    print(f"Error reading time mark: {e}")
 
             gps_state['current_data'] = data
             socketio.emit('gps_update', data, namespace='/')
@@ -1054,6 +1103,9 @@ def json_to_native_config(data):
     else:
         config['rtk'] = None
 
+    # Enable Time Mark
+    config['enable_time_mark'] = bool(data.get('enable_time_mark', False))
+
     # Time Base
     time_base = data.get('time_base')
     if time_base and time_base.get('base_mode') is not None:
@@ -1163,6 +1215,18 @@ def api_set_config():
             gps_state['hat'] = hat
             gps_state['current_config'] = config
             gps_state['reference_position'] = None  # Reset so map re-calibrates
+
+            # Enable time mark trigger if configured
+            tm_enabled = config.get('enable_time_mark', False)
+            gps_state['time_mark_enabled'] = tm_enabled
+            if tm_enabled:
+                try:
+                    hat.enable_time_mark_trigger()
+                    print("TimeMark trigger enabled")
+                except Exception as e:
+                    print(f"Warning: could not enable time mark trigger: {e}")
+                    gps_state['time_mark_enabled'] = False
+
             gps_state['running'] = True
             gps_state['thread'] = threading.Thread(target=native_reader_thread, daemon=True)
             gps_state['thread'].start()
@@ -1309,6 +1373,18 @@ def start_gps_native():
         gps_state['hat'] = hat
         gps_state['hat_name'] = hat_name
         gps_state['current_config'] = config
+
+        # Enable time mark trigger if configured
+        tm_enabled = config.get('enable_time_mark', False)
+        gps_state['time_mark_enabled'] = tm_enabled
+        if tm_enabled:
+            try:
+                hat.enable_time_mark_trigger()
+                print("TimeMark trigger enabled")
+            except Exception as e:
+                print(f"Warning: could not enable time mark trigger: {e}")
+                gps_state['time_mark_enabled'] = False
+
         gps_state['running'] = True
         gps_state['thread'] = threading.Thread(target=native_reader_thread, daemon=True)
         gps_state['thread'].start()
@@ -1373,6 +1449,14 @@ def stop_gps():
     """Stop GPS data source"""
     print("Stopping GPS...")
     gps_state['running'] = False
+
+    # Disable time mark trigger before stopping
+    if gps_state.get('time_mark_enabled') and gps_state.get('hat'):
+        try:
+            gps_state['hat'].disable_time_mark_trigger()
+        except Exception:
+            pass
+        gps_state['time_mark_enabled'] = False
     
     if gps_state['thread']:
         gps_state['thread'].join(timeout=5)

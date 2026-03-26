@@ -337,6 +337,57 @@
                     <div id="rf-blocks-container">
                         <p class="rf-no-data">Waiting for data...</p>
                     </div>
+
+                    {% if hat_name == 'L1/L5 GNSS TIME HAT' %}
+                    <table class="data-table">
+                        <tbody>
+                            <tr class="section-header">
+                                <td colspan="2">⏱️ Time Mark</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Status</td>
+                                <td class="data-value" id="data-tm-status">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Mode</td>
+                                <td class="data-value" id="data-tm-mode">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Run</td>
+                                <td class="data-value" id="data-tm-run">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Time Base</td>
+                                <td class="data-value" id="data-tm-timebase">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Time Valid</td>
+                                <td class="data-value" id="data-tm-timevalid">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">UTC Available</td>
+                                <td class="data-value" id="data-tm-utc">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Count</td>
+                                <td class="data-value" id="data-tm-count">0</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Accuracy</td>
+                                <td class="data-value" id="data-tm-accuracy">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Rising Edge</td>
+                                <td class="data-value" id="data-tm-rising">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Falling Edge</td>
+                                <td class="data-value" id="data-tm-falling">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    {% endif %}
+
                     </div>
                     {% endif %}
                 </div>
@@ -630,6 +681,17 @@
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        </fieldset>
+
+                        <!-- Time Mark -->
+                        <fieldset class="cfg-section">
+                            <legend>📌 Time Mark</legend>
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-tm-en" class="cfg-checkbox">
+                                    Enable Time Mark
+                                </label>
                             </div>
                         </fieldset>
                         {% endif %}

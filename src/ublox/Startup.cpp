@@ -37,11 +37,7 @@ StartupBase::StartupBase(ICommDriver& commDriver,
 
 bool StartupBase::saveCurrentConfigToFlash()
 {
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_CFG)];
-    ack = false;
-    commDriver_.transmitReceive(ubxmsg::UBX_CFG_CFG::saveToFlash(), rxBuff_);
-    ubxParser_.parse(rxBuff_);
-    return ack;
+    return awaitAck(ubxmsg::UBX_CFG_CFG::saveToFlash(), EUbxMsg::UBX_CFG_CFG);
 }
 
 enum class E_CFG_PULSE_DEF : uint8_t

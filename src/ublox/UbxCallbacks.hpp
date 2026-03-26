@@ -22,7 +22,8 @@ class UbxCallbacks
 {
 public:
     explicit UbxCallbacks(IUbloxConfigRegistry& configRegistry,
-        Notifier& navigationNotifier, const bool callbackNotificationEnabled);
+        Notifier& navigationNotifier, Notifier& timeMarkNotifier,
+        const bool callbackNotificationEnabled);
 
     void run(ubxmsg::IUbxMsg& ubxMsg, const EUbxMsg& eUbxMsg);
 
@@ -32,6 +33,7 @@ private:
 
     std::array<std::function<void(ubxmsg::IUbxMsg&)>, numberOfUbxMsgs> callbacks_;
     Notifier& navigationNotifier_;
+    Notifier& timeMarkNotifier_;
     const bool callbackNotificationEnabled_;
 };
 

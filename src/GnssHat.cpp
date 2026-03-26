@@ -17,6 +17,7 @@
 #include "ublox/Run.hpp"
 #include "ublox/SpiDriver.hpp"
 #include "ublox/Timepulse.hpp"
+#include "ublox/TimeMarkTrigger.hpp"
 #include "ublox/TxReady.hpp"
 #include "ublox/UartDriver.hpp"
 #include "ublox/Ublox.hpp"
@@ -93,6 +94,13 @@ public:
     void softResetUbloxSom_HotStart() override;
     void timepulse() override;
 
+    std::optional<TimeMark> timeMark() const override;
+    TimeMark waitAndGetFreshTimeMark() override;
+
+    bool enableTimeMarkTrigger() override;
+    void disableTimeMarkTrigger() override;
+    void triggerTimeMark(ETimeMarkTriggerEdge edge) override;
+
 protected:
     void stopUbloxThread();
     virtual std::optional<std::reference_wrapper<Rtcm3Store>> rtcm3Store();
@@ -110,6 +118,7 @@ protected:
     Notifier txReadyNotifier_;
     Notifier timepulseNotifier_;
     Notifier navigationNotifier_;
+    Notifier timeMarkNotifier_;
     GnssConfig config_;
 
     std::jthread ubloxThread_;
@@ -147,12 +156,14 @@ class GnssL1L5TimeHat : public GnssHat
 {
 public:
     explicit GnssL1L5TimeHat()
-    :   GnssHat(
-            std::make_unique<UartDriver>()
-        )
+    :   GnssHat(std::make_unique<UartDriver>())
     {}
 
-    ~GnssL1L5TimeHat() override = default;
+    ~GnssL1L5TimeHat() override
+    {
+        disableTimeMarkTrigger();
+        stopSource_.request_stop();
+    }
 
     bool start(const GnssConfig& config) override
     {
@@ -168,15 +179,77 @@ public:
     {
         return nullptr;
     }
+
+    std::optional<TimeMark> timeMark() const override
+    {
+        return gnss_.timeMark();
+    }
+
+    TimeMark waitAndGetFreshTimeMark() override
+    {
+        timeMarkNotifier_.wait(stopSource_.get_token());
+        return Gnss::instance().timeMark().value_or(TimeMark{});
+    }
+
+    bool enableTimeMarkTrigger() override
+    {
+        if (timeMarkTriggerEnabled_.load())
+        {
+            fprintf(stderr, "[GNSS] TimeMarkTrigger already enabled\r\n");
+            return true;
+        }
+
+        timeMarkTrigger_ = std::make_unique<TimeMarkTrigger>();
+        timeMarkTriggerEnabled_.store(true);
+        return true;
+    }
+
+    void disableTimeMarkTrigger() override
+    {
+        if (!timeMarkTriggerEnabled_.load())
+            return;
+
+        timeMarkTrigger_.reset();
+        timeMarkTriggerEnabled_.store(false);
+    }
+
+    void triggerTimeMark(ETimeMarkTriggerEdge edge) override
+    {
+        if (!timeMarkTriggerEnabled_.load() || !timeMarkTrigger_)
+        {
+            fprintf(
+                stderr,
+                "[GNSS] TimeMarkTrigger not enabled. "
+                "Call enableTimeMarkTrigger() first.\r\n"
+            );
+            return;
+        }
+
+        switch (edge)
+        {
+            case ETimeMarkTriggerEdge::Rising:
+                timeMarkTrigger_->raise();
+                break;
+            case ETimeMarkTriggerEdge::Falling:
+                timeMarkTrigger_->fall();
+                break;
+            case ETimeMarkTriggerEdge::Toggle:
+                timeMarkTrigger_->toggle();
+                break;
+        }
+    }
+
+private:
+    std::stop_source stopSource_;
+    std::unique_ptr<TimeMarkTrigger> timeMarkTrigger_;
+    std::atomic<bool> timeMarkTriggerEnabled_{false};
 };
 
 class GnssL1L5TRtkHat : public GnssHat
 {
 public:
     explicit GnssL1L5TRtkHat()
-    :   GnssHat(
-            std::make_unique<SpiDriver>()
-        ),
+    :   GnssHat(std::make_unique<SpiDriver>()),
         rtk_(nullptr)
     {}
 
@@ -271,15 +344,26 @@ bool validateConfig(const GnssConfig& config)
     if constexpr (std::is_same_v<StartupStrategy, M9NStartup> ||
         std::is_same_v<StartupStrategy, F9PStartup>)
     {
+        if (config.enableTimeMark)
+        {
+            fprintf(
+                stderr,
+                "[GnssConfig] TimeMark is not supported on this HAT - "
+                "use L1/L5 GNSS TIME HAT\r\n"
+            );
+            return false;
+        }
+
         if (config.timeBase.has_value())
         {
             fprintf(
                 stderr,
-                "[GnssConfig] timeBase is only supported on F10T - "
+                "[GnssConfig] TimeBase is only supported on F10T - "
                 "must be nullopt\r\n"
             );
             return false;
         }
+
         return checkGeofencing(config.geofencing);
     }
     else if constexpr (std::is_same_v<StartupStrategy, F10TStartup>)
@@ -322,7 +406,8 @@ bool GnssHat::start(const GnssConfig& config)
     constexpr bool callbackNotificationEnabled =
         std::is_same_v<RunStrategy, F10TRun>;
     ubxParser_ = std::make_unique<UbxParser>(
-        *configRegistry_, navigationNotifier_, callbackNotificationEnabled
+        *configRegistry_, navigationNotifier_, timeMarkNotifier_,
+        callbackNotificationEnabled
     );
     startupStrategy_ = std::make_unique<StartupStrategy>(
         *commDriver_, *configRegistry_, *ubxParser_
@@ -444,6 +529,49 @@ void GnssHat::timepulse()
         return;
     }
     timepulseNotifier_.wait();
+}
+
+std::optional<TimeMark> GnssHat::timeMark() const
+{
+    fprintf(stderr,
+        "[GNSS] TimeMark is not supported on %.*s. "
+        "Use L1/L5 GNSS TIME HAT.\r\n",
+        static_cast<int>(name().size()), name().data());
+    return std::nullopt;
+}
+
+TimeMark GnssHat::waitAndGetFreshTimeMark()
+{
+    fprintf(stderr,
+        "[GNSS] TimeMark is not supported on %.*s. "
+        "Use L1/L5 GNSS TIME HAT.\r\n",
+        static_cast<int>(name().size()), name().data());
+    return {};
+}
+
+bool GnssHat::enableTimeMarkTrigger()
+{
+    fprintf(stderr,
+        "[GNSS] TimeMarkTrigger is not supported on %.*s. "
+        "Use L1/L5 GNSS TIME HAT.\r\n",
+        static_cast<int>(name().size()), name().data());
+    return false;
+}
+
+void GnssHat::disableTimeMarkTrigger()
+{
+    fprintf(stderr,
+        "[GNSS] TimeMarkTrigger is not supported on %.*s. "
+        "Use L1/L5 GNSS TIME HAT.\r\n",
+        static_cast<int>(name().size()), name().data());
+}
+
+void GnssHat::triggerTimeMark(ETimeMarkTriggerEdge)
+{
+    fprintf(stderr,
+        "[GNSS] TimeMarkTrigger is not supported on %.*s. "
+        "Use L1/L5 GNSS TIME HAT.\r\n",
+        static_cast<int>(name().size()), name().data());
 }
 
 bool GnssHat::startForwardForGpsd()
@@ -657,6 +785,95 @@ std::string geofenceStatus2string(const EGeofenceStatus e)
         return "Inside";
     case EGeofenceStatus::Outside:
         return "Outside";
+    default:
+        return "Unknown";
+    }
+}
+
+std::string gnssId2string(const EGnssId e)
+{
+    switch (e)
+    {
+    case EGnssId::GPS:
+        return "GPS";
+    case EGnssId::SBAS:
+        return "SBAS";
+    case EGnssId::Galileo:
+        return "Galileo";
+    case EGnssId::BeiDou:
+        return "BeiDou";
+    case EGnssId::IMES:
+        return "IMES";
+    case EGnssId::QZSS:
+        return "QZSS";
+    case EGnssId::GLONASS:
+        return "GLONASS";
+    default:
+        return "Unknown";
+    }
+}
+
+std::string svQuality2string(const ESvQuality e)
+{
+    switch (e)
+    {
+    case ESvQuality::NoSignal:
+        return "No signal";
+    case ESvQuality::Searching:
+        return "Searching";
+    case ESvQuality::SignalAcquired:
+        return "Signal acquired";
+    case ESvQuality::SignalDetectedButUnusable:
+        return "Signal detected but unusable";
+    case ESvQuality::CodeLockedAndTimeSynchronized:
+        return "Code locked and time synchronized";
+    case ESvQuality::CodeAndCarrierLocked1:
+        return "Code and carrier locked (1)";
+    case ESvQuality::CodeAndCarrierLocked2:
+        return "Code and carrier locked (2)";
+    case ESvQuality::CodeAndCarrierLocked3:
+        return "Code and carrier locked (3)";
+    default:
+        return "Unknown";
+    }
+}
+
+std::string timeMarkMode2string(const ETimeMarkMode e)
+{
+    switch (e)
+    {
+    case ETimeMarkMode::Single:
+        return "Single";
+    case ETimeMarkMode::Running:
+        return "Running";
+    default:
+        return "Unknown";
+    }
+}
+
+std::string timeMarkRun2string(const ETimeMarkRun e)
+{
+    switch (e)
+    {
+    case ETimeMarkRun::Armed:
+        return "Armed";
+    case ETimeMarkRun::Stopped:
+        return "Stopped";
+    default:
+        return "Unknown";
+    }
+}
+
+std::string timeMarkTimeBase2string(const ETimeMarkTimeBase e)
+{
+    switch (e)
+    {
+    case ETimeMarkTimeBase::ReceiverTime:
+        return "Receiver";
+    case ETimeMarkTimeBase::GnssTime:
+        return "GNSS";
+    case ETimeMarkTimeBase::UTC:
+        return "UTC";
     default:
         return "Unknown";
     }

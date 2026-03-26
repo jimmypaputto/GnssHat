@@ -555,6 +555,11 @@ function updateGPSData(data) {
             updateRfBlocks(data.rf_blocks);
         }
 
+        // Time Mark
+        if (data.time_mark) {
+            updateTimeMark(data.time_mark);
+        }
+
         // Satellites → sky view
         if (data.satellites) {
             updateSkyView(data.satellites);
@@ -611,6 +616,29 @@ function updateRfBlocks(rfBlocks) {
         </div>`;
     }
     container.innerHTML = html;
+}
+
+function updateTimeMark(tm) {
+    updateDataField('data-tm-status', 'Active');
+    updateDataField('data-tm-mode', tm.mode);
+    updateDataField('data-tm-run', tm.run);
+    updateDataField('data-tm-timebase', tm.time_base);
+    updateDataField('data-tm-timevalid', tm.time_valid ? 'Yes' : 'No');
+    updateDataField('data-tm-utc', tm.utc_available ? 'Yes' : 'No');
+    updateDataField('data-tm-count', tm.count);
+    updateDataField('data-tm-accuracy', tm.accuracy_estimate);
+
+    // Format TOW rising: week + tow_ms + sub_ns
+    const risingMs = tm.tow_rising_ms;
+    const risingSub = tm.tow_sub_rising_ns;
+    updateDataField('data-tm-rising',
+        `W${tm.week_number_rising} ${(risingMs / 1000).toFixed(3)}s +${risingSub}ns`);
+
+    // Format TOW falling
+    const fallingMs = tm.tow_falling_ms;
+    const fallingSub = tm.tow_sub_falling_ns;
+    updateDataField('data-tm-falling',
+        `W${tm.week_number_falling} ${(fallingMs / 1000).toFixed(3)}s +${fallingSub}ns`);
 }
 
 function updateDataField(id, value) {
@@ -1406,6 +1434,12 @@ function populateFormFromConfig(config) {
         }
     }
 
+    // Enable Time Mark
+    const tmEn = document.getElementById('cfg-tm-en');
+    if (tmEn) {
+        tmEn.checked = !!config.enable_time_mark;
+    }
+
     // ROS 2 specific fields
     const ros2StdTopics = document.getElementById('cfg-ros2-stdtopics');
     if (ros2StdTopics) {
@@ -1555,6 +1589,12 @@ function buildConfigFromForm() {
         config.time_base = tb;
     } else if (tbEn) {
         config.time_base = null;
+    }
+
+    // Enable Time Mark
+    const tmEnEl = document.getElementById('cfg-tm-en');
+    if (tmEnEl) {
+        config.enable_time_mark = tmEnEl.checked;
     }
 
     // ROS 2 specific fields

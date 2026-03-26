@@ -19,14 +19,17 @@
 #include "ubxmsg/UBX_NAV_GEOFENCE.hpp"
 #include "ubxmsg/UBX_NAV_PVT.hpp"
 #include "ubxmsg/UBX_NAV_SAT.hpp"
+#include "ubxmsg/UBX_TIM_TM2.hpp"
 
 
 namespace JimmyPaputto
 {
 
 UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
-    Notifier& navigationNotifier, bool callbackNotificationEnabled)
+    Notifier& navigationNotifier, Notifier& timeMarkNotifier,
+    bool callbackNotificationEnabled)
 :	navigationNotifier_(navigationNotifier),
+    timeMarkNotifier_(timeMarkNotifier),
     callbackNotificationEnabled_(callbackNotificationEnabled)
 {
     using enum EUbxMsg;
@@ -116,6 +119,12 @@ UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
     callbacks_[to_underlying(UBX_NAV_SAT)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
         const auto& ubxNavSat = static_cast<ubxmsg::UBX_NAV_SAT&>(ubxMsg);
         Gnss::instance().satellites(ubxNavSat.satellites());
+    };
+
+    callbacks_[to_underlying(UBX_TIM_TM2)] = [this](ubxmsg::IUbxMsg& ubxMsg) -> void {
+        const auto& ubxTimTm2 = static_cast<ubxmsg::UBX_TIM_TM2&>(ubxMsg);
+        Gnss::instance().timeMark(ubxTimTm2.timeMark());
+        timeMarkNotifier_.notify();
     };
 }
 

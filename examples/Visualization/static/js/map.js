@@ -445,6 +445,11 @@ function initializeSocket() {
     socket.on('config_progress', function(data) {
         handleConfigProgress(data);
     });
+
+    // HAT type changed (ros2 mode — frame_id detection)
+    socket.on('hat_changed', function(data) {
+        location.reload();
+    });
 }
 
 function setupUIHandlers() {
@@ -1507,7 +1512,7 @@ function buildConfigFromForm() {
         } else {
             config.geofencing = null;
         }
-    } else {
+    } else if (geoEnEl) {
         config.geofencing = null;
     }
 
@@ -1550,7 +1555,7 @@ function buildConfigFromForm() {
             rtk.base = base;
         }
         config.rtk = rtk;
-    } else {
+    } else if (rtkEn) {
         config.rtk = null;
     }
 

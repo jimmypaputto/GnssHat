@@ -1440,6 +1440,12 @@ function populateFormFromConfig(config) {
         tmEn.checked = !!config.enable_time_mark;
     }
 
+    // Save to Flash
+    const saveFlashEl = document.getElementById('cfg-save-flash');
+    if (saveFlashEl) {
+        saveFlashEl.checked = !!config.save_to_flash;
+    }
+
     // ROS 2 specific fields
     const ros2StdTopics = document.getElementById('cfg-ros2-stdtopics');
     if (ros2StdTopics) {
@@ -1595,6 +1601,12 @@ function buildConfigFromForm() {
     const tmEnEl = document.getElementById('cfg-tm-en');
     if (tmEnEl) {
         config.enable_time_mark = tmEnEl.checked;
+    }
+
+    // Save to Flash
+    const saveFlashEl = document.getElementById('cfg-save-flash');
+    if (saveFlashEl) {
+        config.save_to_flash = saveFlashEl.checked;
     }
 
     // ROS 2 specific fields

@@ -502,18 +502,19 @@ bool M9NStartup::execute()
         return false;
     }
 
-    // if (configRegistry_.shouldSaveConfigToFlash())
-    // {
-    //     result = try3times([this](){ return saveCurrentConfigToFlash(); });
-    //     if (!result)
-    //     {
-    //         fprintf(
-    //             stderr,
-    //             "[Startup] Save current configuration to flash failed\r\n"
-    //         );
-    //         return false;
-    //     }
-    // }
+    if (configRegistry_.getGnssConfig().saveToFlash
+        && configRegistry_.shouldSaveConfigToFlash())
+    {
+        result = try3times([this](){ return saveCurrentConfigToFlash(); });
+        if (!result)
+        {
+            fprintf(
+                stderr,
+                "[Startup] Save current configuration to flash failed\r\n"
+            );
+            return false;
+        }
+    }
 
     return true;
 }
@@ -918,18 +919,19 @@ bool F10TStartup::execute()
             return false;
     }
 
-    // if (configRegistry_.shouldSaveConfigToFlash())
-    // {
-    //     result = try3times([this](){ return saveCurrentConfigToFlash(); });
-    //     if (!result)
-    //     {
-    //         fprintf(
-    //             stderr,
-    //             "[Startup] Save current configuration to flash failed\r\n"
-    //         );
-    //         return false;
-    //     }
-    // }
+    if (configRegistry_.getGnssConfig().saveToFlash
+        && configRegistry_.shouldSaveConfigToFlash())
+    {
+        result = try3times([this](){ return saveCurrentConfigToFlash(); });
+        if (!result)
+        {
+            fprintf(
+                stderr,
+                "[Startup] Save current configuration to flash failed\r\n"
+            );
+            return false;
+        }
+    }
 
     return true;
 }
@@ -1063,18 +1065,19 @@ bool F9PStartup::execute()
             return false;
     }
 
-    // if (configRegistry_.shouldSaveConfigToFlash())
-    // {
-    //     result = try3times([this](){ return saveCurrentConfigToFlash(); });
-    //     if (!result)
-    //     {
-    //         fprintf(
-    //             stderr,
-    //             "[Startup] Save current configuration to flash failed\r\n"
-    //         );
-    //         return false;
-    //     }
-    // }
+    if (configRegistry_.getGnssConfig().saveToFlash
+        && configRegistry_.shouldSaveConfigToFlash())
+    {
+        result = try3times([this](){ return saveCurrentConfigToFlash(); });
+        if (!result)
+        {
+            fprintf(
+                stderr,
+                "[Startup] Save current configuration to flash failed\r\n"
+            );
+            return false;
+        }
+    }
 
     return true;
 }

@@ -37,6 +37,7 @@ struct GnssConfig
     std::optional<RtkConfig> rtk;
 
     bool enableTimeMark{false};
+    bool saveToFlash{false};
     std::optional<BaseConfig> timeBase;
 };
 

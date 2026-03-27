@@ -450,6 +450,11 @@ function initializeSocket() {
     socket.on('hat_changed', function(data) {
         location.reload();
     });
+
+    // NTRIP status updates (native mode, RTK HAT only)
+    socket.on('ntrip_status', function(data) {
+        updateNtripUI(data.state, data.message || null);
+    });
 }
 
 function setupUIHandlers() {
@@ -1193,6 +1198,14 @@ function setupConfigPanel() {
         });
     }
 
+    // NTRIP connect / disconnect buttons (native mode, RTK HAT)
+    const ntripConnectBtn = document.getElementById('ntrip-connect-btn');
+    const ntripDisconnectBtn = document.getElementById('ntrip-disconnect-btn');
+    if (ntripConnectBtn) {
+        ntripConnectBtn.addEventListener('click', ntripConnect);
+        ntripDisconnectBtn.addEventListener('click', ntripDisconnect);
+    }
+
     // Time Base toggles
     const tbEn = document.getElementById('cfg-tb-en');
     const tbDetails = document.getElementById('cfg-tb-details');
@@ -1725,11 +1738,120 @@ async function sendConfig() {
 }
 
 
+// ─── NTRIP Client (native mode, RTK HAT) ──────────────────────────────────
+
+function updateNtripUI(status, errorMsg) {
+    const badge = document.getElementById('ntrip-status');
+    const connectBtn = document.getElementById('ntrip-connect-btn');
+    const disconnectBtn = document.getElementById('ntrip-disconnect-btn');
+    if (!badge) return;
+
+    // Remove all state classes
+    badge.classList.remove('connected', 'disconnected', 'connecting', 'error');
+
+    if (status === 'connected') {
+        badge.textContent = 'Connected';
+        badge.classList.add('connected');
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
+    } else if (status === 'connecting') {
+        badge.textContent = 'Connecting...';
+        badge.classList.add('connecting');
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = true;
+    } else if (status === 'error') {
+        badge.textContent = errorMsg ? 'Error: ' + errorMsg : 'Error';
+        badge.classList.add('error');
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+    } else {
+        // disconnected (default)
+        badge.textContent = 'Disconnected';
+        badge.classList.add('disconnected');
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+    }
+}
+
+async function ntripConnect() {
+    const caster = document.getElementById('cfg-ntrip-caster').value.trim();
+    const port = parseInt(document.getElementById('cfg-ntrip-port').value) || 2101;
+    const mountpoint = document.getElementById('cfg-ntrip-mount').value.trim();
+    const user = document.getElementById('cfg-ntrip-user').value.trim();
+    const password = document.getElementById('cfg-ntrip-pass').value;
+    const version = document.getElementById('cfg-ntrip-version').value;
+    const https = document.getElementById('cfg-ntrip-https').checked;
+
+    if (!caster || !mountpoint) {
+        updateNtripUI('error', 'Caster and mountpoint are required');
+        return;
+    }
+
+    updateNtripUI('connecting');
+
+    try {
+        const resp = await fetch('/api/ntrip/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ caster, port, mountpoint, username: user, password, version, https }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            updateNtripUI('error', data.error || 'Connection failed');
+        }
+        // Success updates arrive via ntrip_status WebSocket event
+    } catch (e) {
+        updateNtripUI('error', e.message);
+    }
+}
+
+async function ntripDisconnect() {
+    const disconnectBtn = document.getElementById('ntrip-disconnect-btn');
+    if (disconnectBtn) disconnectBtn.disabled = true;
+
+    try {
+        await fetch('/api/ntrip/stop', { method: 'POST' });
+        // UI updates arrive via ntrip_status WebSocket event
+    } catch (e) {
+        updateNtripUI('error', e.message);
+    }
+}
+
+async function restoreNtripStatus() {
+    // On page load, check if NTRIP is already connected (survives page refresh)
+    if (window.APP_MODE !== 'native' || window.HAT_NAME !== 'L1/L5 GNSS RTK HAT') return;
+
+    try {
+        const resp = await fetch('/api/ntrip/status');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.connected) {
+            updateNtripUI('connected');
+            // Restore form fields from server-side config
+            if (data.config) {
+                const c = data.config;
+                const setVal = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = val; };
+                setVal('cfg-ntrip-caster', c.caster);
+                setVal('cfg-ntrip-port', c.port);
+                setVal('cfg-ntrip-mount', c.mountpoint);
+                setVal('cfg-ntrip-user', c.username);
+                setVal('cfg-ntrip-version', c.version);
+                const httpsEl = document.getElementById('cfg-ntrip-https');
+                if (httpsEl) httpsEl.checked = !!c.https;
+            }
+        }
+    } catch (e) {
+        // Silently ignore — not critical
+    }
+}
+
+
 // Initialize tabs on page load
 window.addEventListener('DOMContentLoaded', () => {
     setupTabs();
     setupDataTabs();
     setupConfigPanel();
+    restoreNtripStatus();
 
     // In ros2 mode, auto-fetch config from the GNSS node on startup
     if (window.APP_MODE === 'ros2') {

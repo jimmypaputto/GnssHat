@@ -37,11 +37,7 @@ StartupBase::StartupBase(ICommDriver& commDriver,
 
 bool StartupBase::saveCurrentConfigToFlash()
 {
-    bool& ack = configRegistry_.ack()[to_underlying(EUbxMsg::UBX_CFG_CFG)];
-    ack = false;
-    commDriver_.transmitReceive(ubxmsg::UBX_CFG_CFG::saveToFlash(), rxBuff_);
-    ubxParser_.parse(rxBuff_);
-    return ack;
+    return awaitAck(ubxmsg::UBX_CFG_CFG::saveToFlash(), EUbxMsg::UBX_CFG_CFG);
 }
 
 enum class E_CFG_PULSE_DEF : uint8_t
@@ -502,18 +498,19 @@ bool M9NStartup::execute()
         return false;
     }
 
-    // if (configRegistry_.shouldSaveConfigToFlash())
-    // {
-    //     result = try3times([this](){ return saveCurrentConfigToFlash(); });
-    //     if (!result)
-    //     {
-    //         fprintf(
-    //             stderr,
-    //             "[Startup] Save current configuration to flash failed\r\n"
-    //         );
-    //         return false;
-    //     }
-    // }
+    if (configRegistry_.getGnssConfig().saveToFlash
+        && configRegistry_.shouldSaveConfigToFlash())
+    {
+        result = try3times([this](){ return saveCurrentConfigToFlash(); });
+        if (!result)
+        {
+            fprintf(
+                stderr,
+                "[Startup] Save current configuration to flash failed\r\n"
+            );
+            return false;
+        }
+    }
 
     return true;
 }
@@ -918,18 +915,19 @@ bool F10TStartup::execute()
             return false;
     }
 
-    // if (configRegistry_.shouldSaveConfigToFlash())
-    // {
-    //     result = try3times([this](){ return saveCurrentConfigToFlash(); });
-    //     if (!result)
-    //     {
-    //         fprintf(
-    //             stderr,
-    //             "[Startup] Save current configuration to flash failed\r\n"
-    //         );
-    //         return false;
-    //     }
-    // }
+    if (configRegistry_.getGnssConfig().saveToFlash
+        && configRegistry_.shouldSaveConfigToFlash())
+    {
+        result = try3times([this](){ return saveCurrentConfigToFlash(); });
+        if (!result)
+        {
+            fprintf(
+                stderr,
+                "[Startup] Save current configuration to flash failed\r\n"
+            );
+            return false;
+        }
+    }
 
     return true;
 }
@@ -1063,18 +1061,19 @@ bool F9PStartup::execute()
             return false;
     }
 
-    // if (configRegistry_.shouldSaveConfigToFlash())
-    // {
-    //     result = try3times([this](){ return saveCurrentConfigToFlash(); });
-    //     if (!result)
-    //     {
-    //         fprintf(
-    //             stderr,
-    //             "[Startup] Save current configuration to flash failed\r\n"
-    //         );
-    //         return false;
-    //     }
-    // }
+    if (configRegistry_.getGnssConfig().saveToFlash
+        && configRegistry_.shouldSaveConfigToFlash())
+    {
+        result = try3times([this](){ return saveCurrentConfigToFlash(); });
+        if (!result)
+        {
+            fprintf(
+                stderr,
+                "[Startup] Save current configuration to flash failed\r\n"
+            );
+            return false;
+        }
+    }
 
     return true;
 }

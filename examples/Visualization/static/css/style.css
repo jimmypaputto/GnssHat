@@ -800,6 +800,13 @@ header h1 {
     white-space: nowrap;
 }
 
+.cfg-hint {
+    color: var(--text-secondary);
+    font-size: 11px;
+    opacity: 0.7;
+    margin-top: 4px;
+}
+
 .cfg-input {
     background: var(--bg-primary);
     color: var(--text-primary);

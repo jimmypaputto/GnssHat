@@ -362,6 +362,7 @@ typedef struct
     bool has_rtk;
     jp_gnss_rtk_config_t rtk;
     bool enable_time_mark;
+    bool save_to_flash;
     bool has_time_base;
     jp_gnss_base_config_t time_base;
 } jp_gnss_gnss_config_t;

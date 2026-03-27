@@ -396,6 +396,7 @@ std::optional<GnssConfig> convert_gnss_config(
     }
 
     cpp_config.enableTimeMark = c_config.enable_time_mark;
+    cpp_config.saveToFlash = c_config.save_to_flash;
 
     return cpp_config;
 }
@@ -834,6 +835,7 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
     config->has_rtk = false;
     std::memset(&config->rtk, 0, sizeof(config->rtk));
     config->enable_time_mark = false;
+    config->save_to_flash = false;
     config->has_time_base = false;
     std::memset(&config->time_base, 0, sizeof(config->time_base));
 }

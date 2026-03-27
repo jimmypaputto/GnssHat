@@ -723,6 +723,18 @@
                         </fieldset>
                         {% endif %}
 
+                        <!-- Save to Flash -->
+                        <fieldset class="cfg-section">
+                            <legend>💾 Flash</legend>
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-save-flash" class="cfg-checkbox">
+                                    Save configuration to flash
+                                </label>
+                            </div>
+                            <div class="cfg-hint">When enabled, configuration is saved to the u-blox module's flash memory. Use sparingly — flash has limited write cycles.</div>
+                        </fieldset>
+
                         <!-- Action buttons -->
                         <div class="cfg-actions">
                             <button type="button" id="cfg-load-btn" class="cfg-btn cfg-btn-secondary">📥 Load Config</button>

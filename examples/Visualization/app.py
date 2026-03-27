@@ -192,6 +192,7 @@ def create_default_config():
         'rtk': None,
         'time_base': None,
         'enable_time_mark': False,
+        'save_to_flash': False,
     }
 
 
@@ -1159,6 +1160,8 @@ def json_to_native_config(data):
         config['time_base'] = tb_cfg
     else:
         config['time_base'] = None
+
+    config['save_to_flash'] = bool(data.get('save_to_flash', False))
 
     return config
 

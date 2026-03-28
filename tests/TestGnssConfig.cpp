@@ -182,12 +182,30 @@ TEST(TimepulseValidation, ZeroPulseWidthIsValid)
     EXPECT_TRUE(checkTimepulsePinConfig(cfg));
 }
 
-TEST(TimeBaseValidation, NulloptIsValid)
+TEST(TimingValidation, NulloptIsValid)
 {
-    EXPECT_TRUE(checkTimeBase(std::nullopt));
+    EXPECT_TRUE(checkTiming(std::nullopt));
 }
 
-TEST(TimeBaseValidation, SurveyInValid)
+TEST(TimingValidation, BothDisabledFails)
+{
+    TimingConfig cfg {
+        .enableTimeMark = false,
+        .timeBase = std::nullopt
+    };
+    EXPECT_FALSE(checkTiming(cfg));
+}
+
+TEST(TimingValidation, EnableTimeMarkOnlyIsValid)
+{
+    TimingConfig cfg {
+        .enableTimeMark = true,
+        .timeBase = std::nullopt
+    };
+    EXPECT_TRUE(checkTiming(cfg));
+}
+
+TEST(TimingValidation, SurveyInValid)
 {
     BaseConfig cfg {
         .mode = BaseConfig::SurveyIn {
@@ -198,7 +216,7 @@ TEST(TimeBaseValidation, SurveyInValid)
     EXPECT_TRUE(checkBaseConfig(cfg));
 }
 
-TEST(TimeBaseValidation, SurveyInZeroTimeFails)
+TEST(TimingValidation, SurveyInZeroTimeFails)
 {
     BaseConfig cfg {
         .mode = BaseConfig::SurveyIn {
@@ -209,7 +227,7 @@ TEST(TimeBaseValidation, SurveyInZeroTimeFails)
     EXPECT_FALSE(checkBaseConfig(cfg));
 }
 
-TEST(TimeBaseValidation, SurveyInZeroAccuracyFails)
+TEST(TimingValidation, SurveyInZeroAccuracyFails)
 {
     BaseConfig cfg {
         .mode = BaseConfig::SurveyIn {
@@ -220,7 +238,7 @@ TEST(TimeBaseValidation, SurveyInZeroAccuracyFails)
     EXPECT_FALSE(checkBaseConfig(cfg));
 }
 
-TEST(TimeBaseValidation, SurveyInNegativeAccuracyFails)
+TEST(TimingValidation, SurveyInNegativeAccuracyFails)
 {
     BaseConfig cfg {
         .mode = BaseConfig::SurveyIn {
@@ -231,7 +249,7 @@ TEST(TimeBaseValidation, SurveyInNegativeAccuracyFails)
     EXPECT_FALSE(checkBaseConfig(cfg));
 }
 
-TEST(TimeBaseValidation, FixedPositionLlaValid)
+TEST(TimingValidation, FixedPositionLlaValid)
 {
     BaseConfig cfg {
         .mode = BaseConfig::FixedPosition {
@@ -246,7 +264,7 @@ TEST(TimeBaseValidation, FixedPositionLlaValid)
     EXPECT_TRUE(checkBaseConfig(cfg));
 }
 
-TEST(TimeBaseValidation, FixedPositionEcefValid)
+TEST(TimingValidation, FixedPositionEcefValid)
 {
     BaseConfig cfg {
         .mode = BaseConfig::FixedPosition {
@@ -261,7 +279,7 @@ TEST(TimeBaseValidation, FixedPositionEcefValid)
     EXPECT_TRUE(checkBaseConfig(cfg));
 }
 
-TEST(TimeBaseValidation, FixedPositionZeroAccuracyFails)
+TEST(TimingValidation, FixedPositionZeroAccuracyFails)
 {
     BaseConfig cfg {
         .mode = BaseConfig::FixedPosition {
@@ -276,7 +294,7 @@ TEST(TimeBaseValidation, FixedPositionZeroAccuracyFails)
     EXPECT_FALSE(checkBaseConfig(cfg));
 }
 
-TEST(TimeBaseValidation, FixedPositionNegativeAccuracyFails)
+TEST(TimingValidation, FixedPositionNegativeAccuracyFails)
 {
     BaseConfig cfg {
         .mode = BaseConfig::FixedPosition {
@@ -291,7 +309,7 @@ TEST(TimeBaseValidation, FixedPositionNegativeAccuracyFails)
     EXPECT_FALSE(checkBaseConfig(cfg));
 }
 
-TEST(TimeBaseValidation, LlaLatitudeOutOfRangeFails)
+TEST(TimingValidation, LlaLatitudeOutOfRangeFails)
 {
     BaseConfig cfg {
         .mode = BaseConfig::FixedPosition {
@@ -316,7 +334,7 @@ TEST(TimeBaseValidation, LlaLatitudeOutOfRangeFails)
     EXPECT_FALSE(checkBaseConfig(cfg));
 }
 
-TEST(TimeBaseValidation, LlaLongitudeOutOfRangeFails)
+TEST(TimingValidation, LlaLongitudeOutOfRangeFails)
 {
     BaseConfig cfg {
         .mode = BaseConfig::FixedPosition {
@@ -341,7 +359,7 @@ TEST(TimeBaseValidation, LlaLongitudeOutOfRangeFails)
     EXPECT_FALSE(checkBaseConfig(cfg));
 }
 
-TEST(TimeBaseValidation, LlaBoundaryCoordinatesValid)
+TEST(TimingValidation, LlaBoundaryCoordinatesValid)
 {
     BaseConfig cfg {
         .mode = BaseConfig::FixedPosition {

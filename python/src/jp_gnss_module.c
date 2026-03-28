@@ -1884,6 +1884,15 @@ static bool validate_config(PyObject* config_dict)
             return false;
     }
 
+    /* ── save_to_flash validation ───────────────────────────────────── */
+    PyObject* save_to_flash = PyDict_GetItemString(config_dict, "save_to_flash");
+    if (save_to_flash && !PyBool_Check(save_to_flash))
+    {
+        PyErr_SetString(PyExc_TypeError,
+            "save_to_flash must be a boolean");
+        return false;
+    }
+
     return true;
 }
 
@@ -2192,6 +2201,12 @@ static void populate_config_from_dict(PyObject* config_dict, jp_gnss_gnss_config
             populate_base_config_from_dict(base_dict, &config->rtk.base);
         }
     }
+ 
+    /* ── save_to_flash config ──────────────────────────────────────── */
+    config->save_to_flash = false;
+    PyObject* save_flash = PyDict_GetItemString(config_dict, "save_to_flash");
+    if (save_flash)
+        config->save_to_flash = PyObject_IsTrue(save_flash);
 }
 
 #define CHECK_HAT(self) do { \

@@ -399,7 +399,9 @@ std::optional<GnssConfig> convert_gnss_config(
 
         cpp_config.timing = timing;
     }
-
+ 
+    cpp_config.saveToFlash = c_config.save_to_flash;
+ 
     return cpp_config;
 }
 
@@ -837,6 +839,7 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
     std::memset(&config->rtk, 0, sizeof(config->rtk));
     config->has_timing = false;
     std::memset(&config->timing, 0, sizeof(config->timing));
+    config->save_to_flash = false;
 }
 
 void jp_gnss_hat_timepulse(jp_gnss_hat_t* hat)

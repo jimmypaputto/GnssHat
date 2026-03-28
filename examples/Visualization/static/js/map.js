@@ -445,6 +445,11 @@ function initializeSocket() {
     socket.on('config_progress', function(data) {
         handleConfigProgress(data);
     });
+
+    // HAT type changed (ros2 mode — frame_id detection)
+    socket.on('hat_changed', function(data) {
+        location.reload();
+    });
 }
 
 function setupUIHandlers() {
@@ -1441,6 +1446,12 @@ function populateFormFromConfig(config) {
         tmEn.checked = !!(timing && timing.enable_time_mark);
     }
 
+    // Save to Flash
+    const saveFlashEl = document.getElementById('cfg-save-flash');
+    if (saveFlashEl) {
+        saveFlashEl.checked = !!config.save_to_flash;
+    }
+
     // ROS 2 specific fields
     const ros2StdTopics = document.getElementById('cfg-ros2-stdtopics');
     if (ros2StdTopics) {
@@ -1508,7 +1519,7 @@ function buildConfigFromForm() {
         } else {
             config.geofencing = null;
         }
-    } else {
+    } else if (geoEnEl) {
         config.geofencing = null;
     }
 
@@ -1551,7 +1562,7 @@ function buildConfigFromForm() {
             rtk.base = base;
         }
         config.rtk = rtk;
-    } else {
+    } else if (rtkEn) {
         config.rtk = null;
     }
 
@@ -1604,6 +1615,12 @@ function buildConfigFromForm() {
         config.timing = timing;
     } else {
         config.timing = null;
+    }
+
+    // Save to Flash
+    const saveFlashEl = document.getElementById('cfg-save-flash');
+    if (saveFlashEl) {
+        config.save_to_flash = saveFlashEl.checked;
     }
 
     // ROS 2 specific fields

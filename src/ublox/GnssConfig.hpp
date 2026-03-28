@@ -37,6 +37,8 @@ struct GnssConfig
     std::optional<RtkConfig> rtk;
 
     std::optional<TimingConfig> timing;
+
+    bool saveToFlash{false};
 };
 
 bool checkMeasurmentRate(const uint16_t measurmentRate);

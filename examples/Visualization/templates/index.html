@@ -520,7 +520,9 @@
                                 <button type="button" id="cfg-geo-add" class="cfg-btn cfg-btn-sm">+ Add Geofence</button>
                             </div>
                         </fieldset>
+                        {% endif %}
 
+                        {% if hat_name == 'L1/L5 GNSS RTK HAT' %}
                         <!-- RTK -->
                         <fieldset class="cfg-section">
                             <legend>📡 RTK</legend>
@@ -720,6 +722,18 @@
                             </div>
                         </fieldset>
                         {% endif %}
+
+                        <!-- Save to Flash -->
+                        <fieldset class="cfg-section">
+                            <legend>💾 Flash</legend>
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-save-flash" class="cfg-checkbox">
+                                    Save configuration to flash
+                                </label>
+                            </div>
+                            <div class="cfg-hint">When enabled, configuration is saved to the u-blox module's flash memory. Use sparingly — flash has limited write cycles.</div>
+                        </fieldset>
 
                         <!-- Action buttons -->
                         <div class="cfg-actions">

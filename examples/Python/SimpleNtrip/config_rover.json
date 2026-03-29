@@ -1,0 +1,6 @@
+{
+    "caster_ip": "192.168.1.100",
+    "caster_port": 2101,
+    "mountpoint": "MY_RTK_BASE",
+    "ntrip_version": "2.0"
+}

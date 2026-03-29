@@ -9,6 +9,7 @@
 #include "Geofencing.hpp"
 #include "PositionVelocityTime.hpp"
 #include "RFBlock.hpp"
+#include "RFBlockSpectrumData.hpp"
 #include "SatelliteInfo.hpp"
 
 
@@ -21,6 +22,7 @@ struct Navigation
     PositionVelocityTime pvt;
     Geofencing geofencing;
     std::vector<RfBlock> rfBlocks;
+    std::vector<RfBlockSpectrumData> rfBlocksSpectrumData;
     std::vector<SatelliteInfo> satellites;
 };
 

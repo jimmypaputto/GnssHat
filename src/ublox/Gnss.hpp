@@ -27,6 +27,7 @@ public:
     void geofencingCfg(const Geofencing::Cfg& cfg);
     void geofencingNav(const Geofencing::Nav& nav);
     void rfBlocks(const std::vector<RfBlock>& rfBlocks);
+    void rfBlocksSpectrumData(const std::vector<RfBlockSpectrumData>& rfBlocksSpectrumData);
     void satellites(const std::vector<SatelliteInfo>& satellites);
 
     void timeMark(const TimeMark& timeMark);

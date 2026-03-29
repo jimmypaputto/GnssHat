@@ -1689,8 +1689,11 @@ function handleConfigProgress(data) {
             showConfigStatus(data.message, false);
             document.getElementById('cfg-send-btn').disabled = false;
         }, 1200);
-        // Update geofences on maps from current form state
-        applyGeofencesToMaps(buildConfigFromForm());
+        // Update geofences on maps — use the stored config from sendConfig
+        // (avoids re-reading form which could see stale state due to timing)
+        const cfgForMaps = _lastSentConfig || buildConfigFromForm();
+        _lastSentConfig = null;
+        applyGeofencesToMaps(cfgForMaps);
     } else if (data.step === 'error') {
         bar.style.background = '#e57373';
         setTimeout(() => {
@@ -1703,22 +1706,24 @@ function handleConfigProgress(data) {
     }
 }
 
-async function loadConfig() {
+async function loadConfig(silent) {
     try {
         const resp = await fetch('/api/config');
         if (!resp.ok) {
             const err = await resp.json();
-            showConfigStatus('Load failed: ' + (err.error || resp.statusText), true);
+            if (!silent) showConfigStatus('Load failed: ' + (err.error || resp.statusText), true);
             return;
         }
         const config = await resp.json();
         populateFormFromConfig(config);
         applyGeofencesToMaps(config);
-        showConfigStatus('Configuration loaded from device', false);
+        if (!silent) showConfigStatus('Configuration loaded from device', false);
     } catch (e) {
-        showConfigStatus('Load failed: ' + e.message, true);
+        if (!silent) showConfigStatus('Load failed: ' + e.message, true);
     }
 }
+
+let _lastSentConfig = null;
 
 async function sendConfig() {
     const config = buildConfigFromForm();
@@ -1728,6 +1733,8 @@ async function sendConfig() {
         showConfigStatus('Measurement rate must be 1-25 Hz', true);
         return;
     }
+
+    _lastSentConfig = config;
 
     document.getElementById('cfg-send-btn').disabled = true;
     const overlay = document.getElementById('config-progress');
@@ -1751,8 +1758,10 @@ async function sendConfig() {
             if (!err.error) {
                 handleConfigProgress({ step: 'error', message: 'Server error: ' + resp.statusText });
             }
+        } else {
+            // Fallback: apply geofences from HTTP success in case socket 'done' was missed
+            applyGeofencesToMaps(config);
         }
-        // Success path handled by socket config_progress events
     } catch (e) {
         handleConfigProgress({ step: 'error', message: 'Network error: ' + e.message });
     }
@@ -1874,8 +1883,9 @@ window.addEventListener('DOMContentLoaded', () => {
     setupConfigPanel();
     restoreNtripStatus();
 
-    // In ros2 mode, auto-fetch config from the GNSS node on startup
-    if (window.APP_MODE === 'ros2') {
-        loadConfig();
+    // Auto-fetch config from the GNSS module/node on startup
+    // This restores geofence visualization after page refresh
+    if (window.APP_MODE === 'native' || window.APP_MODE === 'ros2') {
+        loadConfig(true);
     }
 });

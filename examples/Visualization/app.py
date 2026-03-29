@@ -60,6 +60,169 @@ gps_state = {
     'config_lock': threading.Lock(),  # Lock for config changes
 }
 
+# NTRIP client state (native mode, RTK HAT rover only)
+ntrip_state = {
+    'client': None,              # GNSSNTRIPClient instance
+    'stop_event': None,          # threading.Event to signal shutdown
+    'rtcm_queue': None,          # queue.Queue receiving (raw, parsed) tuples
+    'corrections_thread': None,  # Thread applying RTCM3 frames to HAT
+    'connected': False,
+    'config': None,              # Last-used NTRIP connection parameters
+}
+
+
+def _ntrip_corrections_thread():
+    """Background thread: drains RTCM3 frames from the NTRIP queue and
+    applies them to the GNSS receiver in batches (same pattern as
+    examples/Python/rtk_rover.py)."""
+    from queue import Empty
+
+    stop_event = ntrip_state['stop_event']
+    rtcm_queue = ntrip_state['rtcm_queue']
+
+    while not stop_event.is_set():
+        frames = []
+        try:
+            raw, _parsed = rtcm_queue.get(timeout=1.0)
+            frames.append(raw)
+        except Empty:
+            continue
+
+        # Drain any additional queued frames into the same batch
+        while not rtcm_queue.empty():
+            try:
+                raw, _parsed = rtcm_queue.get_nowait()
+                frames.append(raw)
+            except Empty:
+                break
+
+        if not frames:
+            continue
+
+        hat = gps_state.get('hat')
+        if hat is None:
+            continue
+
+        try:
+            hat.rtk_apply_corrections(frames)
+        except Exception as e:
+            print(f"Error applying RTCM3 corrections: {e}")
+            socketio.emit('ntrip_status',
+                          {'state': 'error', 'message': f'Correction error: {e}'},
+                          namespace='/')
+
+
+def start_ntrip(config):
+    """Start NTRIP client and corrections thread.
+
+    config: dict with keys caster, port, mountpoint, username, password,
+            version ('1.0' or '2.0'), https (bool).
+    Returns (success: bool, error_message: str | None).
+    """
+    from queue import Queue
+    from pygnssutils import GNSSNTRIPClient
+
+    if ntrip_state['connected']:
+        stop_ntrip()
+
+    hat = gps_state.get('hat')
+    if hat is None:
+        return False, 'GNSS HAT not initialized'
+
+    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
+        return False, 'NTRIP requires L1/L5 GNSS RTK HAT'
+
+    stop_event = threading.Event()
+    rtcm_queue = Queue()
+
+    ntrip_state['stop_event'] = stop_event
+    ntrip_state['rtcm_queue'] = rtcm_queue
+
+    client = GNSSNTRIPClient()
+    ntrip_state['client'] = client
+
+    caster = config.get('caster', '')
+    port = int(config.get('port', 2101))
+    mountpoint = config.get('mountpoint', '')
+    username = config.get('username', '')
+    password = config.get('password', '')
+    version = config.get('version', '2.0')
+    use_https = bool(config.get('https', False))
+
+    print(f"NTRIP: connecting to {caster}:{port}/{mountpoint} (v{version})")
+
+    try:
+        streaming = client.run(
+            server=caster,
+            port=port,
+            https=int(use_https),
+            mountpoint=mountpoint,
+            datatype="RTCM",
+            version=version,
+            ntripuser=username,
+            ntrippassword=password,
+            ggainterval=-1,
+            ggamode=0,
+            output=rtcm_queue,
+            stopevent=stop_event,
+        )
+    except Exception as e:
+        _reset_ntrip_state()
+        return False, f'NTRIP client error: {e}'
+
+    if not streaming:
+        err_msg = 'NTRIP connection failed'
+        try:
+            status = client.status
+            if status:
+                err_msg = (f"NTRIP HTTP {status.get('code', '?')}: "
+                           f"{status.get('description', '')}")
+        except Exception:
+            pass
+        _reset_ntrip_state()
+        return False, err_msg
+
+    # Start corrections thread
+    t = threading.Thread(target=_ntrip_corrections_thread, daemon=True)
+    t.start()
+    ntrip_state['corrections_thread'] = t
+    ntrip_state['connected'] = True
+    ntrip_state['config'] = config
+
+    print("NTRIP: connected, streaming RTCM3 corrections")
+    return True, None
+
+
+def stop_ntrip():
+    """Stop NTRIP client and corrections thread."""
+    if ntrip_state['stop_event']:
+        ntrip_state['stop_event'].set()
+
+    if ntrip_state['client']:
+        try:
+            ntrip_state['client'].stop()
+        except Exception as e:
+            print(f"NTRIP: error stopping client: {e}")
+
+    if ntrip_state['corrections_thread']:
+        ntrip_state['corrections_thread'].join(timeout=5)
+
+    was_connected = ntrip_state['connected']
+    _reset_ntrip_state()
+
+    if was_connected:
+        print("NTRIP: disconnected")
+
+
+def _reset_ntrip_state():
+    """Reset ntrip_state to defaults."""
+    ntrip_state['client'] = None
+    ntrip_state['stop_event'] = None
+    ntrip_state['rtcm_queue'] = None
+    ntrip_state['corrections_thread'] = None
+    ntrip_state['connected'] = False
+    ntrip_state['config'] = None
+
 
 def calculate_offset_meters(ref_pos, current_pos):
     """
@@ -999,6 +1162,64 @@ def handle_reset_reference():
         emit('reference_reset', {'position': gps_state['reference_position']}, broadcast=True)
 
 
+# ─── NTRIP Client API (native mode, RTK HAT only) ───────────────────────────
+
+@app.route('/api/ntrip/start', methods=['POST'])
+def api_ntrip_start():
+    """Start NTRIP client with given connection parameters"""
+    if RUN_MODE != 'native':
+        return jsonify({'error': 'NTRIP client only available in native mode'}), 400
+    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
+        return jsonify({'error': 'NTRIP requires L1/L5 GNSS RTK HAT'}), 400
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON body'}), 400
+
+    required = ['caster', 'port', 'mountpoint']
+    for field in required:
+        if not data.get(field):
+            return jsonify({'error': f'Missing required field: {field}'}), 400
+
+    socketio.emit('ntrip_status',
+                  {'state': 'connecting', 'message': f"Connecting to {data['caster']}:{data['port']}/{data['mountpoint']}..."},
+                  namespace='/')
+
+    ok, err = start_ntrip(data)
+    if ok:
+        socketio.emit('ntrip_status',
+                      {'state': 'connected', 'message': 'NTRIP connected, streaming RTCM3 corrections'},
+                      namespace='/')
+        return jsonify({'success': True})
+    else:
+        socketio.emit('ntrip_status',
+                      {'state': 'error', 'message': err},
+                      namespace='/')
+        return jsonify({'error': err}), 500
+
+
+@app.route('/api/ntrip/stop', methods=['POST'])
+def api_ntrip_stop():
+    """Stop NTRIP client"""
+    if RUN_MODE != 'native':
+        return jsonify({'error': 'NTRIP client only available in native mode'}), 400
+
+    stop_ntrip()
+    socketio.emit('ntrip_status',
+                  {'state': 'disconnected', 'message': 'NTRIP disconnected'},
+                  namespace='/')
+    return jsonify({'success': True})
+
+
+@app.route('/api/ntrip/status', methods=['GET'])
+def api_ntrip_status():
+    """Get current NTRIP client status"""
+    return jsonify({
+        'connected': ntrip_state['connected'],
+        'config': ntrip_state['config'],
+    })
+
+
 # ─── Configuration API (native mode only) ───────────────────────────────────
 
 def config_to_json_safe(config):
@@ -1194,6 +1415,13 @@ def api_set_config():
 
     with gps_state['config_lock']:
         try:
+            # 0. Stop NTRIP client if running (HAT will be destroyed)
+            if ntrip_state['connected']:
+                stop_ntrip()
+                socketio.emit('ntrip_status',
+                              {'state': 'disconnected', 'message': 'NTRIP stopped — module configuration changed'},
+                              namespace='/')
+
             # 1. Stop reader thread
             socketio.emit('config_progress', {'step': 'stop', 'message': 'Stopping reader...'}, namespace='/')
             gps_state['running'] = False
@@ -1473,6 +1701,11 @@ def start_gps_ros2():
 def stop_gps():
     """Stop GPS data source"""
     print("Stopping GPS...")
+
+    # Stop NTRIP client if running
+    if ntrip_state['connected']:
+        stop_ntrip()
+
     gps_state['running'] = False
 
     # Disable time mark trigger before stopping

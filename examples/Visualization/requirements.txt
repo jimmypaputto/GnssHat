@@ -6,3 +6,4 @@ pynmea2==1.19.0
 geopy==2.4.1
 pyyaml==6.0.3
 numpy==2.4.3
+pygnssutils>=1.1.0

@@ -42,8 +42,25 @@ void SpiDriver::reinit(const ESpiMode spiMode)
 void SpiDriver::transmitReceive(std::span<const uint8_t> txBuff,
     std::vector<uint8_t>& rxBuff)
 {
+    if (rxBuff.size() > sizeof(txBank_))
+    {
+        fprintf(stderr,
+            "[SpiDriver] transmitReceive: rxBuff size (%zu) exceeds txBank "
+            "capacity (%zu)\r\n", rxBuff.size(), sizeof(txBank_));
+        exit(EXIT_FAILURE);
+    }
+    if (txBuff.size() > sizeof(txBank_))
+    {
+        fprintf(stderr,
+            "[SpiDriver] transmitReceive: txBuff size (%zu) exceeds txBank "
+            "capacity (%zu)\r\n", txBuff.size(), sizeof(txBank_));
+        exit(EXIT_FAILURE);
+    }
+
+    std::memcpy(txBank_, txBuff.data(), txBuff.size());
+
     struct spi_ioc_transfer spiTransfer = {};
-    spiTransfer.tx_buf = reinterpret_cast<unsigned long>(txBuff.data());
+    spiTransfer.tx_buf = reinterpret_cast<unsigned long>(txBank_);
     spiTransfer.rx_buf = reinterpret_cast<unsigned long>(rxBuff.data());
     spiTransfer.len = rxBuff.size();
     spiTransfer.speed_hz = spiSpeed_;
@@ -55,6 +72,8 @@ void SpiDriver::transmitReceive(std::span<const uint8_t> txBuff,
         perror("ioctl");
         exit(EXIT_FAILURE);
     }
+
+    std::memset(txBank_, 0xFF, txBuff.size());
 }
 
 struct spi_ioc_transfer spiTransfer;

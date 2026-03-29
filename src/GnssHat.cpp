@@ -344,22 +344,12 @@ bool validateConfig(const GnssConfig& config)
     if constexpr (std::is_same_v<StartupStrategy, M9NStartup> ||
         std::is_same_v<StartupStrategy, F9PStartup>)
     {
-        if (config.enableTimeMark)
+        if (config.timing.has_value())
         {
             fprintf(
                 stderr,
-                "[GnssConfig] TimeMark is not supported on this HAT - "
+                "[GnssConfig] Timing is not supported on this HAT - "
                 "use L1/L5 GNSS TIME HAT\r\n"
-            );
-            return false;
-        }
-
-        if (config.timeBase.has_value())
-        {
-            fprintf(
-                stderr,
-                "[GnssConfig] TimeBase is only supported on F10T - "
-                "must be nullopt\r\n"
             );
             return false;
         }
@@ -386,7 +376,7 @@ bool validateConfig(const GnssConfig& config)
             );
             return false;
         }
-        return checkTimeBase(config.timeBase);
+        return checkTiming(config.timing);
     }
 
     return false;

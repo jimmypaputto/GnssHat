@@ -33,11 +33,13 @@ def create_survey_in_config() -> dict:
         },
         'geofencing': None,
         'rtk': None,
-        'time_base': {
-            'base_mode': gnsshat.BaseMode.SURVEY_IN,
-            'survey_in': {
-                'minimum_observation_time_s': 120,
-                'required_position_accuracy_m': 50.0
+        'timing': {
+            'time_base': {
+                'base_mode': gnsshat.BaseMode.SURVEY_IN,
+                'survey_in': {
+                    'minimum_observation_time_s': 120,
+                    'required_position_accuracy_m': 50.0
+                }
             }
         }
     }
@@ -59,16 +61,18 @@ def create_fixed_position_lla_config() -> dict:
         },
         'geofencing': None,
         'rtk': None,
-        'time_base': {
-            'base_mode': gnsshat.BaseMode.FIXED_POSITION,
-            'fixed_position': {
-                'position_type': gnsshat.FixedPositionType.LLA,
-                'lla': {
-                    'latitude_deg': 52.232222222,
-                    'longitude_deg': 21.008055556,
-                    'height_m': 110.0
-                },
-                'position_accuracy_m': 0.5
+        'timing': {
+            'time_base': {
+                'base_mode': gnsshat.BaseMode.FIXED_POSITION,
+                'fixed_position': {
+                    'position_type': gnsshat.FixedPositionType.LLA,
+                    'lla': {
+                        'latitude_deg': 52.232222222,
+                        'longitude_deg': 21.008055556,
+                        'height_m': 110.0
+                    },
+                    'position_accuracy_m': 0.5
+                }
             }
         }
     }
@@ -90,16 +94,18 @@ def create_fixed_position_ecef_config() -> dict:
         },
         'geofencing': None,
         'rtk': None,
-        'time_base': {
-            'base_mode': gnsshat.BaseMode.FIXED_POSITION,
-            'fixed_position': {
-                'position_type': gnsshat.FixedPositionType.ECEF,
-                'ecef': {
-                    'x_m': 3656215.987,
-                    'y_m': 1409547.654,
-                    'z_m': 5049982.321
-                },
-                'position_accuracy_m': 0.5
+        'timing': {
+            'time_base': {
+                'base_mode': gnsshat.BaseMode.FIXED_POSITION,
+                'fixed_position': {
+                    'position_type': gnsshat.FixedPositionType.ECEF,
+                    'ecef': {
+                        'x_m': 3656215.987,
+                        'y_m': 1409547.654,
+                        'z_m': 5049982.321
+                    },
+                    'position_accuracy_m': 0.5
+                }
             }
         }
     }

@@ -84,7 +84,9 @@ GnssConfig createConfig()
         },
         .geofencing = std::nullopt,
         .rtk = std::nullopt,
-        .enableTimeMark = true
+        .timing = TimingConfig {
+            .enableTimeMark = true
+        }
     };
 }
 

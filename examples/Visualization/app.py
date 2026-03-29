@@ -353,8 +353,7 @@ def create_default_config():
         },
         'geofencing': None,
         'rtk': None,
-        'time_base': None,
-        'enable_time_mark': False,
+        'timing': None,
         'save_to_flash': False,
     }
 
@@ -1338,45 +1337,52 @@ def json_to_native_config(data):
     else:
         config['rtk'] = None
 
-    # Enable Time Mark
-    config['enable_time_mark'] = bool(data.get('enable_time_mark', False))
+    # Timing (enable_time_mark + time_base)
+    timing_data = data.get('timing')
+    if timing_data and isinstance(timing_data, dict):
+        timing_cfg = {}
 
-    # Time Base
-    time_base = data.get('time_base')
-    if time_base and time_base.get('base_mode') is not None:
-        tb_cfg = {
-            'base_mode': int(time_base['base_mode']),
-        }
-        if int(time_base['base_mode']) == 0:  # SURVEY_IN
-            si = time_base.get('survey_in', {})
-            tb_cfg['survey_in'] = {
-                'minimum_observation_time_s': int(si.get('minimum_observation_time_s', 120)),
-                'required_position_accuracy_m': float(si.get('required_position_accuracy_m', 50.0)),
+        timing_cfg['enable_time_mark'] = bool(timing_data.get('enable_time_mark', False))
+
+        time_base = timing_data.get('time_base')
+        if time_base and time_base.get('base_mode') is not None:
+            tb_cfg = {
+                'base_mode': int(time_base['base_mode']),
             }
-        else:  # FIXED_POSITION
-            fp = time_base.get('fixed_position', {})
-            fp_cfg = {
-                'position_type': int(fp.get('position_type', 1)),
-                'position_accuracy_m': float(fp.get('position_accuracy_m', 0.5)),
-            }
-            if int(fp.get('position_type', 1)) == 0:  # ECEF
-                ecef = fp.get('ecef', {})
-                fp_cfg['ecef'] = {
-                    'x_m': float(ecef.get('x_m', 0.0)),
-                    'y_m': float(ecef.get('y_m', 0.0)),
-                    'z_m': float(ecef.get('z_m', 0.0)),
+            if int(time_base['base_mode']) == 0:  # SURVEY_IN
+                si = time_base.get('survey_in', {})
+                tb_cfg['survey_in'] = {
+                    'minimum_observation_time_s': int(si.get('minimum_observation_time_s', 120)),
+                    'required_position_accuracy_m': float(si.get('required_position_accuracy_m', 50.0)),
                 }
-            else:  # LLA
-                lla = fp.get('lla', {})
-                fp_cfg['lla'] = {
-                    'latitude_deg': float(lla.get('latitude_deg', 0.0)),
-                    'longitude_deg': float(lla.get('longitude_deg', 0.0)),
-                    'height_m': float(lla.get('height_m', 0.0)),
+            else:  # FIXED_POSITION
+                fp = time_base.get('fixed_position', {})
+                fp_cfg = {
+                    'position_type': int(fp.get('position_type', 1)),
+                    'position_accuracy_m': float(fp.get('position_accuracy_m', 0.5)),
                 }
-            tb_cfg['fixed_position'] = fp_cfg
-        config['time_base'] = tb_cfg
+                if int(fp.get('position_type', 1)) == 0:  # ECEF
+                    ecef = fp.get('ecef', {})
+                    fp_cfg['ecef'] = {
+                        'x_m': float(ecef.get('x_m', 0.0)),
+                        'y_m': float(ecef.get('y_m', 0.0)),
+                        'z_m': float(ecef.get('z_m', 0.0)),
+                    }
+                else:  # LLA
+                    lla = fp.get('lla', {})
+                    fp_cfg['lla'] = {
+                        'latitude_deg': float(lla.get('latitude_deg', 0.0)),
+                        'longitude_deg': float(lla.get('longitude_deg', 0.0)),
+                        'height_m': float(lla.get('height_m', 0.0)),
+                    }
+                tb_cfg['fixed_position'] = fp_cfg
+            timing_cfg['time_base'] = tb_cfg
+        else:
+            timing_cfg['time_base'] = None
+
+        config['timing'] = timing_cfg
     else:
-        config['time_base'] = None
+        config['timing'] = None
 
     config['save_to_flash'] = bool(data.get('save_to_flash', False))
 
@@ -1461,7 +1467,8 @@ def api_set_config():
             gps_state['reference_position'] = None  # Reset so map re-calibrates
 
             # Enable time mark trigger if configured
-            tm_enabled = config.get('enable_time_mark', False)
+            timing = config.get('timing')
+            tm_enabled = bool(timing and timing.get('enable_time_mark'))
             gps_state['time_mark_enabled'] = tm_enabled
             if tm_enabled:
                 try:
@@ -1619,7 +1626,8 @@ def start_gps_native():
         gps_state['current_config'] = config
 
         # Enable time mark trigger if configured
-        tm_enabled = config.get('enable_time_mark', False)
+        timing = config.get('timing')
+        tm_enabled = bool(timing and timing.get('enable_time_mark'))
         gps_state['time_mark_enabled'] = tm_enabled
         if tm_enabled:
             try:

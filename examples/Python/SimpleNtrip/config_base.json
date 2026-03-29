@@ -1,0 +1,18 @@
+{
+    "caster_ip": "0.0.0.0",
+    "caster_port": 2101,
+    "mountpoint": "MY_RTK_BASE",
+
+    "base_mode": "survey_in",
+    "survey_in": {
+        "minimum_observation_time_s": 120,
+        "required_position_accuracy_m": 50.0
+    },
+    "fixed_position": {
+        "position_type": "LLA",
+        "latitude_deg": 52.232222222,
+        "longitude_deg": 21.008055556,
+        "height_m": 110.0,
+        "position_accuracy_m": 0.5
+    }
+}

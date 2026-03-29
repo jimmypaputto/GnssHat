@@ -87,7 +87,8 @@ auto main() -> int
             .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
         },
         .geofencing = std::nullopt,
-        .rtk = std::nullopt
+        .rtk = std::nullopt,
+        .timing = std::nullopt
     };
 
     if (!hat->start(config))
@@ -221,8 +222,7 @@ Include `<jimmypaputto/GnssHat.h>`. All functions are prefixed with `jp_gnss_hat
 | `timepulsePinConfig` | `TimepulsePinConfig` | Time pulse output on GPIO 5: enable/disable, frequency, pulse width (0.0--0.99), polarity, optional separate pulse config when no fix |
 | `geofencing` | `optional` | Up to 4 geofences (lat, lon, radius), confidence level (0--5 sigma), optional PIO pin polarity. **Not supported on TIME HAT** |
 | `rtk` | `optional` | RTK mode (Base or Rover). Base supports Survey-In or Fixed Position (ECEF/LLA). **Only for RTK HAT** |
-| `enableTimeMark` | `bool` | Enable UBX-TIM-TM2 time mark messages. **Only for TIME HAT** |
-| `timeBase` | `optional` | Time base mode for improved time accuracy. Survey-In or Fixed Position (ECEF/LLA). **Only for TIME HAT** |
+| `timing` | `optional` | Timing configuration for TIME HAT. Contains `enableTimeMark` (bool, enable UBX-TIM-TM2) and optional `timeBase` (Survey-In or Fixed Position for improved time accuracy). **Only for TIME HAT** |
 
 ## Navigation Data
 
@@ -281,10 +281,13 @@ GnssConfig config {
         .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond },
     .geofencing = std::nullopt,
     .rtk = std::nullopt,
-    .timeBase = BaseConfig {
-        .mode = BaseConfig::SurveyIn {
-            .minimumObservationTime_s = 120,
-            .requiredPositionAccuracy_m = 50.0
+    .timing = TimingConfig {
+        .enableTimeMark = false,
+        .timeBase = BaseConfig {
+            .mode = BaseConfig::SurveyIn {
+                .minimumObservationTime_s = 120,
+                .requiredPositionAccuracy_m = 50.0
+            }
         }
     }
 };
@@ -310,7 +313,10 @@ GnssConfig config {
         .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond },
     .geofencing = std::nullopt,
     .rtk = std::nullopt,
-    .enableTimeMark = true
+    .timing = TimingConfig {
+        .enableTimeMark = true,
+        .timeBase = std::nullopt
+    }
 };
 
 hat->start(config);

@@ -93,14 +93,29 @@ bool checkGeofencing(const std::optional<GnssConfig::Geofencing>& geofencing)
     return true;
 }
 
-bool checkTimeBase(const std::optional<BaseConfig>& timeBase)
+bool checkTiming(const std::optional<TimingConfig>& timing)
 {
-    if (!timeBase.has_value())
+    if (!timing.has_value())
     {
         return true;
     }
 
-    return checkBaseConfig(timeBase.value());
+    if (!timing->enableTimeMark && !timing->timeBase.has_value())
+    {
+        fprintf(
+            stderr,
+            "[GnssConfig] TimingConfig provided but neither enableTimeMark "
+            "nor timeBase is set - use nullopt instead\r\n"
+        );
+        return false;
+    }
+
+    if (timing->timeBase.has_value())
+    {
+        return checkBaseConfig(timing->timeBase.value());
+    }
+
+    return true;
 }
 
 bool checkTimepulsePinConfig(const TimepulsePinConfig& timepulsePinConfig)

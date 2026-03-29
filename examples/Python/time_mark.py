@@ -28,7 +28,9 @@ def create_config() -> dict:
             },
             'polarity': gnsshat.TimepulsePolarity.RISING_EDGE
         },
-        'enable_time_mark': True
+        'timing': {
+            'enable_time_mark': True
+        }
     }
 
 

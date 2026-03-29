@@ -17,6 +17,7 @@ extern "C" {
 #define UBLOX_MAX_GEOFENCES  4
 #define UBLOX_MAX_RF_BLOCKS  2
 #define UBLOX_MAX_SATELLITES 64
+#define UBLOX_SPECTRUM_BINS  256
 
 typedef enum
 {
@@ -275,6 +276,16 @@ typedef struct
 
 typedef struct
 {
+    uint8_t id;
+    uint8_t data[UBLOX_SPECTRUM_BINS];
+    uint32_t span;
+    uint32_t resolution;
+    uint32_t center_freq;
+    uint8_t gain;
+} jp_gnss_rf_block_spectrum_data_t;
+
+typedef struct
+{
     uint32_t frequency;
     float pulse_width;
 } jp_gnss_pulse_t;
@@ -420,6 +431,8 @@ typedef struct
     jp_gnss_geofencing_t geofencing;
     uint8_t num_rf_blocks;
     jp_gnss_rf_block_t rf_blocks[UBLOX_MAX_RF_BLOCKS];
+    uint8_t num_rf_blocks_spectrum;
+    jp_gnss_rf_block_spectrum_data_t rf_blocks_spectrum[UBLOX_MAX_RF_BLOCKS];
     uint8_t num_satellites;
     jp_gnss_satellite_info_t satellites[UBLOX_MAX_SATELLITES];
 } jp_gnss_navigation_t;

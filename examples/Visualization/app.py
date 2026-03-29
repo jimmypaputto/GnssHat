@@ -576,11 +576,24 @@ def nav_to_full_data(nav):
             'healthy': bool(sat.healthy),
         })
 
+    spectrum_data = []
+    if hasattr(nav, 'rf_blocks_spectrum') and nav.rf_blocks_spectrum:
+        for spec in nav.rf_blocks_spectrum:
+            spectrum_data.append({
+                'id': int(spec.id),
+                'data': list(spec.spectrum_data) if spec.spectrum_data else [],
+                'span': int(spec.span),
+                'resolution': int(spec.resolution),
+                'center_freq': int(spec.center_freq),
+                'gain': int(spec.gain),
+            })
+
     return {
         'dop': dop_data,
         'geofencing': geofencing_data,
         'rf_blocks': rf_blocks_data,
         'satellites': satellites_data,
+        'spectrum': spectrum_data,
     }
 
 
@@ -866,6 +879,7 @@ def ros2_nav_to_full_data(nav_msg):
         'geofencing': geofencing_data,
         'rf_blocks': rf_blocks_data,
         'satellites': satellites_data,
+        'spectrum': [],
     }
 
 

@@ -714,6 +714,99 @@ header h1 {
     margin-right: 4px;
 }
 
+/* ─── RF Analyzer ──────────────────────────────────────── */
+
+#rfanalyzer-map {
+    display: flex;
+    flex-direction: column;
+}
+
+.rfanalyzer-layout {
+    display: grid;
+    grid-template-columns: 3fr 1fr;
+    grid-template-rows: 1fr;
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.rfanalyzer-chart-wrap {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#spectrum-charts-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.spectrum-single-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 4px;
+}
+
+.spectrum-single-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.rfanalyzer-info-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.rfanalyzer-status-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.rfanalyzer-status-card .rf-block-header {
+    color: var(--accent-cyan);
+    font-weight: 700;
+    font-size: 13px;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.rfanalyzer-status-card .rf-block-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    font-size: 12px;
+}
+
+.rfanalyzer-status-card .rf-block-label {
+    color: var(--text-secondary);
+}
+
+.rfanalyzer-status-card .rf-block-value {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+@media (max-width: 900px) {
+    .rfanalyzer-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
 @media (max-width: 900px) {
     .skyview-layout {
         grid-template-columns: 1fr;

@@ -484,7 +484,8 @@ bool M9NStartup::execute()
         return false;
     }
 
-    constexpr std::array<uint32_t, 5> msgoutKeys = {
+    constexpr std::array<uint32_t, 6> msgoutKeys = {
+        UbxCfgKeys::CFG_MSGOUT_UBX_MON_SPAN_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,
@@ -652,6 +653,7 @@ std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigVa
 
     {UbxCfgKeys::CFG_MSGOUT_UBX_TIM_TM2_UART1, {0x00}},
 
+    {UbxCfgKeys::CFG_MSGOUT_UBX_MON_SPAN_SPI,     {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,       {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI,      {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,      {0x01}},

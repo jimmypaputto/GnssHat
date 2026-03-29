@@ -140,6 +140,8 @@ def main():
                          f"waiting for TIME_ONLY_FIX...")
                 continue
 
+            caster.update_position(nav.pvt.latitude, nav.pvt.longitude)
+
             try:
                 corrections = hat.rtk_get_full_corrections()
             except RuntimeError as e:

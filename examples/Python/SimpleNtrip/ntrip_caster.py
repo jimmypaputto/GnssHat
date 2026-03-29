@@ -34,6 +34,8 @@ class NtripCaster:
         self._host = host
         self._port = port
         self._mountpoint = mountpoint
+        self._latitude = 0.0
+        self._longitude = 0.0
         self._clients: list[_ClientHandler] = []
         self._clients_lock = threading.Lock()
         self._server: _NtripTCPServer | None = None
@@ -100,6 +102,11 @@ class NtripCaster:
     @property
     def mountpoint(self) -> str:
         return self._mountpoint
+
+    def update_position(self, lat: float, lon: float):
+        """Update the base station position shown in the sourcetable."""
+        self._latitude = lat
+        self._longitude = lon
 
 
 class _NtripTCPServer(socketserver.ThreadingTCPServer):
@@ -185,18 +192,32 @@ class _ClientHandler(socketserver.BaseRequestHandler):
             pass
 
     def _send_sourcetable(self, caster: NtripCaster):
-        entry = (f"STR;{caster.mountpoint};;"
-                 f"RTCM 3.3;;"
-                 f"2;GPS+GLO+GAL+BDS;"
-                 f"SNIP;POL;0.00;0.00;"
-                 f"0;0;sNTRIP;none;N;N;;\r\n")
-        body = entry + "ENDSOURCETABLE\r\n"
+        # NTRIP v2.0 STR record format (20 fields, semicolon-separated):
+        # STR;mountpoint;identifier;format;format-details;
+        # carrier;nav-system;network;country;lat;lon;
+        # nmea;solution;generator;compr-encryp;auth;fee;bitrate;misc
+        entry = (
+            f"STR;{caster.mountpoint};"
+            f"{caster.mountpoint};"
+            f"RTCM 3.3;"
+            f"1005(31),1077(1),1087(1),1097(1),1127(1),1230(10);"
+            f"2;"
+            f"GPS+GLO+GAL+BDS;"
+            f"NONE;"
+            f"POL;"
+            f"{caster._latitude:.6f};{caster._longitude:.6f};"
+            f"0;0;"
+            f"GnssHat NEO-F9P;"
+            f"none;N;N;0;\r\n"
+        )
+        body = (entry + "ENDSOURCETABLE\r\n").encode("ascii")
         try:
-            resp = ("ICY 200 OK\r\n"
-                    "Content-Type: gnss/sourcetable\r\n"
-                    f"Content-Length: {len(body)}\r\n"
-                    "\r\n"
-                    + body)
-            self.request.sendall(resp.encode("ascii"))
+            header = (
+                f"ICY 200 OK\r\n"
+                f"Content-Type: gnss/sourcetable\r\n"
+                f"Content-Length: {len(body)}\r\n"
+                f"\r\n"
+            ).encode("ascii")
+            self.request.sendall(header + body)
         except OSError:
             pass

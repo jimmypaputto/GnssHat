@@ -1465,6 +1465,12 @@ function populateFormFromConfig(config) {
         saveFlashEl.checked = !!config.save_to_flash;
     }
 
+    // Enable L5
+    const l5El = document.getElementById('cfg-l5-en');
+    if (l5El) {
+        l5El.checked = !!config.enable_l5;
+    }
+
     // ROS 2 specific fields
     const ros2StdTopics = document.getElementById('cfg-ros2-stdtopics');
     if (ros2StdTopics) {
@@ -1634,6 +1640,12 @@ function buildConfigFromForm() {
     const saveFlashEl = document.getElementById('cfg-save-flash');
     if (saveFlashEl) {
         config.save_to_flash = saveFlashEl.checked;
+    }
+
+    // Enable L5
+    const l5El = document.getElementById('cfg-l5-en');
+    if (l5El) {
+        config.enable_l5 = l5El.checked;
     }
 
     // ROS 2 specific fields

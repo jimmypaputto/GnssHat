@@ -846,8 +846,6 @@ F10TStartup::F10TStartup(ICommDriver& commDriver,
 
     const uint8_t l5Enabled = config.enableL5 ? 0x01 : 0x00;
     ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {l5Enabled};
-    ecv[UbxCfgKeys::CFG_SIGNAL_GAL_E5A_ENA]   = {l5Enabled};
-    ecv[UbxCfgKeys::CFG_SIGNAL_QZSS_L5_ENA]   = {l5Enabled};
     ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {l5Enabled};
 
     const bool enableTimeMark = config.timing.has_value()
@@ -897,10 +895,8 @@ bool F10TStartup::execute()
     if (!result)
         return false;
 
-    constexpr std::array<uint32_t, 4> l5SignalKeys = {
+    constexpr std::array<uint32_t, 2> l5SignalKeys = {
         UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA,
-        UbxCfgKeys::CFG_SIGNAL_GAL_E5A_ENA,
-        UbxCfgKeys::CFG_SIGNAL_QZSS_L5_ENA,
         UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD
     };
     result = configure(l5SignalKeys);
@@ -1021,8 +1017,6 @@ F9PStartup::F9PStartup(ICommDriver& commDriver,
 
     const uint8_t l5Enabled = config.enableL5 ? 0x01 : 0x00;
     ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {l5Enabled};
-    ecv[UbxCfgKeys::CFG_SIGNAL_GAL_E5A_ENA]   = {l5Enabled};
-    ecv[UbxCfgKeys::CFG_SIGNAL_QZSS_L5_ENA]   = {l5Enabled};
     ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {l5Enabled};
 
     ecv[UbxCfgKeys::CFG_SPIINPROT_RTCM3X] = {0x00};
@@ -1050,10 +1044,8 @@ bool F9PStartup::execute()
 
     configRegistry_.shouldSaveConfigToFlash(false);
 
-    constexpr std::array<uint32_t, 4> l5SignalKeys = {
+    constexpr std::array<uint32_t, 2> l5SignalKeys = {
         UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA,
-        UbxCfgKeys::CFG_SIGNAL_GAL_E5A_ENA,
-        UbxCfgKeys::CFG_SIGNAL_QZSS_L5_ENA,
         UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD
     };
     result = configure(l5SignalKeys);
@@ -1062,6 +1054,9 @@ bool F9PStartup::execute()
         fprintf(stderr, "[Startup] L5 signal configuration failed\r\n");
         return false;
     }
+
+    // required to wait for constellation specific subsystem restart
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     constexpr std::array<uint32_t, 3> spiProtF9PKeys = {
         UbxCfgKeys::CFG_SPIINPROT_RTCM3X,

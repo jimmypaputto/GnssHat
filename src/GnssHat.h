@@ -359,6 +359,13 @@ typedef struct
 
 typedef struct
 {
+    bool enable_time_mark;
+    bool has_time_base;
+    jp_gnss_base_config_t time_base;
+} jp_gnss_timing_config_t;
+
+typedef struct
+{
     uint16_t measurement_rate_hz;
     jp_gnss_dynamic_model_t dynamic_model;
     jp_gnss_timepulse_pin_config_t timepulse_pin_config;
@@ -366,10 +373,9 @@ typedef struct
     jp_gnss_geofencing_config_t geofencing;
     bool has_rtk;
     jp_gnss_rtk_config_t rtk;
-    bool enable_time_mark;
+    bool has_timing;
+    jp_gnss_timing_config_t timing;
     bool save_to_flash;
-    bool has_time_base;
-    jp_gnss_base_config_t time_base;
 } jp_gnss_gnss_config_t;
 
 typedef struct

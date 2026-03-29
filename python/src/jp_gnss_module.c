@@ -2170,11 +2170,26 @@ static void populate_config_from_dict(PyObject* config_dict, jp_gnss_gnss_config
         config->has_geofencing = false;
     }
 
-    /* ── TimeMark config ────────────────────────────────────────────── */
-    config->enable_time_mark = false;
-    PyObject* enable_tm = PyDict_GetItemString(config_dict, "enable_time_mark");
-    if (enable_tm)
-        config->enable_time_mark = PyObject_IsTrue(enable_tm);
+    /* ── Timing config ─────────────────────────────────────────────── */
+    config->has_timing = false;
+    PyObject* timing_dict = PyDict_GetItemString(config_dict, "timing");
+    if (timing_dict && timing_dict != Py_None)
+    {
+        config->has_timing = true;
+        memset(&config->timing, 0, sizeof(config->timing));
+
+        PyObject* enable_tm = PyDict_GetItemString(timing_dict, "enable_time_mark");
+        if (enable_tm)
+            config->timing.enable_time_mark = PyObject_IsTrue(enable_tm);
+
+        config->timing.has_time_base = false;
+        PyObject* time_base_dict = PyDict_GetItemString(timing_dict, "time_base");
+        if (time_base_dict && time_base_dict != Py_None)
+        {
+            config->timing.has_time_base = true;
+            populate_base_config_from_dict(time_base_dict, &config->timing.time_base);
+        }
+    }
 
     /* ── RTK config ─────────────────────────────────────────────────── */
     config->has_rtk = false;
@@ -2197,17 +2212,7 @@ static void populate_config_from_dict(PyObject* config_dict, jp_gnss_gnss_config
             populate_base_config_from_dict(base_dict, &config->rtk.base);
         }
     }
-
-    /* ── time_base config ──────────────────────────────────────────── */
-    config->has_time_base = false;
-    PyObject* time_base_dict = PyDict_GetItemString(config_dict, "time_base");
-    if (time_base_dict && time_base_dict != Py_None)
-    {
-        config->has_time_base = true;
-        memset(&config->time_base, 0, sizeof(config->time_base));
-        populate_base_config_from_dict(time_base_dict, &config->time_base);
-    }
-
+ 
     /* ── save_to_flash config ──────────────────────────────────────── */
     config->save_to_flash = false;
     PyObject* save_flash = PyDict_GetItemString(config_dict, "save_to_flash");

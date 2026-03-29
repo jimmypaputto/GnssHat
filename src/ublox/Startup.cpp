@@ -844,13 +844,15 @@ F10TStartup::F10TStartup(ICommDriver& commDriver,
     rate2Registers(config.measurementRate_Hz);
     timepulsePinConfig2Registers(config.timepulsePinConfig);
 
+    const bool enableTimeMark = config.timing.has_value()
+        && config.timing->enableTimeMark;
     ecv[UbxCfgKeys::CFG_MSGOUT_UBX_TIM_TM2_UART1] =
-        {static_cast<uint8_t>(config.enableTimeMark ? 0x01 : 0x00)};
+        {static_cast<uint8_t>(enableTimeMark ? 0x01 : 0x00)};
 
-    if (config.timeBase.has_value())
+    if (config.timing.has_value() && config.timing->timeBase.has_value())
     {
         timeBaseEnabled_ = true;
-        baseConfig2Registers(config.timeBase.value());
+        baseConfig2Registers(config.timing->timeBase.value());
     }
     else
     {
@@ -975,11 +977,11 @@ int F10TStartup::pollRxData(uint8_t* rxBuff, const uint32_t size,
 
 bool F10TStartup::timeBaseStartup()
 {
-    const auto& timeBase = configRegistry_.getGnssConfig().timeBase;
-    if (!timeBase.has_value())
+    const auto& timing = configRegistry_.getGnssConfig().timing;
+    if (!timing.has_value() || !timing->timeBase.has_value())
         return false;
 
-    const auto tmodeKeys = baseConfig2Keys(timeBase.value());
+    const auto tmodeKeys = baseConfig2Keys(timing->timeBase.value());
     const bool result = configure(tmodeKeys);
     if (!result)
     {

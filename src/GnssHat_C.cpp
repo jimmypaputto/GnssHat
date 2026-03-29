@@ -387,17 +387,24 @@ std::optional<GnssConfig> convert_gnss_config(
         cpp_config.rtk = *rtk;
     }
 
-    if (c_config.has_time_base)
+    if (c_config.has_timing)
     {
-        auto timeBase = convert_base_config(c_config.time_base);
-        if (!timeBase)
-            return std::nullopt;
-        cpp_config.timeBase = *timeBase;
+        TimingConfig timing;
+        timing.enableTimeMark = c_config.timing.enable_time_mark;
+
+        if (c_config.timing.has_time_base)
+        {
+            auto timeBase = convert_base_config(c_config.timing.time_base);
+            if (!timeBase)
+                return std::nullopt;
+            timing.timeBase = *timeBase;
+        }
+
+        cpp_config.timing = timing;
     }
-
-    cpp_config.enableTimeMark = c_config.enable_time_mark;
+ 
     cpp_config.saveToFlash = c_config.save_to_flash;
-
+ 
     return cpp_config;
 }
 
@@ -834,10 +841,9 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
     config->has_geofencing = false;
     config->has_rtk = false;
     std::memset(&config->rtk, 0, sizeof(config->rtk));
-    config->enable_time_mark = false;
+    config->has_timing = false;
+    std::memset(&config->timing, 0, sizeof(config->timing));
     config->save_to_flash = false;
-    config->has_time_base = false;
-    std::memset(&config->time_base, 0, sizeof(config->time_base));
 }
 
 void jp_gnss_hat_timepulse(jp_gnss_hat_t* hat)

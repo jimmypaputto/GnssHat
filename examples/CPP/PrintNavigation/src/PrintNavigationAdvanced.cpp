@@ -233,32 +233,35 @@ void printNavigationTable(const Navigation& navigation)
     printTableRow("Northing DOP", formatDouble(navigation.dop.northing, 2));
     printTableRow("Easting DOP", formatDouble(navigation.dop.easting, 2));
     
-    printf("+");
-    drawHorizontalLine(27, '-');
-    printf("+");
-    drawHorizontalLine(42, '-');
-    printf("+\n");
-    printf("| " COLOR_BOLD COLOR_MAGENTA "RF MONITOR (RF BLOCK 0)" COLOR_RESET "%*s |%*s|\n", 2, "", 42, "");
-    printf("+");
-    drawHorizontalLine(27, '-');
-    printf("+");
-    drawHorizontalLine(42, '-');
-    printf("+\n");
-    
     if (!navigation.rfBlocks.empty())
     {
-        printTableRow("Noise Level", std::to_string(navigation.rfBlocks[0].noisePerMS) + " counts/ms");
-        printTableRow("AGC Monitor", std::to_string(navigation.rfBlocks[0].agcMonitor) + "%");
-        printTableRow("Jamming State", Utils::jammingState2string(navigation.rfBlocks[0].jammingState));
-        printTableRow("Antenna Status", Utils::antennaStatus2string(navigation.rfBlocks[0].antennaStatus));
-        printTableRow("CW Interference", std::to_string(navigation.rfBlocks[0].cwInterferenceSuppressionLevel) + "%");
-        printTableRow("RF Band", Utils::eBand2string(navigation.rfBlocks[0].gnssBand));
+        for (auto rfblock = navigation.rfBlocks.begin(); rfblock != navigation.rfBlocks.end(); ++rfblock)
+        {  
+            printf("+");
+            drawHorizontalLine(27, '-');
+            printf("+");
+            drawHorizontalLine(42, '-');
+            printf("+\n");
+            printf("| " COLOR_BOLD COLOR_MAGENTA "RF MONITOR (RF BLOCK %d)" COLOR_RESET "%*s |%*s|\n", rfblock->id, 2, "", 42, "");
+            printf("+");
+            drawHorizontalLine(27, '-');
+            printf("+");
+            drawHorizontalLine(42, '-');
+            printf("+\n");
+            
+            printTableRow("Noise Level", std::to_string(rfblock->noisePerMS) + " counts/ms");
+            printTableRow("AGC Monitor", std::to_string(rfblock->agcMonitor) + "%");
+            printTableRow("Jamming State", Utils::jammingState2string(rfblock->jammingState));
+            printTableRow("Antenna Status", Utils::antennaStatus2string(rfblock->antennaStatus));
+            printTableRow("CW Interference", std::to_string(rfblock->cwInterferenceSuppressionLevel) + "%");
+            printTableRow("RF Band", Utils::eBand2string(rfblock->gnssBand));
+        }
     }
     else
     {
         printTableRow("Status", "No RF blocks available");
     }
-
+        
     printf("+");
     drawHorizontalLine(termWidth - 2, '-');
     printf("+\n");

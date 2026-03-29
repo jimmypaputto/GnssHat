@@ -354,6 +354,19 @@ bool validateConfig(const GnssConfig& config)
             return false;
         }
 
+        if constexpr (std::is_same_v<StartupStrategy, M9NStartup>)
+        {
+            if (config.enableL5)
+            {
+                fprintf(
+                    stderr,
+                    "[GnssConfig] L5 band is not supported on L1 GNSS HAT "
+                    "(NEO-M9N) - use L1/L5 HAT\r\n"
+                );
+                return false;
+            }
+        }
+
         return checkGeofencing(config.geofencing);
     }
     else if constexpr (std::is_same_v<StartupStrategy, F10TStartup>)

@@ -370,6 +370,7 @@ typedef struct
     jp_gnss_rtk_config_t rtk;
     bool has_timing;
     jp_gnss_timing_config_t timing;
+    bool enable_l5;
     bool save_to_flash;
 } jp_gnss_gnss_config_t;
 

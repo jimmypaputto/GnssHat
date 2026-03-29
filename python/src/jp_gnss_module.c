@@ -2207,6 +2207,12 @@ static void populate_config_from_dict(PyObject* config_dict, jp_gnss_gnss_config
     PyObject* save_flash = PyDict_GetItemString(config_dict, "save_to_flash");
     if (save_flash)
         config->save_to_flash = PyObject_IsTrue(save_flash);
+
+    /* ── enable_l5 config ─────────────────────────────────────────── */
+    config->enable_l5 = false;
+    PyObject* enable_l5 = PyDict_GetItemString(config_dict, "enable_l5");
+    if (enable_l5)
+        config->enable_l5 = PyObject_IsTrue(enable_l5);
 }
 
 #define CHECK_HAT(self) do { \

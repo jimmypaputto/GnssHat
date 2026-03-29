@@ -38,6 +38,8 @@ struct GnssConfig
 
     std::optional<TimingConfig> timing;
 
+    bool enableL5{false};
+
     bool saveToFlash{false};
 };
 

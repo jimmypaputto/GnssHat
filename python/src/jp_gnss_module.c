@@ -2229,6 +2229,7 @@ static PyObject* GnssHat_start(GnssHat* self, PyObject* args, PyObject* kwargs)
         return NULL;
 
     jp_gnss_gnss_config_t config;
+    jp_gnss_gnss_config_init(&config);
     populate_config_from_dict(config_dict, &config);
 
     bool result = jp_gnss_hat_start(self->hat, &config);

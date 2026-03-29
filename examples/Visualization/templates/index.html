@@ -157,6 +157,9 @@
                     <div class="data-tabs">
                         <button class="data-tab active" data-dtab="navdata">📊 Navigation Data</button>
                         <button class="data-tab" data-dtab="config">⚙️ Configuration</button>
+                        {% if mode == 'native' and hat_name == 'L1/L5 GNSS RTK HAT' %}
+                        <button class="data-tab" data-dtab="ntrip">📡 NTRIP</button>
+                        {% endif %}
                     </div>
                     {% else %}
                     <h2>GPS Data (PVT)</h2>
@@ -608,57 +611,6 @@
                             </div>
                         </fieldset>
 
-                        {% if mode == 'native' %}
-                        <!-- NTRIP Client (RTK Rover corrections) -->
-                        <fieldset class="cfg-section" id="cfg-ntrip-section">
-                            <legend>NTRIP Client (RTK Corrections)</legend>
-
-                            <div class="cfg-row">
-                                <label>Status</label>
-                                <span id="ntrip-status" class="ntrip-status-badge disconnected">Disconnected</span>
-                            </div>
-
-                            <div class="cfg-row">
-                                <label for="cfg-ntrip-caster">Caster Address</label>
-                                <input type="text" id="cfg-ntrip-caster" placeholder="caster.example.com" class="cfg-input">
-                            </div>
-                            <div class="cfg-row">
-                                <label for="cfg-ntrip-port">Port</label>
-                                <input type="number" id="cfg-ntrip-port" min="1" max="65535" value="2101" class="cfg-input cfg-input-sm">
-                            </div>
-                            <div class="cfg-row">
-                                <label for="cfg-ntrip-mount">Mountpoint</label>
-                                <input type="text" id="cfg-ntrip-mount" placeholder="NEAREST" class="cfg-input">
-                            </div>
-                            <div class="cfg-row">
-                                <label for="cfg-ntrip-user">Username</label>
-                                <input type="text" id="cfg-ntrip-user" class="cfg-input">
-                            </div>
-                            <div class="cfg-row">
-                                <label for="cfg-ntrip-pass">Password</label>
-                                <input type="password" id="cfg-ntrip-pass" class="cfg-input">
-                            </div>
-                            <div class="cfg-row">
-                                <label for="cfg-ntrip-version">NTRIP Version</label>
-                                <select id="cfg-ntrip-version" class="cfg-input">
-                                    <option value="2.0" selected>2.0</option>
-                                    <option value="1.0">1.0</option>
-                                </select>
-                            </div>
-                            <div class="cfg-row">
-                                <label>
-                                    <input type="checkbox" id="cfg-ntrip-https" class="cfg-checkbox">
-                                    Use HTTPS
-                                </label>
-                            </div>
-
-                            <div class="cfg-actions">
-                                <button type="button" id="ntrip-connect-btn" class="cfg-btn cfg-btn-primary">Connect</button>
-                                <button type="button" id="ntrip-disconnect-btn" class="cfg-btn cfg-btn-secondary" disabled>Disconnect</button>
-                            </div>
-                        </fieldset>
-                        {% endif %}
-
                         {% endif %}
 
                         {% if hat_name == 'L1/L5 GNSS TIME HAT' %}
@@ -793,6 +745,61 @@
                             <button type="button" id="cfg-send-btn" class="cfg-btn cfg-btn-primary">🚀 Send Config</button>
                         </div>
 
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if mode == 'native' and hat_name == 'L1/L5 GNSS RTK HAT' %}
+                <!-- NTRIP Client pane -->
+                <div id="ntrip-pane" class="data-pane" style="display:none;">
+                    <div class="config-form">
+                        <fieldset class="cfg-section" id="cfg-ntrip-section">
+                            <legend>📡 NTRIP Client (RTK Corrections)</legend>
+
+                            <div class="cfg-row">
+                                <label>Status</label>
+                                <span id="ntrip-status" class="ntrip-status-badge disconnected">Disconnected</span>
+                            </div>
+
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-caster">Caster Address</label>
+                                <input type="text" id="cfg-ntrip-caster" placeholder="caster.example.com" class="cfg-input">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-port">Port</label>
+                                <input type="number" id="cfg-ntrip-port" min="1" max="65535" value="2101" class="cfg-input cfg-input-sm">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-mount">Mountpoint</label>
+                                <input type="text" id="cfg-ntrip-mount" placeholder="NEAREST" class="cfg-input">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-user">Username</label>
+                                <input type="text" id="cfg-ntrip-user" class="cfg-input">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-pass">Password</label>
+                                <input type="password" id="cfg-ntrip-pass" class="cfg-input">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-version">NTRIP Version</label>
+                                <select id="cfg-ntrip-version" class="cfg-input">
+                                    <option value="2.0" selected>2.0</option>
+                                    <option value="1.0">1.0</option>
+                                </select>
+                            </div>
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-ntrip-https" class="cfg-checkbox">
+                                    Use HTTPS
+                                </label>
+                            </div>
+
+                            <div class="cfg-actions">
+                                <button type="button" id="ntrip-connect-btn" class="cfg-btn cfg-btn-primary">Connect</button>
+                                <button type="button" id="ntrip-disconnect-btn" class="cfg-btn cfg-btn-secondary" disabled>Disconnect</button>
+                            </div>
+                        </fieldset>
                     </div>
                 </div>
                 {% endif %}

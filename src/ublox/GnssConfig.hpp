@@ -38,7 +38,7 @@ struct GnssConfig
 
     std::optional<TimingConfig> timing;
 
-    bool enableL5{false};
+    std::optional<bool> enableL5_GPS{};
 
     bool saveToFlash{false};
 };

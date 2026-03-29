@@ -844,7 +844,7 @@ F10TStartup::F10TStartup(ICommDriver& commDriver,
     rate2Registers(config.measurementRate_Hz);
     timepulsePinConfig2Registers(config.timepulsePinConfig);
 
-    const uint8_t l5Enabled = config.enableL5 ? 0x01 : 0x00;
+    const uint8_t l5Enabled = config.enableL5_GPS.value_or(true) ? 0x01 : 0x00;
     ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {l5Enabled};
     ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {l5Enabled};
 
@@ -1015,7 +1015,7 @@ F9PStartup::F9PStartup(ICommDriver& commDriver,
 
     auto& ecv = StartupBase::expectedConfigValues_;
 
-    const uint8_t l5Enabled = config.enableL5 ? 0x01 : 0x00;
+    const uint8_t l5Enabled = config.enableL5_GPS.value_or(true) ? 0x01 : 0x00;
     ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {l5Enabled};
     ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {l5Enabled};
 
@@ -1056,7 +1056,8 @@ bool F9PStartup::execute()
     }
 
     // required to wait for constellation specific subsystem restart
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    if (configRegistry_.shouldSaveConfigToFlash())
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     constexpr std::array<uint32_t, 3> spiProtF9PKeys = {
         UbxCfgKeys::CFG_SPIINPROT_RTCM3X,

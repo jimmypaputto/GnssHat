@@ -355,7 +355,7 @@ def create_default_config():
         'rtk': None,
         'timing': None,
         'save_to_flash': False,
-        'enable_l5': False,
+        'enable_l5_gps': None,
     }
 
 
@@ -1386,7 +1386,8 @@ def json_to_native_config(data):
         config['timing'] = None
 
     config['save_to_flash'] = bool(data.get('save_to_flash', False))
-    config['enable_l5'] = bool(data.get('enable_l5', False))
+    l5_val = data.get('enable_l5_gps')
+    config['enable_l5_gps'] = None if l5_val is None else bool(l5_val)
 
     return config
 

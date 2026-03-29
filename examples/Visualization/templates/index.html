@@ -730,14 +730,16 @@
                         {% if hat_name != 'L1 GNSS HAT' %}
                         <!-- L5 Band -->
                         <fieldset class="cfg-section">
-                            <legend>📡 L5 Band</legend>
+                            <legend>📡 GPS L5 Band</legend>
                             <div class="cfg-row">
-                                <label>
-                                    <input type="checkbox" id="cfg-l5-en" class="cfg-checkbox">
-                                    Enable L5 Band (GPS L5 + Galileo E5a + QZSS L5)
-                                </label>
+                                <label for="cfg-l5-en">GPS L5</label>
+                                <select id="cfg-l5-en" class="cfg-select">
+                                    <option value="auto">Auto (enabled)</option>
+                                    <option value="on">On</option>
+                                    <option value="off">Off</option>
+                                </select>
                             </div>
-                            <div class="cfg-hint">Enables GPS L5, Galileo E5a and QZSS L5 signals with L5 health override for trusted reception. Only available on L1/L5 HATs.</div>
+                            <div class="cfg-hint">Auto = enabled on L1/L5 HATs. Enables GPS L5 signal with L5 health override.</div>
                         </fieldset>
                         {% endif %}
 

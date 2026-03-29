@@ -356,12 +356,12 @@ bool validateConfig(const GnssConfig& config)
 
         if constexpr (std::is_same_v<StartupStrategy, M9NStartup>)
         {
-            if (config.enableL5)
+            if (config.enableL5_GPS.has_value())
             {
                 fprintf(
                     stderr,
                     "[GnssConfig] L5 band is not supported on L1 GNSS HAT "
-                    "(NEO-M9N) - use L1/L5 HAT\r\n"
+                    "(NEO-M9N) - enableL5_GPS must be nullopt\r\n"
                 );
                 return false;
             }

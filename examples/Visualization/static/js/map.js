@@ -1465,10 +1465,14 @@ function populateFormFromConfig(config) {
         saveFlashEl.checked = !!config.save_to_flash;
     }
 
-    // Enable L5
+    // Enable L5 GPS
     const l5El = document.getElementById('cfg-l5-en');
     if (l5El) {
-        l5El.checked = !!config.enable_l5;
+        if (config.enable_l5_gps === null || config.enable_l5_gps === undefined) {
+            l5El.value = 'auto';
+        } else {
+            l5El.value = config.enable_l5_gps ? 'on' : 'off';
+        }
     }
 
     // ROS 2 specific fields
@@ -1642,10 +1646,11 @@ function buildConfigFromForm() {
         config.save_to_flash = saveFlashEl.checked;
     }
 
-    // Enable L5
+    // Enable L5 GPS
     const l5El = document.getElementById('cfg-l5-en');
     if (l5El) {
-        config.enable_l5 = l5El.checked;
+        const v = l5El.value;
+        config.enable_l5_gps = v === 'auto' ? null : v === 'on';
     }
 
     // ROS 2 specific fields

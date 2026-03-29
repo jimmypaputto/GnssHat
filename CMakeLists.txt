@@ -109,6 +109,7 @@ install(
         src/ublox/RtkConfig.hpp
         src/ublox/SatelliteInfo.hpp
         src/ublox/TimepulsePinConfig.hpp
+        src/ublox/RFBlockSpectrumData.hpp
     DESTINATION
         /usr/local/include/jimmypaputto/ublox
 )

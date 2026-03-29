@@ -61,6 +61,15 @@ void Gnss::rfBlocks(const std::vector<RfBlock>& rfBlocks)
     }
 }
 
+void Gnss::rfBlocksSpectrumData(const std::vector<RfBlockSpectrumData>& rfBlocksSpectrumData)
+{
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        navigation_.rfBlocksSpectrumData = rfBlocksSpectrumData;
+        xSemaphore_.releaseResource();
+    }
+}
+
 void Gnss::satellites(const std::vector<SatelliteInfo>& satellites)
 {
     if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))

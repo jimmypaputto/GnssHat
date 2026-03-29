@@ -31,6 +31,7 @@ enum class EUbxMsg: std::uint8_t
     UBX_NAV_GEOFENCE = 0x0D,
     UBX_NAV_PVT      = 0x0E,
     UBX_NAV_SAT      = 0x0F,
+    UBX_MON_SPAN     = 0x10,
     END_UBX
 };
 

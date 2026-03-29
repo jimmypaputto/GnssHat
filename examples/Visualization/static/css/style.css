@@ -1008,6 +1008,45 @@ header h1 {
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* ─── NTRIP Status Badge ──────────────────────────────── */
+.ntrip-status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    transition: all 0.3s ease;
+}
+
+.ntrip-status-badge.connected {
+    color: var(--accent-green);
+    border-color: var(--accent-green);
+    background: rgba(0, 255, 136, 0.1);
+}
+
+.ntrip-status-badge.disconnected {
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+    background: var(--bg-primary);
+}
+
+.ntrip-status-badge.connecting {
+    color: var(--accent-yellow);
+    border-color: var(--accent-yellow);
+    background: rgba(255, 170, 0, 0.1);
+    animation: pulse 1.5s infinite;
+}
+
+.ntrip-status-badge.error {
+    color: var(--accent-red);
+    border-color: var(--accent-red);
+    background: rgba(255, 68, 68, 0.1);
+}
+
 .data-content {
     width: 100%;
 }

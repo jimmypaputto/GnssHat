@@ -148,6 +148,12 @@ if(BUILD_EXAMPLES)
         DEPENDS ${CPP_TARGETS}
         COMMENT "Creating symlinks in examples/BinariesSymlinks/"
     )
+
+    set(SYMLINK_FILES)
+    foreach(TARGET_NAME ${CPP_TARGETS})
+        list(APPEND SYMLINK_FILES ${SYMLINK_DIR}/${TARGET_NAME})
+    endforeach()
+    set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES ${SYMLINK_FILES})
 endif()
 
 install(TARGETS GnssHat

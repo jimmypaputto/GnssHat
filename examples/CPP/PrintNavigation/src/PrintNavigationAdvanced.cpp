@@ -142,14 +142,14 @@ void printNavigationTable(const Navigation& navigation)
     printf("+\n");
 
     std::string title = "u-blox NEO-M9N GNSS Navigation Data";
-    int padding = (termWidth - title.length() - 2) / 2;
+    int padding = static_cast<int>((termWidth - title.length() - 2) / 2);
     printf("|%*s%s%*s|\n", padding, "", title.c_str(), 
-           termWidth - title.length() - padding - 2, "");
+           static_cast<int>(termWidth - title.length() - padding - 2), "");
 
     std::string timestamp = "Updated: " + Utils::utcTimeFromGnss_ISO8601(navigation.pvt);
-    padding = (termWidth - timestamp.length() - 2) / 2;
+    padding = static_cast<int>((termWidth - timestamp.length() - 2) / 2);
     printf("|%*s%s%*s|\n", padding, "", timestamp.c_str(), 
-           termWidth - timestamp.length() - padding - 2, "");
+           static_cast<int>(termWidth - timestamp.length() - padding - 2), "");
 
     printf("+");
     drawHorizontalLine(termWidth - 2, '-');
@@ -278,7 +278,9 @@ GnssConfig createDefaultConfig()
             .pulseWhenNoFix = std::nullopt,
             .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
         },
-        .geofencing = std::nullopt
+        .geofencing = std::nullopt,
+        .rtk = std::nullopt,
+        .timing = std::nullopt
     };
 }
 

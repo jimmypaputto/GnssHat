@@ -440,6 +440,19 @@ bool GnssHat::start(const GnssConfig& config)
         return false;
     }
 
+    if (config.geofencing.has_value())
+    {
+        const auto& geo = config.geofencing.value();
+        Geofencing::Cfg cfg{};
+        cfg.confidenceLevel = geo.confidenceLevel;
+        cfg.geofences = geo.geofences;
+        cfg.pioEnabled = geo.pioPinPolarity.has_value();
+        cfg.pinPolarity = geo.pioPinPolarity.value_or(
+            EPioPinPolarity::LowMeansInside);
+        cfg.pioPinNumber = geofencingPioPin;
+        gnss_.geofencingCfg(cfg);
+    }
+
     if constexpr (!std::is_same_v<RunStrategy, F10TRun>)
     {
         txReady_ = std::make_unique<TxReadyInterrupt>(

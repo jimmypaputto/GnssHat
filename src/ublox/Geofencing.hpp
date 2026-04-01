@@ -14,6 +14,8 @@
 namespace JimmyPaputto
 {
 
+constexpr uint8_t geofencingPioPin = 6;
+
 struct Geofencing
 {
     struct Cfg

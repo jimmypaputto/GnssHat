@@ -3,6 +3,9 @@
 cmake_minimum_required(VERSION 3.12)
 
 project(GnssHat)
+
+option(BUILD_PYTHON "Build Python bindings" OFF)
+
 set(LIBGPIOD_VERSION 2)
 add_compile_definitions(LIBGPIO_VERSION=${LIBGPIOD_VERSION})
 
@@ -124,3 +127,7 @@ install(
     DESTINATION
         /usr/local/include/jimmypaputto
 )
+
+if(BUILD_PYTHON)
+    add_subdirectory(python)
+endif()

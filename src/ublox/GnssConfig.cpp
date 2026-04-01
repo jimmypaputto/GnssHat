@@ -45,6 +45,16 @@ bool checkGeofencing(const std::optional<GnssConfig::Geofencing>& geofencing)
         return false;
     }
 
+    if (geofencing->geofences.empty())
+    {
+        fprintf(
+            stderr,
+            "[GnssConfig] Geofencing enabled but no geofences defined, "
+            "use std::nullopt to disable geofencing\r\n"
+        );
+        return false;
+    }
+
     if (geofencing->geofences.size() > 4)
     {
         fprintf(

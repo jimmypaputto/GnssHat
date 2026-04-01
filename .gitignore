@@ -7,3 +7,4 @@ examples/build/
 examples/ConfigFromJson/build/
 examples/Python/__pycache__/
 examples/Visualization/venv/
+examples/BinariesSymlinks/

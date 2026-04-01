@@ -129,7 +129,7 @@ void printTableRow(const std::string& label, const std::string& value, int label
            (int)(valuePadding + extraBytes), value.c_str());
 }
 
-void printNavigationTable(const Navigation& navigation)
+void printNavigationTable(const Navigation& navigation, const std::string& hatName)
 {
     int termWidth, termHeight;
     getTerminalSize(termWidth, termHeight);
@@ -141,7 +141,7 @@ void printNavigationTable(const Navigation& navigation)
     drawHorizontalLine(termWidth - 2, '-');
     printf("+\n");
 
-    std::string title = "u-blox NEO-M9N GNSS Navigation Data";
+    std::string title = hatName + " Navigation Data";
     int padding = static_cast<int>((termWidth - title.length() - 2) / 2);
     printf("|%*s%s%*s|\n", padding, "", title.c_str(), 
            static_cast<int>(termWidth - title.length() - padding - 2), "");
@@ -238,22 +238,33 @@ void printNavigationTable(const Navigation& navigation)
     printf("+");
     drawHorizontalLine(42, '-');
     printf("+\n");
-    printf("| " COLOR_BOLD COLOR_MAGENTA "RF MONITOR (L1 BAND)" COLOR_RESET "%*s |%*s|\n", 5, "", 42, "");
+    printf("| " COLOR_BOLD COLOR_MAGENTA "RF MONITOR" COLOR_RESET "%*s |%*s|\n", 15, "", 42, "");
     printf("+");
     drawHorizontalLine(27, '-');
     printf("+");
     drawHorizontalLine(42, '-');
     printf("+\n");
     
-    if (!navigation.rfBlocks.empty())
+    for (size_t i = 0; i < navigation.rfBlocks.size(); i++)
     {
-        printTableRow("Noise Level", std::to_string(navigation.rfBlocks[0].noisePerMS) + " counts/ms");
-        printTableRow("AGC Monitor", std::to_string(navigation.rfBlocks[0].agcMonitor) + "%");
-        printTableRow("Jamming State", Utils::jammingState2string(navigation.rfBlocks[0].jammingState));
-        printTableRow("Antenna Status", Utils::antennaStatus2string(navigation.rfBlocks[0].antennaStatus));
-        printTableRow("CW Interference", std::to_string(navigation.rfBlocks[0].cwInterferenceSuppressionLevel) + "%");
+        const auto& rf = navigation.rfBlocks[i];
+        std::string band = Utils::eBand2string(rf.id);
+        printTableRow(band + " Noise Level", std::to_string(rf.noisePerMS) + " counts/ms");
+        printTableRow(band + " AGC Monitor", std::to_string(rf.agcMonitor) + "%");
+        printTableRow(band + " Jamming State", Utils::jammingState2string(rf.jammingState));
+        printTableRow(band + " Antenna Status", Utils::antennaStatus2string(rf.antennaStatus));
+        printTableRow(band + " CW Interference", std::to_string(rf.cwInterferenceSuppressionLevel) + "%");
+        if (i + 1 < navigation.rfBlocks.size())
+        {
+            printf("+");
+            drawHorizontalLine(27, '-');
+            printf("+");
+            drawHorizontalLine(42, '-');
+            printf("+\n");
+        }
     }
-    else
+
+    if (navigation.rfBlocks.empty())
     {
         printTableRow("Status", "No RF blocks available");
     }
@@ -294,7 +305,10 @@ auto main() -> int
     ubxHat->softResetUbloxSom_HotStart();
 
     clearScreen();
-    printf(COLOR_BOLD COLOR_GREEN "Initializing u-blox NEO-M9N GNSS...\n" COLOR_RESET);
+    printf(
+        COLOR_BOLD COLOR_GREEN "Initializing %s...\n" COLOR_RESET,
+        std::string(ubxHat->name()).c_str()
+    );
     printf("Please wait for startup to complete...\n");
 
     const bool isStartupDone = ubxHat->start(createDefaultConfig());
@@ -307,9 +321,8 @@ auto main() -> int
 
     while (running)
     {
-        const auto navigation = ubxHat->navigation();
-        printNavigationTable(navigation);
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        const auto navigation = ubxHat->waitAndGetFreshNavigation();
+        printNavigationTable(navigation, std::string(ubxHat->name()));
     }
 
     showCursor();

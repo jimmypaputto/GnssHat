@@ -1465,6 +1465,16 @@ function populateFormFromConfig(config) {
         saveFlashEl.checked = !!config.save_to_flash;
     }
 
+    // Enable L5 GPS
+    const l5El = document.getElementById('cfg-l5-en');
+    if (l5El) {
+        if (config.enable_l5_gps === null || config.enable_l5_gps === undefined) {
+            l5El.value = 'auto';
+        } else {
+            l5El.value = config.enable_l5_gps ? 'on' : 'off';
+        }
+    }
+
     // ROS 2 specific fields
     const ros2StdTopics = document.getElementById('cfg-ros2-stdtopics');
     if (ros2StdTopics) {
@@ -1634,6 +1644,13 @@ function buildConfigFromForm() {
     const saveFlashEl = document.getElementById('cfg-save-flash');
     if (saveFlashEl) {
         config.save_to_flash = saveFlashEl.checked;
+    }
+
+    // Enable L5 GPS
+    const l5El = document.getElementById('cfg-l5-en');
+    if (l5El) {
+        const v = l5El.value;
+        config.enable_l5_gps = v === 'auto' ? null : v === 'on';
     }
 
     // ROS 2 specific fields

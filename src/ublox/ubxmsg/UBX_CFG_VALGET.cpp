@@ -132,6 +132,11 @@ std::unordered_map<uint32_t, uint8_t> ConfigKeySizeMap::keySizes_ = {
     {UbxCfgKeys::CFG_TMODE_FIXED_POS_ACC,  4},
     {UbxCfgKeys::CFG_TMODE_SVIN_MIN_DUR,   4},
     {UbxCfgKeys::CFG_TMODE_SVIN_ACC_LIMIT, 4},
+
+    {UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA,      1},
+    {UbxCfgKeys::CFG_SIGNAL_GAL_E5A_ENA,     1},
+    {UbxCfgKeys::CFG_SIGNAL_QZSS_L5_ENA,     1},
+    {UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD,  1},
 };
 
 }  // JimmyPaputto::ubxmsg

@@ -2207,6 +2207,12 @@ static void populate_config_from_dict(PyObject* config_dict, jp_gnss_gnss_config
     PyObject* save_flash = PyDict_GetItemString(config_dict, "save_to_flash");
     if (save_flash)
         config->save_to_flash = PyObject_IsTrue(save_flash);
+
+    /* ── enable_l5_gps config (-1=auto, 0=off, 1=on) ────────────── */
+    config->enable_l5_gps = -1;
+    PyObject* enable_l5_gps = PyDict_GetItemString(config_dict, "enable_l5_gps");
+    if (enable_l5_gps && enable_l5_gps != Py_None)
+        config->enable_l5_gps = PyObject_IsTrue(enable_l5_gps) ? 1 : 0;
 }
 
 #define CHECK_HAT(self) do { \

@@ -13,6 +13,7 @@
 #include <variant>
 
 #include "common/Utils.hpp"
+#include "ublox/Geofencing.hpp"
 #include "ublox/SpiDriver.hpp"
 #include "ublox/UartDriver.hpp"
 #include "ublox/UbxCfgKeys.hpp"
@@ -299,7 +300,7 @@ M9NStartup::M9NStartup(ICommDriver& commDriver,
             ecv[UbxCfgKeys::CFG_GEOFENCE_USE_PIO] = {0x00};
             ecv[UbxCfgKeys::CFG_GEOFENCE_PINPOL] = {0x00};
         }
-        ecv[UbxCfgKeys::CFG_GEOFENCE_PIN] = {0x06};  // PIO pin 6
+        ecv[UbxCfgKeys::CFG_GEOFENCE_PIN] = {geofencingPioPin};
 
         const auto& fences = geo->geofences;
         const uint8_t numFences =
@@ -341,7 +342,7 @@ M9NStartup::M9NStartup(ICommDriver& commDriver,
         ecv[UbxCfgKeys::CFG_GEOFENCE_CONFLVL]  = {0x00};
         ecv[UbxCfgKeys::CFG_GEOFENCE_USE_PIO]  = {0x00};
         ecv[UbxCfgKeys::CFG_GEOFENCE_PINPOL]   = {0x00};
-        ecv[UbxCfgKeys::CFG_GEOFENCE_PIN]      = {0x06};
+        ecv[UbxCfgKeys::CFG_GEOFENCE_PIN]      = {geofencingPioPin};
 
         for (uint8_t i = 0; i < 4; ++i)
         {

@@ -26,41 +26,22 @@ For Python bindings you also need:
 sudo apt-get install python3-dev
 ```
 
-### Build & install the library
+### Build & install
 
 ```sh
 git clone https://github.com/jimmypaputto/GnssHat.git
 cd GnssHat
 mkdir -p build && cd build
-cmake ..
+cmake .. [-DBUILD_PYTHON=ON] [-DBUILD_EXAMPLES=ON]
 make -j$(nproc)
 sudo make install
 sudo ldconfig
 ```
 
-### Build & install Python module (optional)
-
-Requires the C++ library to be installed first.
-
-```sh
-cd python
-mkdir -p build && cd build
-cmake ..
-make -j$(nproc)
-sudo make install
-```
-
-### Build examples (optional)
-
-```sh
-# All at once (from repo root):
-scripts/build_all_examples.sh
-
-# Or a single example:
-cd examples/CPP/PrintNavigation
-mkdir -p build && cd build
-cmake .. && make
-```
+| Flag | Description |
+|------|-------------|
+| `BUILD_PYTHON` | Build and install the Python CPython extension module |
+| `BUILD_EXAMPLES` | Build all C and C++ examples. Binaries are symlinked into `examples/BinariesSymlinks/` for convenience |
 
 ## Quick Start
 
@@ -390,6 +371,7 @@ GnssHat/
 │   └── common/                      GPIO, synchronization, utilities
 ├── python/                          Python CPython extension module
 ├── examples/                        C, C++, Python examples + Visualization + GPSD + TimeServer
+│   └── BinariesSymlinks/            Symlinks to C++ binaries (created by BUILD_EXAMPLES)
 └── scripts/                         Build and dependency scripts
 ```
 

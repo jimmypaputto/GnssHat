@@ -11,6 +11,8 @@ L1 GNSS HAT and L1/L5 RTK HAT use SPI — gpsd can't read SPI directly. The brid
 
 The L1/L5 TIME HAT uses UART (`/dev/ttyAMA0`) so gpsd can talk to it directly. The bridge still works with TIME HAT and simplifies the setup.
 
+> **USB shortcut (L1 HAT & RTK HAT only):** The L1 GNSS HAT and L1/L5 RTK HAT have an exposed USB port connected directly to the u-blox module. Plug a USB cable from the HAT to your Raspberry Pi (or any host) and the module appears as `/dev/ttyACM0` (CDC-ACM serial device). gpsd can read this device directly - no bridge daemon and no library needed. See **Option C** below.
+
 ## Embedded forwarding (GpsdInteractive)
 
 `GpsdInteractive` is an example — adapt the same mechanism in your own code. Your application can forward NMEA to gpsd while doing its own work at the same time. The forwarding runs in a background thread — no collisions with navigation reads.
@@ -240,7 +242,56 @@ sudo systemctl enable gpsd
 sudo systemctl start gpsd
 ```
 
-No systemd override needed — gpsd reads UART directly, skip bridge install entirely.
+No systemd override needed - gpsd reads UART directly, skip bridge install entirely.
+
+### Option C: Direct USB (L1 HAT & RTK HAT only, no bridge needed)
+
+The L1 GNSS HAT (NEO-M9N) and L1/L5 RTK HAT (NEO-F9P) have a USB port connected directly to the u-blox module. Connect a USB cable from the HAT to the Raspberry Pi (or any other host). The module enumerates as a CDC-ACM serial device — typically `/dev/ttyACM0`.
+
+No bridge daemon, no library installation, and no SPI configuration required. The u-blox module outputs NMEA on USB by default.
+
+Verify the device appeared:
+
+```bash
+ls /dev/ttyACM*
+# expected: /dev/ttyACM0
+```
+
+Configure gpsd:
+
+```bash
+sudo tee /etc/default/gpsd > /dev/null <<EOF
+DEVICES="/dev/ttyACM0"
+GPSD_OPTIONS="-n"
+USBAUTO="false"
+START_DAEMON="true"
+GPSD_SOCKET="/var/run/gpsd.sock"
+EOF
+```
+
+With PPS:
+
+```bash
+sudo tee /etc/default/gpsd > /dev/null <<EOF
+DEVICES="/dev/ttyACM0 /dev/pps0"
+GPSD_OPTIONS="-n"
+USBAUTO="false"
+START_DAEMON="true"
+GPSD_SOCKET="/var/run/gpsd.sock"
+EOF
+```
+
+Start gpsd:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable gpsd
+sudo systemctl start gpsd
+```
+
+No systemd override needed - gpsd reads USB serial directly, skip bridge install entirely.
+
+> **Note:** When using USB, the u-blox module communicates with gpsd independently from the library. You can use both simultaneously - the library talks over SPI while gpsd reads USB - but keep in mind that configuration changes made by the library (measurement rate, dynamic model, etc.) will affect the NMEA output on USB as well.
 
 ## Verify
 

@@ -10,10 +10,10 @@ Works with all three HATs (L1 GNSS HAT, L1/L5 TIME HAT, L1/L5 RTK HAT). PPS outp
 
 | Component | L1 GNSS HAT (NEO-M9N) | L1/L5 TIME HAT (NEO-F10T) | L1/L5 RTK HAT (NEO-F9P) |
 |-----------|------------------------|----------------------------|--------------------------|
-| jpgnss2gpsd-bridge | **Required** | Optional | **Required** |
+| jpgnss2gpsd-bridge | Required (or use USB) | Optional | Required (or use USB) |
 | gpsd | **Required** | **Required** | **Required** |
 
-L1 and RTK HATs use SPI — they need the bridge daemon (check GpsdIntegration in examples) to expose NMEA data to gpsd. The TIME HAT uses UART and can feed gpsd directly, but the bridge still works and simplifies the setup.
+L1 and RTK HATs use SPI - they need the bridge daemon (check GpsdIntegration in examples) to expose NMEA data to gpsd. Alternatively, the L1 and RTK HATs have an exposed USB port - plug a USB cable and the u-blox module appears as `/dev/ttyACM0`, which gpsd can read directly without the bridge (see step 3). The TIME HAT uses UART and can feed gpsd directly, but the bridge still works and simplifies the setup.
 
 ```bash
 sudo apt-get update
@@ -71,7 +71,7 @@ source 0 - assert 1234567891.123456789, sequence: 2
 
 If no pulses - wait for GNSS fix or check antenna placement.
 
-## 3. Install and start the bridge daemon [Required for L1 nad RTK HATs, Optional for TIME HAT]
+## 3. Install and start the bridge daemon [Required for L1 and RTK HATs unless using USB, Optional for TIME HAT]
 
 Build and install from `examples/GpsdIntegration/`:
 
@@ -97,6 +97,17 @@ Verify virtual device exists:
 ```bash
 ls /dev/jimmypaputto/gnss
 ```
+
+### Alternative: USB direct (L1 HAT & RTK HAT only)
+
+The L1 GNSS HAT and L1/L5 RTK HAT have a USB port wired directly to the u-blox module. Connect a USB cable from the HAT to the Raspberry Pi - the module appears as `/dev/ttyACM0` (CDC-ACM). This replaces the bridge daemon entirely.
+
+```bash
+ls /dev/ttyACM*
+# expected: /dev/ttyACM0
+```
+
+If using USB, skip the bridge install above and use `/dev/ttyACM0` instead of `/dev/jimmypaputto/gnss` in the gpsd configuration (step 4). No systemd override is needed since there is no bridge dependency.
 
 ## 4. Configure gpsd
 
@@ -157,7 +168,23 @@ GPSD_SOCKET="/var/run/gpsd.sock"
 EOF
 ```
 
-No systemd override needed — gpsd talks to UART directly, skip step 3 entirely.
+No systemd override needed - gpsd talks to UART directly, skip step 3 entirely.
+
+### Option C: Via direct USB access (L1 HAT & RTK HAT only)
+
+If you connected the HAT via USB (see step 3 alternative), configure gpsd to use the USB serial device:
+
+```bash
+sudo tee /etc/default/gpsd > /dev/null <<EOF
+DEVICES="/dev/ttyACM0 /dev/pps0"
+GPSD_OPTIONS="-n"
+USBAUTO="false"
+START_DAEMON="true"
+GPSD_SOCKET="/var/run/gpsd.sock"
+EOF
+```
+
+No systemd override needed - gpsd reads USB serial directly.
 
 ### Start gpsd
 

@@ -25,7 +25,7 @@ def create_default_config():
     }
 
 
-def wait_for_fix(gnss_hat, timeout_seconds=300):
+def wait_for_fix(gnss_hat, timeout_seconds=600):
     """Wait for GPS fix to be acquired."""
     start_time = time.time()
 
@@ -79,9 +79,6 @@ def main():
         print("\n--- HOT START TEST ---")
         print("Performing soft reset (hot start)...")
         hat.soft_reset_hot_start()
-        
-        # Give a small delay after reset
-        time.sleep(0.15)
         
         print("Waiting for GPS fix after hot start...")
         hot_start_time = time.time()

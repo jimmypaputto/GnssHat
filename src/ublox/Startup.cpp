@@ -356,9 +356,6 @@ M9NStartup::M9NStartup(ICommDriver& commDriver,
 
 bool M9NStartup::execute()
 {
-    constexpr auto timeForUbloxToWakeUp = std::chrono::milliseconds(1000);
-    std::this_thread::sleep_for(timeForUbloxToWakeUp);
-
     bool result = false;
 
     constexpr std::array<uint32_t, 5> spiKeys = {
@@ -870,8 +867,6 @@ bool F10TStartup::execute()
 {
     bool result = false;
     configRegistry_.shouldSaveConfigToFlash(false);
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     constexpr std::array<uint32_t, 5> uart1Keys = {
         UbxCfgKeys::CFG_UART1_ENABLED,

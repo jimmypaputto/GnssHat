@@ -520,9 +520,11 @@ void GnssHat::disableTimepulse()
 
 void GnssHat::hardResetUbloxSom_ColdStart() const
 {
+    constexpr auto timeForUbloxToWakeUp = std::chrono::milliseconds(1000);
     Ublox::powerOffUbloxSom();
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    std::this_thread::sleep_for(timeForUbloxToWakeUp);
     Ublox::powerOnUbloxSom();
+    std::this_thread::sleep_for(timeForUbloxToWakeUp);
 }
 
 void GnssHat::softResetUbloxSom_HotStart()
@@ -576,10 +578,6 @@ bool GnssHat::enableTimeMarkTrigger()
 
 void GnssHat::disableTimeMarkTrigger()
 {
-    fprintf(stderr,
-        "[GNSS] TimeMarkTrigger is not supported on %.*s. "
-        "Use L1/L5 GNSS TIME HAT.\r\n",
-        static_cast<int>(name().size()), name().data());
 }
 
 void GnssHat::triggerTimeMark(ETimeMarkTriggerEdge)

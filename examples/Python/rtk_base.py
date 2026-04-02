@@ -148,7 +148,7 @@ def main():
                 print(f"Fix type: {fix_type.name}, "
                       f"waiting for TIME_ONLY_FIX for RTK Base")
             else:
-                print("RTK Base ready with TIME_ONLY_FIX")
+                print("\nRTK Base ready with TIME_ONLY_FIX")
                 try:
                     corrections = hat.rtk_get_tiny_corrections()
                     for frame in corrections:

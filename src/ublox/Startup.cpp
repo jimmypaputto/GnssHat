@@ -844,6 +844,10 @@ F10TStartup::F10TStartup(ICommDriver& commDriver,
     rate2Registers(config.measurementRate_Hz);
     timepulsePinConfig2Registers(config.timepulsePinConfig);
 
+    const uint8_t l5Enabled = config.enableL5_GPS.value_or(true) ? 0x01 : 0x00;
+    ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {l5Enabled};
+    ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {l5Enabled};
+
     const bool enableTimeMark = config.timing.has_value()
         && config.timing->enableTimeMark;
     ecv[UbxCfgKeys::CFG_MSGOUT_UBX_TIM_TM2_UART1] =
@@ -890,6 +894,17 @@ bool F10TStartup::execute()
     result = configure(prtOutProtoKeys);
     if (!result)
         return false;
+
+    constexpr std::array<uint32_t, 2> l5SignalKeys = {
+        UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA,
+        UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD
+    };
+    result = configure(l5SignalKeys);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] L5 signal configuration failed\r\n");
+        return false;
+    }
 
     constexpr std::array<uint32_t, 4> msgCfgKeys = {
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_UART1,
@@ -999,6 +1014,11 @@ F9PStartup::F9PStartup(ICommDriver& commDriver,
     auto config = configRegistry.getGnssConfig();
 
     auto& ecv = StartupBase::expectedConfigValues_;
+
+    const uint8_t l5Enabled = config.enableL5_GPS.value_or(true) ? 0x01 : 0x00;
+    ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {l5Enabled};
+    ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {l5Enabled};
+
     ecv[UbxCfgKeys::CFG_SPIINPROT_RTCM3X] = {0x00};
     ecv[UbxCfgKeys::CFG_SPIINPROT_SPARTN] = {0x00};
     ecv[UbxCfgKeys::CFG_SPIOUTPROT_RTCM3X] = {0x00};
@@ -1023,6 +1043,21 @@ bool F9PStartup::execute()
         return false;
 
     configRegistry_.shouldSaveConfigToFlash(false);
+
+    constexpr std::array<uint32_t, 2> l5SignalKeys = {
+        UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA,
+        UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD
+    };
+    result = configure(l5SignalKeys);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] L5 signal configuration failed\r\n");
+        return false;
+    }
+
+    // required to wait for constellation specific subsystem restart
+    if (configRegistry_.shouldSaveConfigToFlash())
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     constexpr std::array<uint32_t, 3> spiProtF9PKeys = {
         UbxCfgKeys::CFG_SPIINPROT_RTCM3X,

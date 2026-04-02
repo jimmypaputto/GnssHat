@@ -42,7 +42,7 @@
                     <div class="map-tabs">
                         <button class="map-tab active" data-tab="relative">📐 Relative Map</button>
                         <button class="map-tab" data-tab="terrain">🗺️ Terrain Map</button>
-                        {% if mode in ['native', 'ros2'] and hat_name != 'L1/L5 GNSS TIME HAT' %}
+                        {% if hat_name != 'L1/L5 GNSS TIME HAT' %}
                         <button class="map-tab" data-tab="skyview">🛰️ Sky View</button>
                         {% endif %}
                     </div>
@@ -82,7 +82,7 @@
                     </div>
                 </div>
                 
-                {% if mode in ['native', 'ros2'] and hat_name != 'L1/L5 GNSS TIME HAT' %}
+                {% if hat_name != 'L1/L5 GNSS TIME HAT' %}
                 <!-- Sky View - Satellite polar plot -->
                 <div id="skyview-map" class="map-view" style="display: none;">
                     <div class="skyview-layout">

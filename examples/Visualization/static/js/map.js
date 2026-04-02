@@ -569,14 +569,14 @@ function updateGPSData(data) {
         if (data.time_mark) {
             updateTimeMark(data.time_mark);
         }
-
-        // Satellites → sky view
-        if (data.satellites) {
-            updateSkyView(data.satellites);
-        }
     } else {
         // TTY mode: HDOP from pvt
         updateDataField('data-hdop', `${pvt.hdop.toFixed(2)}`);
+    }
+
+    // Satellites → sky view (all modes that provide satellite data)
+    if (data.satellites) {
+        updateSkyView(data.satellites);
     }
 }
 

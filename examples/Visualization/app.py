@@ -53,8 +53,9 @@ gps_state = {
     'current_data': None,
     'last_gga': None,  # Last GGA sentence
     'last_rmc': None,  # Last RMC sentence
-    'last_gsa': None,  # Last GSA sentence
-    'last_gsv': None,  # Last GSV sentences
+    'last_gsa': [],    # Last GSA sentences (one per constellation)
+    'last_gsv': [],    # Accumulated GSV sentences (multi-part, multi-constellation)
+    'gsv_collector': {},  # {talker: {total_msgs, msgs: {num: msg}}} for multi-part GSV
     'current_config': None,  # Current GnssHat config dict
     'hat_name': None,  # HAT name string (native mode only)
     'config_lock': threading.Lock(),  # Lock for config changes
@@ -250,11 +251,115 @@ def calculate_offset_meters(ref_pos, current_pos):
     return (x_meters, y_meters)
 
 
+def _nmea_talker_to_gnss_id(talker):
+    """Map NMEA talker ID (GP, GA, GL, GB, GQ) to human-readable GNSS name"""
+    mapping = {
+        'GP': 'GPS',
+        'GA': 'Galileo',
+        'GL': 'GLONASS',
+        'GB': 'BeiDou',
+        'GQ': 'QZSS',
+        'GN': 'GPS',     # GN = combined (fallback to GPS)
+    }
+    return mapping.get(talker, 'GPS')
+
+
+def _nmea_system_id_to_gnss_id(system_id):
+    """Map NMEA 4.11 system ID from GSA to human-readable GNSS name"""
+    mapping = {
+        1: 'GPS',
+        2: 'GLONASS',
+        3: 'Galileo',
+        4: 'BeiDou',
+        5: 'QZSS',
+    }
+    return mapping.get(system_id, 'GPS')
+
+
+def parse_gsv_satellites():
+    """Parse accumulated GSV sentences into satellite data list for skyview.
+    Returns list of dicts with keys: gnss_id, sv_id, cno, elevation, azimuth,
+    used_in_fix, quality, healthy."""
+
+    # Collect used satellite PRNs from GSA sentences (per constellation)
+    used_prns = set()  # set of (gnss_name, prn)
+    gsa_list = gps_state['last_gsa']
+    for gsa in gsa_list:
+        # Determine GNSS system from GSA
+        # NMEA 4.11 provides system ID in field after VDOP
+        gnss_name = 'GPS'
+        if hasattr(gsa, 'data') and len(gsa.data) >= 18:
+            try:
+                sys_id = int(gsa.data[17])
+                gnss_name = _nmea_system_id_to_gnss_id(sys_id)
+            except (ValueError, IndexError):
+                pass
+
+        for i in range(1, 13):
+            attr = f'sv_id{i:02d}'
+            prn = getattr(gsa, attr, None) or getattr(gsa, f'sv_id{i}', None)
+            if prn:
+                try:
+                    used_prns.add((gnss_name, int(prn)))
+                except (ValueError, TypeError):
+                    pass
+
+    # Parse GSV sentences
+    satellites = []
+    gsv_sentences = gps_state['last_gsv']
+
+    for msg in gsv_sentences:
+        talker = msg.talker if hasattr(msg, 'talker') else 'GP'
+        gnss_name = _nmea_talker_to_gnss_id(talker)
+
+        # Each GSV sentence has up to 4 satellite entries
+        # Fields: sv_prn_num_X, elevation_deg_X, azimuth_X, snr_X  (X = 1..4)
+        for i in range(1, 5):
+            prn = getattr(msg, f'sv_prn_num_{i}', None)
+            if prn is None or prn == '':
+                continue
+            try:
+                sv_id = int(prn)
+            except (ValueError, TypeError):
+                continue
+
+            try:
+                elevation = int(getattr(msg, f'elevation_deg_{i}', 0) or 0)
+            except (ValueError, TypeError):
+                elevation = 0
+            try:
+                azimuth = int(getattr(msg, f'azimuth_{i}', 0) or 0)
+            except (ValueError, TypeError):
+                azimuth = 0
+            try:
+                cno = int(getattr(msg, f'snr_{i}', 0) or 0)
+            except (ValueError, TypeError):
+                cno = 0
+
+            # Determine if satellite is used in fix
+            is_used = (gnss_name, sv_id) in used_prns
+
+            satellites.append({
+                'gnss_id': gnss_name,
+                'sv_id': sv_id,
+                'cno': cno,
+                'elevation': elevation,
+                'azimuth': azimuth,
+                'quality': 'Code Locked' if cno > 0 else 'No Signal',
+                'used_in_fix': is_used,
+                'healthy': True,
+            })
+
+    return satellites
+
+
 def parse_nmea_data():
     """Combine data from NMEA sentences to create GPS data dictionary"""
     gga = gps_state['last_gga']
     rmc = gps_state['last_rmc']
-    gsa = gps_state['last_gsa']
+    gsa_list = gps_state['last_gsa']
+    # Use first GSA for fix type (all share the same fix mode)
+    gsa = gsa_list[0] if gsa_list else None
     
     if not gga and not rmc:
         return None
@@ -675,13 +780,21 @@ def gps_reader_thread():
                 
                 # Store sentences by type
                 if isinstance(msg, pynmea2.types.talker.GGA):
+                    # GGA starts a new NMEA cycle — reset GSA/GSV accumulators
+                    gps_state['last_gsa'] = []
+                    gps_state['last_gsv'] = []
                     gps_state['last_gga'] = msg
                 elif isinstance(msg, pynmea2.types.talker.RMC):
                     gps_state['last_rmc'] = msg
                 elif isinstance(msg, pynmea2.types.talker.GSA):
-                    gps_state['last_gsa'] = msg
+                    # GSA: multiple sentences, one per constellation.
+                    # A new block of GSA starts when we see the same talker+system
+                    # or when GGA arrives. Collect until GGA triggers emit.
+                    gps_state['last_gsa'].append(msg)
                 elif isinstance(msg, pynmea2.types.talker.GSV):
-                    gps_state['last_gsv'] = msg
+                    # GSV: multi-part per constellation.
+                    # Collect all parts; a new GGA triggers reset.
+                    gps_state['last_gsv'].append(msg)
                 
                 # Parse combined data
                 pvt_data = parse_nmea_data()
@@ -712,11 +825,40 @@ def gps_reader_thread():
                     'offset_y': y_offset,
                     'has_reference': gps_state['reference_position'] is not None
                 }
+
+                # Add satellite data from GSV sentences
+                try:
+                    satellites = parse_gsv_satellites()
+                    if satellites:
+                        data['satellites'] = satellites
+                except Exception as e:
+                    print(f"Error parsing GSV satellite data: {e}")
+
+                # Add DOP data from GSA sentences
+                try:
+                    gsa_list = gps_state['last_gsa']
+                    if gsa_list:
+                        first_gsa = gsa_list[0]
+                        pdop = float(getattr(first_gsa, 'pdop', 0) or 0)
+                        hdop_gsa = float(getattr(first_gsa, 'hdop', 0) or 0)
+                        vdop = float(getattr(first_gsa, 'vdop', 0) or 0)
+                        data['dop'] = {
+                            'geometric': pdop,  # closest approx from NMEA
+                            'position': pdop,
+                            'time': 0.0,
+                            'vertical': vdop,
+                            'horizontal': hdop_gsa if hdop_gsa > 0 else pvt_data['hdop'],
+                            'northing': 0.0,
+                            'easting': 0.0,
+                        }
+                except Exception as e:
+                    print(f"Error parsing GSA DOP data: {e}")
                 
                 gps_state['current_data'] = data
                 
-                # Emit to all connected clients (throttle to ~1Hz for UI updates)
-                if isinstance(msg, pynmea2.types.talker.GGA):  # Send on GGA (usually 1Hz)
+                # Emit to all connected clients on RMC (arrives after GGA, GSA, GSV
+                # in NmeaForwarder cycle, so satellite data is complete)
+                if isinstance(msg, pynmea2.types.talker.RMC):
                     socketio.emit('gps_update', data, namespace='/')
                 
             except pynmea2.ParseError as e:
@@ -1739,8 +1881,9 @@ def stop_gps():
     gps_state['current_data'] = None
     gps_state['last_gga'] = None
     gps_state['last_rmc'] = None
-    gps_state['last_gsa'] = None
-    gps_state['last_gsv'] = None
+    gps_state['last_gsa'] = []
+    gps_state['last_gsv'] = []
+    gps_state['gsv_collector'] = {}
     
     print("GPS stopped")
 

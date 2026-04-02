@@ -6,12 +6,11 @@ This directory contains Python examples demonstrating how to use the GNSS HAT li
 
 Make sure the Python module is installed:
 ```bash
-cd ../../python
-mkdir build && cd build
-cmake ..
-make
-sudo make install
-sudo ldconfig
+cd ../../
+mkdir -p build && cd build
+cmake .. -DBUILD_PYTHON=ON
+make -j$(nproc)
+sudo make install && sudo ldconfig
 ```
 
 ## Examples
@@ -129,4 +128,16 @@ TimeMark example demonstrating:
 
 ```bash
 python time_mark.py
+```
+
+### 11. time_base.py
+Time Base example demonstrating:
+- Configuring the TIME HAT in time base mode (Survey-In or Fixed Position)
+- Improved time accuracy by entering TimeOnlyFix
+- Three configuration variants: Survey-In, Fixed Position (ECEF), Fixed Position (LLA)
+
+**Requires:** L1/L5 GNSS TIME HAT (NEO-F10T)
+
+```bash
+python time_base.py
 ```

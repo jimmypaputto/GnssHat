@@ -129,6 +129,15 @@ F9PRun::F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
     }
 }
 
+F9PRun::~F9PRun()
+{
+    if (uart_.joinable())
+    {
+        uart_.request_stop();
+        uart_.join();
+    }
+}
+
 void F9PRun::executeUartBase()
 {
     auto& uartDriver = static_cast<UartDriver&>(*uartDriver_);

@@ -67,7 +67,8 @@ public:
     F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
         Notifier& txReadyNotifier, Notifier& navigationNotifier,
         Rtcm3Store& rtcm3Store, const GnssConfig& config);
-    ~F9PRun() override = default;
+
+    ~F9PRun() override;
 
 private:
     void executeUartBase();

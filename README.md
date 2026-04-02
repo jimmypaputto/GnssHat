@@ -231,8 +231,8 @@ The RTK HAT (NEO-F9P) supports centimeter-level positioning. Access RTK function
 
 ```cpp
 auto corrections = hat->rtk()->base()->getTinyCorrections();  // compact set (M4M)
-auto corrections = hat->rtk()->base()->getFullCorrections();   // full set (M7M)
-auto frame = hat->rtk()->base()->getRtcm3Frame(1077);          // specific message
+auto corrections = hat->rtk()->base()->getFullCorrections();  // full set (M7M)
+auto frame = hat->rtk()->base()->getRtcm3Frame(1077);         // specific message
 ```
 
 **Rover** - inject corrections received from a base station:

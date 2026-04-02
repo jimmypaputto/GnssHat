@@ -180,10 +180,12 @@
                                 <td class="data-label">UTC Time</td>
                                 <td class="data-value" id="data-utc-time">--:--:--</td>
                             </tr>
+                            {% if mode in ['native', 'ros2'] %}
                             <tr>
                                 <td class="data-label">Time Accuracy</td>
                                 <td class="data-value" id="data-time-accuracy">-</td>
                             </tr>
+                            {% endif %}
                             <tr>
                                 <td class="data-label">Date</td>
                                 <td class="data-value" id="data-date">----/--/--</td>

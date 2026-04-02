@@ -737,10 +737,10 @@ def gps_reader_thread():
     print("GPS NMEA reader thread stopped")
 
 
-# ─── ROS 2 mode: subscribe to /jp_gnss/navigation ───────────────────────────
+# ─── ROS 2 mode: subscribe to /gnss/navigation ───────────────────────────
 
 def ros2_nav_to_pvt_data(nav_msg):
-    """Convert jp_gnss/msg/Navigation ROS message to pvt data dict"""
+    """Convert jp_gnss_hat/msg/Navigation ROS message to pvt data dict"""
     pvt = nav_msg.pvt
 
     fix_quality_map = {
@@ -800,7 +800,7 @@ def ros2_nav_to_pvt_data(nav_msg):
 
 
 def ros2_nav_to_full_data(nav_msg):
-    """Convert jp_gnss/msg/Navigation ROS message to full data dict (DOP, RF, etc.)"""
+    """Convert jp_gnss_hat/msg/Navigation ROS message to full data dict (DOP, RF, etc.)"""
     dop = nav_msg.dop
     dop_data = {
         'geometric': float(dop.geometric),
@@ -867,7 +867,7 @@ def ros2_nav_to_full_data(nav_msg):
 
 
 def ros2_config_msg_to_json(config_msg):
-    """Convert jp_gnss/msg/GnssConfig ROS message to JSON-serializable dict"""
+    """Convert jp_gnss_hat/msg/GnssConfig ROS message to JSON-serializable dict"""
     result = {
         'measurement_rate_hz': int(config_msg.measurement_rate_hz),
         'dynamic_model': int(config_msg.dynamic_model),
@@ -956,8 +956,8 @@ def ros2_config_msg_to_json(config_msg):
 
 
 def json_to_ros2_config_msg(data):
-    """Convert JSON config from frontend to jp_gnss/msg/GnssConfig ROS message"""
-    from jp_gnss.msg import GnssConfig as GnssConfigMsg, Geofence as GeofenceMsg
+    """Convert JSON config from frontend to jp_gnss_hat/msg/GnssConfig ROS message"""
+    from gnss.msg import GnssConfig as GnssConfigMsg, Geofence as GeofenceMsg
 
     msg = GnssConfigMsg()
     msg.measurement_rate_hz = int(data['measurement_rate_hz'])
@@ -1036,18 +1036,18 @@ def json_to_ros2_config_msg(data):
 
 
 def _ros2_topic_prefix():
-    """Return the ROS 2 topic/service prefix, e.g. '/jp_gnss' or '/jp_gnss/rover'."""
+    """Return the ROS 2 topic/service prefix, e.g. '/gnss' or '/gnss/rover'."""
     if ROS2_NODE_NAME:
-        return f'/jp_gnss/{ROS2_NODE_NAME}'
-    return '/jp_gnss'
+        return f'/gnss/{ROS2_NODE_NAME}'
+    return '/gnss'
 
 
 def ros2_reader_thread():
-    """Background thread: spins an rclpy node subscribed to /jp_gnss/[node_name/]navigation"""
+    """Background thread: spins an rclpy node subscribed to /gnss/[node_name/]navigation"""
     from rclpy.node import Node as RclpyNode
-    from jp_gnss.msg import Navigation as NavigationMsg
+    from jp_gnss_hat.msg import Navigation as NavigationMsg
 
-    node = RclpyNode('jp_gnss_viz')
+    node = RclpyNode('jp_gnss_hat_viz')
 
     def nav_callback(nav_msg):
         try:
@@ -1539,9 +1539,9 @@ def _ros2_call_service(srv_type, srv_name, request, timeout=10.0):
 
 
 def _ros2_get_config():
-    """GET /api/config handler for ros2 mode — calls /jp_gnss/get_config service"""
+    """GET /api/config handler for ros2 mode — calls /gnss/get_config service"""
     try:
-        from jp_gnss.srv import GetGnssConfig
+        from jp_gnss_hat.srv import GetGnssConfig
         srv_name = f'{_ros2_topic_prefix()}/get_config'
         resp = _ros2_call_service(
             GetGnssConfig, srv_name, GetGnssConfig.Request())
@@ -1555,8 +1555,8 @@ def _ros2_get_config():
 
 
 def _ros2_set_config():
-    """POST /api/config handler for ros2 mode — calls /jp_gnss/set_config service"""
-    from jp_gnss.srv import SetGnssConfig
+    """POST /api/config handler for ros2 mode — calls /gnss/set_config service"""
+    from jp_gnss_hat.srv import SetGnssConfig
 
     data = request.get_json()
     if not data:
@@ -1684,7 +1684,7 @@ def start_gps_external_tty():
 
 
 def start_gps_ros2():
-    """Start ROS 2 subscriber thread for /jp_gnss/[node_name/]navigation topic"""
+    """Start ROS 2 subscriber thread for /gnss/[node_name/]navigation topic"""
     import rclpy
 
     nav_topic = f'{_ros2_topic_prefix()}/navigation'
@@ -1758,7 +1758,7 @@ if __name__ == '__main__':
         'node_name',
         nargs='?',
         default=None,
-        help='Optional ROS 2 node name (e.g. rover, base). Changes topic prefix to /jp_gnss/<node_name>/...'
+        help='Optional ROS 2 node name (e.g. rover, base). Changes topic prefix to /gnss/<node_name>/...'
     )
     args = parser.parse_args()
     RUN_MODE = args.mode

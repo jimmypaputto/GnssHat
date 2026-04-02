@@ -6,7 +6,7 @@ from jimmypaputto import gnsshat
 def create_default_config() -> dict:
     """Create configuration optimized for jamming detection"""
     return {
-        'measurement_rate_hz': 5,
+        'measurement_rate_hz': 1,
         'dynamic_model': gnsshat.DynamicModel.STATIONARY,
         'timepulse_pin_config': {
             'active': True,

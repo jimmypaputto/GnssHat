@@ -512,6 +512,25 @@ jp_gnss_navigation_t convert_navigation(const Navigation& cpp_nav)
         c_nav.rf_blocks[i].gnss_band = convert_rf_band(cpp_nav.rfBlocks[i].gnssBand);
     }
 
+    c_nav.num_rf_blocks_spectrum = static_cast<uint8_t>(
+        std::min(cpp_nav.rfBlocksSpectrumData.size(),
+            static_cast<size_t>(UBLOX_MAX_RF_BLOCKS)));
+
+    for (
+        size_t i = 0;
+        i < cpp_nav.rfBlocksSpectrumData.size() && i < UBLOX_MAX_RF_BLOCKS;
+        i++)
+    {
+        c_nav.rf_blocks_spectrum[i].id = cpp_nav.rfBlocksSpectrumData[i].id;
+        const auto& src = cpp_nav.rfBlocksSpectrumData[i].data;
+        size_t copy_len = std::min(src.size(), static_cast<size_t>(UBLOX_SPECTRUM_BINS));
+        std::memcpy(c_nav.rf_blocks_spectrum[i].data, src.data(), copy_len);
+        c_nav.rf_blocks_spectrum[i].span = cpp_nav.rfBlocksSpectrumData[i].span;
+        c_nav.rf_blocks_spectrum[i].resolution = cpp_nav.rfBlocksSpectrumData[i].resolution;
+        c_nav.rf_blocks_spectrum[i].center_freq = cpp_nav.rfBlocksSpectrumData[i].centerFreq;
+        c_nav.rf_blocks_spectrum[i].gain = cpp_nav.rfBlocksSpectrumData[i].gain;
+    }
+
     c_nav.num_satellites = static_cast<uint8_t>(
         std::min(cpp_nav.satellites.size(),
             static_cast<size_t>(UBLOX_MAX_SATELLITES)));

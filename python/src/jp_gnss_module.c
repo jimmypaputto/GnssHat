@@ -18,6 +18,7 @@ static PyTypeObject GeofencingCfgType;
 static PyTypeObject GeofencingNavType;
 static PyTypeObject GeofenceType;
 static PyTypeObject RfBlockType;
+static PyTypeObject RfBlockSpectrumDataType;
 static PyTypeObject SatelliteInfoType;
 static PyTypeObject PulseType;
 static PyTypeObject TimepulsePinConfigType;
@@ -91,6 +92,7 @@ typedef struct
     PyObject* pvt;
     PyObject* geofencing;
     PyObject* rf_blocks;
+    PyObject* rf_blocks_spectrum;
     PyObject* satellites;
 } Navigation;
 
@@ -119,6 +121,17 @@ typedef struct
     uint8_t mag_q;
     uint8_t gnss_band;
 } RfBlock;
+
+typedef struct
+{
+    PyObject_HEAD
+    uint8_t id;
+    PyObject* spectrum_data;
+    uint32_t span;
+    uint32_t resolution;
+    uint32_t center_freq;
+    uint8_t gain;
+} RfBlockSpectrumData;
 
 typedef struct
 {
@@ -651,6 +664,107 @@ static PyTypeObject RfBlockType = {
     .tp_str = (reprfunc)RfBlock_str,
     .tp_repr = (reprfunc)RfBlock_str,
     .tp_members = RfBlock_members,
+};
+
+/* ---- RfBlockSpectrumData ---- */
+
+static PyObject* RfBlockSpectrumData_new(PyTypeObject* type, PyObject* args,
+    PyObject* kwds)
+{
+    RfBlockSpectrumData* self = (RfBlockSpectrumData*)type->tp_alloc(type, 0);
+    if (self)
+    {
+        self->id = 0;
+        self->spectrum_data = PyList_New(0);
+        self->span = 0;
+        self->resolution = 0;
+        self->center_freq = 0;
+        self->gain = 0;
+    }
+    return (PyObject*)self;
+}
+
+static void RfBlockSpectrumData_dealloc(RfBlockSpectrumData* self)
+{
+    Py_XDECREF(self->spectrum_data);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyMemberDef RfBlockSpectrumData_members[] = {
+    {
+        "id",
+        T_UBYTE,
+        offsetof(RfBlockSpectrumData, id),
+        0,
+        "RF block ID"
+    },
+    {
+        "spectrum_data",
+        T_OBJECT_EX,
+        offsetof(RfBlockSpectrumData, spectrum_data),
+        0,
+        "256-element list of FFT spectrum amplitude values (0-255)"
+    },
+    {
+        "span",
+        T_UINT,
+        offsetof(RfBlockSpectrumData, span),
+        0,
+        "Frequency span in Hz"
+    },
+    {
+        "resolution",
+        T_UINT,
+        offsetof(RfBlockSpectrumData, resolution),
+        0,
+        "Frequency resolution per bin in Hz"
+    },
+    {
+        "center_freq",
+        T_UINT,
+        offsetof(RfBlockSpectrumData, center_freq),
+        0,
+        "Center frequency in Hz"
+    },
+    {
+        "gain",
+        T_UBYTE,
+        offsetof(RfBlockSpectrumData, gain),
+        0,
+        "Receiver gain setting"
+    },
+    {NULL}
+};
+
+static PyObject* RfBlockSpectrumData_str(RfBlockSpectrumData* self)
+{
+    char buffer[256];
+    snprintf(
+        buffer,
+        sizeof(buffer),
+        "RfBlockSpectrumData(id=%u, center_freq=%u Hz, span=%u Hz, "
+        "resolution=%u Hz, gain=%u)",
+        self->id,
+        self->center_freq,
+        self->span,
+        self->resolution,
+        self->gain
+    );
+    return PyUnicode_FromString(buffer);
+}
+
+static PyTypeObject RfBlockSpectrumDataType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "jimmypaputto.gnsshat.RfBlockSpectrumData",
+    .tp_doc = "RF Block spectrum data from UBX-MON-SPAN",
+    .tp_basicsize = sizeof(RfBlockSpectrumData),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_new = RfBlockSpectrumData_new,
+    .tp_dealloc = (destructor)RfBlockSpectrumData_dealloc,
+    .tp_str = (reprfunc)RfBlockSpectrumData_str,
+    .tp_repr = (reprfunc)RfBlockSpectrumData_str,
+    .tp_members = RfBlockSpectrumData_members,
 };
 
 /* ---- SatelliteInfo ---- */
@@ -2324,6 +2438,18 @@ static inline RfBlock* RfBlock_alloc(void)
     return (RfBlock*)RfBlockType.tp_alloc(&RfBlockType, 0);
 }
 
+static inline RfBlockSpectrumData* RfBlockSpectrumData_alloc(void)
+{
+    RfBlockSpectrumData* self =
+        (RfBlockSpectrumData*)RfBlockSpectrumDataType.tp_alloc(
+            &RfBlockSpectrumDataType, 0);
+    if (self)
+    {
+        self->spectrum_data = NULL;
+    }
+    return self;
+}
+
 static inline SatelliteInfo* SatelliteInfo_alloc(void)
 {
     SatelliteInfo* self =
@@ -2349,6 +2475,7 @@ static inline Navigation* Navigation_alloc(void)
         self->pvt = NULL;
         self->geofencing = NULL;
         self->rf_blocks = NULL;
+        self->rf_blocks_spectrum = NULL;
         self->satellites = NULL;
     }
     return self;
@@ -2606,6 +2733,51 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
     }
 
     nav_obj->rf_blocks = rf_blocks_list;
+
+    /* Convert RF block spectrum data (MON-SPAN) */
+    PyObject* spectrum_list = PyList_New(nav->num_rf_blocks_spectrum);
+    if (!spectrum_list)
+    {
+        Py_DECREF(nav_obj);
+        return NULL;
+    }
+
+    for (int i = 0; i < nav->num_rf_blocks_spectrum; i++)
+    {
+        RfBlockSpectrumData* spec = RfBlockSpectrumData_alloc();
+        if (!spec)
+        {
+            Py_DECREF(nav_obj);
+            Py_DECREF(spectrum_list);
+            return NULL;
+        }
+
+        spec->id = nav->rf_blocks_spectrum[i].id;
+        spec->span = nav->rf_blocks_spectrum[i].span;
+        spec->resolution = nav->rf_blocks_spectrum[i].resolution;
+        spec->center_freq = nav->rf_blocks_spectrum[i].center_freq;
+        spec->gain = nav->rf_blocks_spectrum[i].gain;
+
+        PyObject* data_list = PyList_New(UBLOX_SPECTRUM_BINS);
+        if (!data_list)
+        {
+            Py_DECREF(nav_obj);
+            Py_DECREF(spectrum_list);
+            Py_DECREF(spec);
+            return NULL;
+        }
+
+        for (int j = 0; j < UBLOX_SPECTRUM_BINS; j++)
+        {
+            PyList_SET_ITEM(data_list, j,
+                PyLong_FromLong(nav->rf_blocks_spectrum[i].data[j]));
+        }
+
+        spec->spectrum_data = data_list;
+        PyList_SetItem(spectrum_list, i, (PyObject*)spec);
+    }
+
+    nav_obj->rf_blocks_spectrum = spectrum_list;
 
     /* Convert satellite data */
     PyObject* satellites_list = PyList_New(nav->num_satellites);
@@ -3245,6 +3417,7 @@ static PyObject* Navigation_new(PyTypeObject* type, PyObject* args,
         self->pvt = (PyObject*)PVT_alloc();
         self->geofencing = (PyObject*)Geofencing_alloc();
         self->rf_blocks = PyList_New(0);
+        self->rf_blocks_spectrum = PyList_New(0);
         self->satellites = PyList_New(0);
     }
     return (PyObject*)self;
@@ -3256,6 +3429,7 @@ static void Navigation_dealloc(Navigation* self)
     Py_XDECREF(self->pvt);
     Py_XDECREF(self->geofencing);
     Py_XDECREF(self->rf_blocks);
+    Py_XDECREF(self->rf_blocks_spectrum);
     Py_XDECREF(self->satellites);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -3288,6 +3462,13 @@ static PyMemberDef Navigation_members[] = {
         offsetof(Navigation, rf_blocks),
         0,
         "RF blocks information"
+    },
+    {
+        "rf_blocks_spectrum",
+        T_OBJECT_EX,
+        offsetof(Navigation, rf_blocks_spectrum),
+        0,
+        "RF blocks spectrum data from MON-SPAN"
     },
     {
         "satellites",
@@ -3544,6 +3725,8 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
         return NULL;
     if (PyType_Ready(&RfBlockType) < 0)
         return NULL;
+    if (PyType_Ready(&RfBlockSpectrumDataType) < 0)
+        return NULL;
     if (PyType_Ready(&SatelliteInfoType) < 0)
         return NULL;
     if (PyType_Ready(&GeofencingCfgType) < 0)
@@ -3583,6 +3766,10 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
 
     Py_INCREF(&RfBlockType);
     PyModule_AddObject(m, "RfBlock", (PyObject*)&RfBlockType);
+
+    Py_INCREF(&RfBlockSpectrumDataType);
+    PyModule_AddObject(m, "RfBlockSpectrumData",
+        (PyObject*)&RfBlockSpectrumDataType);
 
     Py_INCREF(&SatelliteInfoType);
     PyModule_AddObject(m, "SatelliteInfo",

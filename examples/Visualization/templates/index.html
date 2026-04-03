@@ -45,6 +45,9 @@
                         {% if mode in ['native', 'ros2'] and hat_name != 'L1/L5 GNSS TIME HAT' %}
                         <button class="map-tab" data-tab="skyview">🛰️ Sky View</button>
                         {% endif %}
+                        {% if mode in ['native', 'ros2'] %}
+                        <button class="map-tab" data-tab="rfanalyzer">📊 RF Analyzer</button>
+                        {% endif %}
                     </div>
                 </div>
                 
@@ -124,6 +127,22 @@
                         <span class="legend-item"><span class="legend-dot legend-dot-outline"></span>Not used</span>
                     </div>
                     <div class="skyview-constellation-summary" id="constellation-summary">
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if mode in ['native', 'ros2'] %}
+                <!-- RF Analyzer - Spectrum from MON-SPAN + RF status from MON-RF -->
+                <div id="rfanalyzer-map" class="map-view" style="display: none;">
+                    <div class="rfanalyzer-layout">
+                        <div class="rfanalyzer-chart-wrap">
+                            <div id="spectrum-charts-container"></div>
+                        </div>
+                        <div class="rfanalyzer-info-wrap">
+                            <div id="rfanalyzer-rf-status">
+                                <p class="rf-no-data">Waiting for data...</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 {% endif %}

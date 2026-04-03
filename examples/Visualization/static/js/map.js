@@ -574,6 +574,11 @@ function updateGPSData(data) {
         if (data.satellites) {
             updateSkyView(data.satellites);
         }
+
+        // RF Analyzer → spectrum chart + RF status
+        if (data.spectrum || data.rf_blocks) {
+            updateRfAnalyzer(data);
+        }
     } else {
         // TTY mode: HDOP from pvt
         updateDataField('data-hdop', `${pvt.hdop.toFixed(2)}`);
@@ -656,6 +661,247 @@ function updateDataField(id, value) {
     if (element) {
         element.textContent = value;
     }
+}
+
+// =======================
+// RF Analyzer - Spectrum Chart (MON-SPAN) + RF Status (MON-RF)
+// =======================
+
+const RF_BLOCK_COLORS = ['#4fc3f7', '#ffb74d', '#81c784', '#e57373'];
+const RF_BLOCK_LABELS = ['L1', 'L2/L5', 'RF2', 'RF3'];
+
+function drawSingleSpectrum(canvas, block, blockIndex) {
+    const container = canvas.parentElement;
+    const rect = container.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    if (width < 40 || height < 40) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const color = RF_BLOCK_COLORS[blockIndex % RF_BLOCK_COLORS.length];
+
+    // Background
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(0, 0, width, height);
+
+    const data = block.data;
+    if (!data || data.length === 0) {
+        ctx.fillStyle = '#666';
+        ctx.font = '13px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('No spectrum data', width / 2, height / 2);
+        return;
+    }
+
+    const centerFreqMHz = block.center_freq / 1e6;
+    const spanMHz = block.span / 1e6;
+    const startFreqMHz = centerFreqMHz - spanMHz / 2;
+    const endFreqMHz = centerFreqMHz + spanMHz / 2;
+
+    // Header area for label, extra headroom above data
+    const headerH = 28;
+    const margin = { top: headerH, right: 15, bottom: 32, left: 50 };
+    const plotW = width - margin.left - margin.right;
+    const plotH = height - margin.top - margin.bottom;
+    if (plotW < 10 || plotH < 10) return;
+
+    // Find amplitude range with 15% headroom
+    let maxVal = 0;
+    for (let i = 0; i < data.length; i++) {
+        if (data[i] > maxVal) maxVal = data[i];
+    }
+    if (maxVal === 0) maxVal = 255;
+    const yScale = maxVal * 1.15;
+
+    // --- Header label ---
+    const label = RF_BLOCK_LABELS[blockIndex] || ('RF' + block.id);
+    ctx.fillStyle = color;
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(
+        `${label}  ·  ${centerFreqMHz.toFixed(2)} MHz  ·  span ${spanMHz.toFixed(1)} MHz  ·  gain ${block.gain}`,
+        margin.left, headerH - 9
+    );
+    // thin separator
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(margin.left, headerH - 3);
+    ctx.lineTo(margin.left + plotW, headerH - 3);
+    ctx.stroke();
+
+    // --- Grid ---
+    ctx.strokeStyle = '#1a1a2e';
+    ctx.lineWidth = 0.5;
+
+    // Horizontal grid (amplitude)
+    const ySteps = 4;
+    ctx.font = '10px monospace';
+    ctx.fillStyle = '#555';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= ySteps; i++) {
+        const y = margin.top + (plotH / ySteps) * i;
+        ctx.beginPath();
+        ctx.moveTo(margin.left, y);
+        ctx.lineTo(margin.left + plotW, y);
+        ctx.stroke();
+        const val = Math.round(yScale * (1 - i / ySteps));
+        ctx.fillText(val.toString(), margin.left - 5, y + 3);
+    }
+
+    // Vertical grid (frequency)
+    const freqRange = endFreqMHz - startFreqMHz;
+    let freqStep;
+    if (freqRange > 5) freqStep = 1;
+    else if (freqRange > 2) freqStep = 0.5;
+    else if (freqRange > 0.5) freqStep = 0.1;
+    else freqStep = 0.05;
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#555';
+    const firstTick = Math.ceil(startFreqMHz / freqStep) * freqStep;
+    for (let freq = firstTick; freq <= endFreqMHz; freq += freqStep) {
+        const xFrac = (freq - startFreqMHz) / freqRange;
+        const x = margin.left + xFrac * plotW;
+        ctx.strokeStyle = '#1a1a2e';
+        ctx.beginPath();
+        ctx.moveTo(x, margin.top);
+        ctx.lineTo(x, margin.top + plotH);
+        ctx.stroke();
+        ctx.fillText(freq.toFixed(freqStep < 0.1 ? 2 : 1), x, margin.top + plotH + 14);
+    }
+
+    // --- Spectrum line ---
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < data.length; i++) {
+        const x = margin.left + (i / (data.length - 1)) * plotW;
+        const y = margin.top + plotH - (data[i] / yScale) * plotH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Filled area
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = color;
+    ctx.lineTo(margin.left + plotW, margin.top + plotH);
+    ctx.lineTo(margin.left, margin.top + plotH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+
+    // --- Axis labels ---
+    ctx.fillStyle = '#666';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('MHz', margin.left + plotW + 2, margin.top + plotH + 14);
+
+    ctx.save();
+    ctx.translate(10, margin.top + plotH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('Amp', 0, 0);
+    ctx.restore();
+
+    // Plot border
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(margin.left, margin.top, plotW, plotH);
+}
+
+function drawSpectrumChart(spectrumBlocks) {
+    const container = document.getElementById('spectrum-charts-container');
+    if (!container) return;
+
+    if (!spectrumBlocks || spectrumBlocks.length === 0) {
+        container.innerHTML = '<p style="color:#666;text-align:center;font:14px monospace;padding:40px 0">Waiting for spectrum data…</p>';
+        return;
+    }
+
+    // Ensure we have the right number of chart wrappers
+    const existing = container.querySelectorAll('.spectrum-single-wrap');
+    if (existing.length !== spectrumBlocks.length) {
+        container.innerHTML = '';
+        for (let i = 0; i < spectrumBlocks.length; i++) {
+            const wrap = document.createElement('div');
+            wrap.className = 'spectrum-single-wrap';
+            const cvs = document.createElement('canvas');
+            cvs.className = 'spectrum-single-canvas';
+            wrap.appendChild(cvs);
+            container.appendChild(wrap);
+        }
+    }
+
+    const wraps = container.querySelectorAll('.spectrum-single-wrap');
+    for (let i = 0; i < spectrumBlocks.length; i++) {
+        const canvas = wraps[i].querySelector('canvas');
+        drawSingleSpectrum(canvas, spectrumBlocks[i], i);
+    }
+}
+
+function updateRfAnalyzerStatus(rfBlocks) {
+    const container = document.getElementById('rfanalyzer-rf-status');
+    if (!container) return;
+
+    if (!rfBlocks || rfBlocks.length === 0) {
+        container.innerHTML = '<p class="rf-no-data">No RF data</p>';
+        return;
+    }
+
+    let html = '';
+    for (const rf of rfBlocks) {
+        const jammingClass = rf.jamming_state === 'OK' ? 'jamming-ok'
+            : rf.jamming_state === 'Warning' ? 'jamming-warning'
+            : rf.jamming_state === 'Critical' ? 'jamming-critical'
+            : 'jamming-unknown';
+
+        html += `
+        <div class="rfanalyzer-status-card">
+            <div class="rf-block-header">${rf.band}</div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">Jamming</span>
+                <span class="rf-block-value ${jammingClass}">${rf.jamming_state}</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">Antenna</span>
+                <span class="rf-block-value">${rf.antenna_status}</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">Power</span>
+                <span class="rf-block-value">${rf.antenna_power}</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">Noise/ms</span>
+                <span class="rf-block-value">${rf.noise_per_ms}</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">AGC</span>
+                <span class="rf-block-value">${rf.agc_monitor.toFixed(1)}%</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">CW Supp.</span>
+                <span class="rf-block-value">${rf.cw_suppression.toFixed(1)} dB</span>
+            </div>
+        </div>`;
+    }
+    container.innerHTML = html;
+}
+
+function updateRfAnalyzer(data) {
+    const rfEl = document.getElementById('rfanalyzer-map');
+    if (!rfEl) return;
+
+    drawSpectrumChart(data.spectrum);
+    updateRfAnalyzerStatus(data.rf_blocks);
 }
 
 // =======================
@@ -885,6 +1131,10 @@ window.addEventListener('resize', () => {
     if (skyviewEl && skyviewEl.classList.contains('active') && window.lastGPSData && window.lastGPSData.satellites) {
         updateSkyView(window.lastGPSData.satellites);
     }
+    const rfEl = document.getElementById('rfanalyzer-map');
+    if (rfEl && rfEl.classList.contains('active') && window.lastGPSData) {
+        updateRfAnalyzer(window.lastGPSData);
+    }
 });
 
 // =======================
@@ -1083,6 +1333,11 @@ function setupTabs() {
                 // Re-draw sky plot when switching to skyview (canvas needs resize)
                 if (tabName === 'skyview' && window.lastGPSData && window.lastGPSData.satellites) {
                     setTimeout(() => updateSkyView(window.lastGPSData.satellites), 50);
+                }
+
+                // Re-draw spectrum chart when switching to RF Analyzer
+                if (tabName === 'rfanalyzer' && window.lastGPSData) {
+                    setTimeout(() => updateRfAnalyzer(window.lastGPSData), 50);
                 }
             }
         });

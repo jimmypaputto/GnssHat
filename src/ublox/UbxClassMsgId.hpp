@@ -36,7 +36,7 @@ public:
         ubxClassMsgIdMap_[to_underlying(UBX_CFG_VALSET)] = { 0x06, 0x8A };
         ubxClassMsgIdMap_[to_underlying(UBX_CFG_VALGET)] = { 0x06, 0x8B };
         ubxClassMsgIdMap_[to_underlying(UBX_MON_RF)] = { 0x0A, 0x38 };
-        ubxClassMsgIdMap_[to_underlying(UBX_MON_SPAN)] = { 0x0A, 0x39 };
+        ubxClassMsgIdMap_[to_underlying(UBX_MON_SPAN)] = { 0x0A, 0x31 };
         ubxClassMsgIdMap_[to_underlying(UBX_NAV_DOP)] = { 0x01, 0x04 };
         ubxClassMsgIdMap_[to_underlying(UBX_NAV_GEOFENCE)] = { 0x01, 0x39 };
         ubxClassMsgIdMap_[to_underlying(UBX_NAV_PVT)] = { 0x01, 0x07 };

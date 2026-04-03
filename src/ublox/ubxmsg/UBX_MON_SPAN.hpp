@@ -22,10 +22,6 @@ public:
     explicit UBX_MON_SPAN(std::span<const uint8_t> frame)
     {
         rfBlocksSpectrumData_.reserve(RfBlockSpectrumData::maxNumberOfRfBlocks);
-        for (auto& spectrumData: rfBlocksSpectrumData_)
-        {
-            spectrumData.data.reserve(256);
-        }
         deserialize(frame);
     }
 
@@ -42,15 +38,16 @@ public:
 
         for (uint8_t i = 0; i < numberOfRfBlocks; i++)
         {
-            RfBlockSpectrumData rfBlockSpectrumData;
+            RfBlockSpectrumData rfBlockSpectrumData{};
 
             rfBlockSpectrumData.id = i;
-            std::copy(serialized.begin() + 10 + (i * 272), serialized.begin() + 10 + 255 + (i * 272), rfBlockSpectrumData.data.begin());
+            rfBlockSpectrumData.data.resize(256);
+            std::copy(serialized.begin() + 10 + (i * 272), serialized.begin() + 10 + 256 + (i * 272), rfBlockSpectrumData.data.begin());
 
-            rfBlockSpectrumData.span = readLE<uint32_t>(serialized,(11 + 255 + (i * 272)));
-            rfBlockSpectrumData.resolution = readLE<uint32_t>(serialized,(15 + 255 + (i * 272)));
-            rfBlockSpectrumData.centerFreq = readLE<uint32_t>(serialized,(19 + 255 + (i * 272)));
-            rfBlockSpectrumData.span = serialized[(23 + 255 + (i * 272))];
+            rfBlockSpectrumData.span = readLE<uint32_t>(serialized,(10 + 256 + (i * 272)));
+            rfBlockSpectrumData.resolution = readLE<uint32_t>(serialized,(14 + 256 + (i * 272)));
+            rfBlockSpectrumData.centerFreq = readLE<uint32_t>(serialized,(18 + 256 + (i * 272)));
+            rfBlockSpectrumData.gain = serialized[(22 + 256 + (i * 272))];
 
             rfBlocksSpectrumData_.push_back(rfBlockSpectrumData);
         }

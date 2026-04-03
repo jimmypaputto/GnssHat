@@ -79,6 +79,15 @@ void Gnss::satellites(const std::vector<SatelliteInfo>& satellites)
     }
 }
 
+void Gnss::rawMeasurements(const RawMeasurements& rawMeasurements)
+{
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        navigation_.rawMeasurements = rawMeasurements;
+        xSemaphore_.releaseResource();
+    }
+}
+
 void Gnss::timeMark(const TimeMark& timeMark)
 {
     if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))

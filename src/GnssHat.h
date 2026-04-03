@@ -17,6 +17,7 @@ extern "C" {
 #define UBLOX_MAX_GEOFENCES  4
 #define UBLOX_MAX_RF_BLOCKS  2
 #define UBLOX_MAX_SATELLITES 64
+#define UBLOX_MAX_RAW_OBSERVATIONS 128
 #define UBLOX_SPECTRUM_BINS  256
 
 typedef enum
@@ -427,6 +428,39 @@ typedef struct
 
 typedef struct
 {
+    double pr_mes;
+    double cp_mes;
+    float do_mes;
+    jp_gnss_gnss_id_t gnss_id;
+    uint8_t sv_id;
+    uint8_t sig_id;
+    uint8_t freq_id;
+    uint16_t locktime;
+    uint8_t cno;
+    uint8_t pr_stdev;
+    uint8_t cp_stdev;
+    uint8_t do_stdev;
+    bool pr_valid;
+    bool cp_valid;
+    bool half_cyc;
+    bool sub_half_cyc;
+} jp_gnss_raw_observation_t;
+
+typedef struct
+{
+    double rcv_tow;
+    uint16_t week;
+    int8_t leap_s;
+    uint8_t num_meas;
+    bool leap_sec_determined;
+    bool clk_reset;
+    uint8_t version;
+    uint8_t num_observations;
+    jp_gnss_raw_observation_t observations[UBLOX_MAX_RAW_OBSERVATIONS];
+} jp_gnss_raw_measurements_t;
+
+typedef struct
+{
     jp_gnss_dilution_over_precision_t dop;
     jp_gnss_position_velocity_time_t pvt;
     jp_gnss_geofencing_t geofencing;
@@ -436,6 +470,7 @@ typedef struct
     jp_gnss_rf_block_spectrum_data_t rf_blocks_spectrum[UBLOX_MAX_RF_BLOCKS];
     uint8_t num_satellites;
     jp_gnss_satellite_info_t satellites[UBLOX_MAX_SATELLITES];
+    jp_gnss_raw_measurements_t raw_measurements;
 } jp_gnss_navigation_t;
 
 typedef struct

@@ -9,6 +9,7 @@
 #include "Geofencing.hpp"
 #include "PositionVelocityTime.hpp"
 #include "RFBlock.hpp"
+#include "RawObservation.hpp"
 #include "RFBlockSpectrumData.hpp"
 #include "SatelliteInfo.hpp"
 
@@ -24,6 +25,7 @@ struct Navigation
     std::vector<RfBlock> rfBlocks;
     std::vector<RfBlockSpectrumData> rfBlocksSpectrumData;
     std::vector<SatelliteInfo> satellites;
+    RawMeasurements rawMeasurements;
 };
 
 }  // JimmyPaputto

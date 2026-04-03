@@ -20,6 +20,7 @@
 #include "ubxmsg/UBX_NAV_PVT.hpp"
 #include "ubxmsg/UBX_NAV_SAT.hpp"
 #include "ubxmsg/UBX_TIM_TM2.hpp"
+#include "ubxmsg/UBX_RXM_RAWX.hpp"
 
 
 namespace JimmyPaputto
@@ -125,6 +126,11 @@ UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
         const auto& ubxTimTm2 = static_cast<ubxmsg::UBX_TIM_TM2&>(ubxMsg);
         Gnss::instance().timeMark(ubxTimTm2.timeMark());
         timeMarkNotifier_.notify();
+    };
+
+    callbacks_[to_underlying(UBX_RXM_RAWX)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
+        const auto& ubxRxmRawx = static_cast<ubxmsg::UBX_RXM_RAWX&>(ubxMsg);
+        Gnss::instance().rawMeasurements(ubxRxmRawx.rawMeasurements());
     };
 }
 

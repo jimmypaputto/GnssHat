@@ -22,6 +22,7 @@
 #include "ubxmsg/UBX_NAV_PVT.hpp"
 #include "ubxmsg/UBX_NAV_SAT.hpp"
 #include "ubxmsg/UBX_TIM_TM2.hpp"
+#include "ubxmsg/UBX_RXM_RAWX.hpp"
 
 
 namespace JimmyPaputto
@@ -75,6 +76,8 @@ UbxFactory::UbxFactory()
     create_[to_underlying(UBX_NAV_SAT)] = &nav_sat;
     static ubxmsg::UBX_TIM_TM2 tim_tm2;
     create_[to_underlying(UBX_TIM_TM2)] = &tim_tm2;
+    static ubxmsg::UBX_RXM_RAWX rxm_rawx;
+    create_[to_underlying(UBX_RXM_RAWX)] = &rxm_rawx;
 }
 
 }  // JimmyPaputto

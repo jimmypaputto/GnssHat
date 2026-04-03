@@ -97,6 +97,7 @@ static_assert(static_cast<int>(ESvQuality::CodeAndCarrierLocked2) == JP_GNSS_SV_
 static_assert(static_cast<int>(ESvQuality::CodeAndCarrierLocked3) == JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_3);
 
 static_assert(SatelliteInfo::maxNumberOfSatellites == UBLOX_MAX_SATELLITES);
+static_assert(RawMeasurements::maxNumberOfMeasurements == UBLOX_MAX_RAW_OBSERVATIONS);
 
 static_assert(static_cast<int>(ERtkMode::Base) == JP_GNSS_RTK_MODE_BASE);
 static_assert(static_cast<int>(ERtkMode::Rover) == JP_GNSS_RTK_MODE_ROVER);
@@ -553,6 +554,42 @@ jp_gnss_navigation_t convert_navigation(const Navigation& cpp_nav)
         c_nav.satellites[i].diff_corr = cpp_nav.satellites[i].diffCorr;
         c_nav.satellites[i].eph_avail = cpp_nav.satellites[i].ephAvail;
         c_nav.satellites[i].alm_avail = cpp_nav.satellites[i].almAvail;
+    }
+
+    c_nav.raw_measurements.rcv_tow = cpp_nav.rawMeasurements.rcvTow;
+    c_nav.raw_measurements.week = cpp_nav.rawMeasurements.week;
+    c_nav.raw_measurements.leap_s = cpp_nav.rawMeasurements.leapS;
+    c_nav.raw_measurements.num_meas = cpp_nav.rawMeasurements.numMeas;
+    c_nav.raw_measurements.leap_sec_determined = cpp_nav.rawMeasurements.leapSecDetermined;
+    c_nav.raw_measurements.clk_reset = cpp_nav.rawMeasurements.clkReset;
+    c_nav.raw_measurements.version = cpp_nav.rawMeasurements.version;
+
+    c_nav.raw_measurements.num_observations = static_cast<uint8_t>(
+        std::min(cpp_nav.rawMeasurements.observations.size(),
+            static_cast<size_t>(UBLOX_MAX_RAW_OBSERVATIONS)));
+
+    for (
+        size_t i = 0;
+        i < cpp_nav.rawMeasurements.observations.size() && i < UBLOX_MAX_RAW_OBSERVATIONS;
+        i++)
+    {
+        const auto& obs = cpp_nav.rawMeasurements.observations[i];
+        c_nav.raw_measurements.observations[i].pr_mes = obs.prMes;
+        c_nav.raw_measurements.observations[i].cp_mes = obs.cpMes;
+        c_nav.raw_measurements.observations[i].do_mes = obs.doMes;
+        c_nav.raw_measurements.observations[i].gnss_id = convert_gnss_id(obs.gnssId);
+        c_nav.raw_measurements.observations[i].sv_id = obs.svId;
+        c_nav.raw_measurements.observations[i].sig_id = obs.sigId;
+        c_nav.raw_measurements.observations[i].freq_id = obs.freqId;
+        c_nav.raw_measurements.observations[i].locktime = obs.locktime;
+        c_nav.raw_measurements.observations[i].cno = obs.cno;
+        c_nav.raw_measurements.observations[i].pr_stdev = obs.prStdev;
+        c_nav.raw_measurements.observations[i].cp_stdev = obs.cpStdev;
+        c_nav.raw_measurements.observations[i].do_stdev = obs.doStdev;
+        c_nav.raw_measurements.observations[i].pr_valid = obs.prValid;
+        c_nav.raw_measurements.observations[i].cp_valid = obs.cpValid;
+        c_nav.raw_measurements.observations[i].half_cyc = obs.halfCyc;
+        c_nav.raw_measurements.observations[i].sub_half_cyc = obs.subHalfCyc;
     }
 
     return c_nav;

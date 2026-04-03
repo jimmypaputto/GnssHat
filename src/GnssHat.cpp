@@ -121,6 +121,7 @@ protected:
     Notifier timeMarkNotifier_;
     GnssConfig config_;
 
+    std::stop_source stopSource_;
     std::jthread ubloxThread_;
     std::atomic<bool> timepulseEnabled_{false};
 };
@@ -129,9 +130,7 @@ class GnssL1Hat : public GnssHat
 {
 public:
     explicit GnssL1Hat()
-    :   GnssHat(
-            std::make_unique<SpiDriver>()
-        )
+    :   GnssHat(std::make_unique<SpiDriver>())
     {}
 
     ~GnssL1Hat() override = default;
@@ -163,6 +162,8 @@ public:
     {
         disableTimeMarkTrigger();
         stopSource_.request_stop();
+        stopUbloxThread();
+        nmeaForwarder_.reset();
     }
 
     bool start(const GnssConfig& config) override
@@ -240,7 +241,6 @@ public:
     }
 
 private:
-    std::stop_source stopSource_;
     std::unique_ptr<TimeMarkTrigger> timeMarkTrigger_;
     std::atomic<bool> timeMarkTriggerEnabled_{false};
 };
@@ -255,7 +255,9 @@ public:
 
     ~GnssL1L5TRtkHat() override
     {
+        stopSource_.request_stop();
         stopUbloxThread();
+        txReady_.reset();
         runStrategy_.reset();
     }
 
@@ -330,7 +332,11 @@ GnssHat::GnssHat(std::unique_ptr<ICommDriver>&& commDriver)
 
 GnssHat::~GnssHat()
 {
+    stopSource_.request_stop();
     stopUbloxThread();
+    txReady_.reset();
+    timepulse_.reset();
+    nmeaForwarder_.reset();
 }
 
 template<class StartupStrategy>
@@ -451,7 +457,7 @@ bool GnssHat::start(const GnssConfig& config)
     ubloxThread_ = std::jthread([this](std::stop_token stoken){
         while (!stoken.stop_requested())
         {
-            ublox_->run();
+            ublox_->run(stoken);
         }
     });
 
@@ -460,7 +466,11 @@ bool GnssHat::start(const GnssConfig& config)
 
 Navigation GnssHat::waitAndGetFreshNavigation()
 {
-    navigationNotifier_.wait();
+    if (!navigationNotifier_.wait(stopSource_.get_token()))
+    {
+        Navigation empty;
+        return empty;
+    }
 
     Navigation navigation;
     if (gnss_.lock())

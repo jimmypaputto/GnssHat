@@ -1569,14 +1569,15 @@ def api_set_config():
             gps_state['running'] = False
             if gps_state['thread']:
                 gps_state['thread'].join(timeout=5)
+                if gps_state['thread'].is_alive():
+                    print("Warning: reader thread still alive after join timeout")
                 gps_state['thread'] = None
 
-            # 2. Destroy old hat
+            # 2. Destroy old hat (destructor stops C++ threads & releases HW)
             socketio.emit('config_progress', {'step': 'destroy', 'message': 'Destroying old GnssHat object...'}, namespace='/')
             if gps_state['hat']:
                 del gps_state['hat']
                 gps_state['hat'] = None
-            time.sleep(1)
 
             # 3. Create new hat
             socketio.emit('config_progress', {'step': 'create', 'message': 'Creating new GnssHat object...'}, namespace='/')

@@ -26,19 +26,19 @@ M9NRun::M9NRun(ICommDriver& commDriver, UbxParser& ubxParser,
 {
 }
 
-void M9NRun::execute()
+void M9NRun::execute(std::stop_token stoken)
 {
     constexpr uint32_t rxBatchSize = 1024;
     uint32_t counter = runRxBuffOffset_;
-    txReadyNotifier_.wait();
+    if (!txReadyNotifier_.wait(stoken))
+        return;
+
     while (!txReadyNotifier_.getFlag())
     {
+        if (counter + rxBatchSize > runRxBuffSize)
+            counter = 0;
         commDriver_.getRxBuff(runRxBuff_.data() + counter, rxBatchSize);
         counter += rxBatchSize;
-        if (counter >= runRxBuffSize)
-        {
-            counter = 0;
-        }
     }
 
     const auto unfinishedFrame = ubxParser_.parse(
@@ -58,7 +58,7 @@ F10TRun::F10TRun(ICommDriver& commDriver, UbxParser& ubxParser)
 {
 }
 
-void F10TRun::execute()
+void F10TRun::execute(std::stop_token)
 {    
     auto& uartDriver = static_cast<UartDriver&>(commDriver_);
     constexpr uint32_t parseThreshold = 100;

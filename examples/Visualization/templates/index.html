@@ -729,22 +729,6 @@
                         </fieldset>
                         {% endif %}
 
-                        {% if hat_name != 'L1 GNSS HAT' %}
-                        <!-- L5 Band -->
-                        <fieldset class="cfg-section">
-                            <legend>📡 GPS L5 Band</legend>
-                            <div class="cfg-row">
-                                <label for="cfg-l5-en">GPS L5</label>
-                                <select id="cfg-l5-en" class="cfg-select">
-                                    <option value="auto">Auto (enabled)</option>
-                                    <option value="on">On</option>
-                                    <option value="off">Off</option>
-                                </select>
-                            </div>
-                            <div class="cfg-hint">Auto = enabled on L1/L5 HATs. Enables GPS L5 signal with L5 health override.</div>
-                        </fieldset>
-                        {% endif %}
-
                         <!-- Save to Flash -->
                         <fieldset class="cfg-section">
                             <legend>💾 Flash</legend>

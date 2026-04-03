@@ -401,8 +401,6 @@ std::optional<GnssConfig> convert_gnss_config(
     }
  
     cpp_config.saveToFlash = c_config.save_to_flash;
-    if (c_config.enable_l5_gps >= 0)
-        cpp_config.enableL5_GPS = static_cast<bool>(c_config.enable_l5_gps);
  
     return cpp_config;
 }
@@ -841,7 +839,6 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
     std::memset(&config->rtk, 0, sizeof(config->rtk));
     config->has_timing = false;
     std::memset(&config->timing, 0, sizeof(config->timing));
-    config->enable_l5_gps = -1;
     config->save_to_flash = false;
 }
 

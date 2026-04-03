@@ -842,9 +842,8 @@ F10TStartup::F10TStartup(ICommDriver& commDriver,
     rate2Registers(config.measurementRate_Hz);
     timepulsePinConfig2Registers(config.timepulsePinConfig);
 
-    const uint8_t l5Enabled = config.enableL5_GPS.value_or(true) ? 0x01 : 0x00;
-    ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {l5Enabled};
-    ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {l5Enabled};
+    ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {0x01};
+    ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {0x01};
 
     const bool enableTimeMark = config.timing.has_value()
         && config.timing->enableTimeMark;
@@ -1011,9 +1010,8 @@ F9PStartup::F9PStartup(ICommDriver& commDriver,
 
     auto& ecv = StartupBase::expectedConfigValues_;
 
-    const uint8_t l5Enabled = config.enableL5_GPS.value_or(true) ? 0x01 : 0x00;
-    ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {l5Enabled};
-    ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {l5Enabled};
+    ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {0x01};
+    ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {0x01};
 
     ecv[UbxCfgKeys::CFG_SPIINPROT_RTCM3X] = {0x00};
     ecv[UbxCfgKeys::CFG_SPIINPROT_SPARTN] = {0x00};

@@ -20,6 +20,8 @@ static PyTypeObject GeofenceType;
 static PyTypeObject RfBlockType;
 static PyTypeObject RfBlockSpectrumDataType;
 static PyTypeObject SatelliteInfoType;
+static PyTypeObject RawObservationType;
+static PyTypeObject RawMeasurementsType;
 static PyTypeObject PulseType;
 static PyTypeObject TimepulsePinConfigType;
 static PyTypeObject UtcTimeType;
@@ -94,6 +96,7 @@ typedef struct
     PyObject* rf_blocks;
     PyObject* rf_blocks_spectrum;
     PyObject* satellites;
+    PyObject* raw_measurements;
 } Navigation;
 
 typedef struct
@@ -172,6 +175,40 @@ typedef struct
     PyObject* eph_avail;
     PyObject* alm_avail;
 } SatelliteInfo;
+
+typedef struct
+{
+    PyObject_HEAD
+    double pr_mes;
+    double cp_mes;
+    float do_mes;
+    int gnss_id;
+    uint8_t sv_id;
+    uint8_t sig_id;
+    uint8_t freq_id;
+    uint16_t locktime;
+    uint8_t cno;
+    uint8_t pr_stdev;
+    uint8_t cp_stdev;
+    uint8_t do_stdev;
+    PyObject* pr_valid;
+    PyObject* cp_valid;
+    PyObject* half_cyc;
+    PyObject* sub_half_cyc;
+} RawObservation;
+
+typedef struct
+{
+    PyObject_HEAD
+    double rcv_tow;
+    uint16_t week;
+    int8_t leap_s;
+    uint8_t num_meas;
+    uint8_t version;
+    PyObject* leap_sec_determined;
+    PyObject* clk_reset;
+    PyObject* observations;
+} RawMeasurements;
 
 typedef struct
 {
@@ -932,6 +969,376 @@ static PyTypeObject SatelliteInfoType = {
     .tp_str = (reprfunc)SatelliteInfo_str,
     .tp_repr = (reprfunc)SatelliteInfo_str,
     .tp_members = SatelliteInfo_members,
+};
+
+/* ---- RawObservation ---- */
+
+static PyObject* RawObservation_new(PyTypeObject* type, PyObject* args,
+    PyObject* kwds)
+{
+    RawObservation* self = (RawObservation*)type->tp_alloc(type, 0);
+    if (self)
+    {
+        self->pr_mes = 0.0;
+        self->cp_mes = 0.0;
+        self->do_mes = 0.0f;
+        self->gnss_id = 0;
+        self->sv_id = 0;
+        self->sig_id = 0;
+        self->freq_id = 0;
+        self->locktime = 0;
+        self->cno = 0;
+        self->pr_stdev = 0;
+        self->cp_stdev = 0;
+        self->do_stdev = 0;
+        self->pr_valid = Py_False;
+        Py_INCREF(Py_False);
+        self->cp_valid = Py_False;
+        Py_INCREF(Py_False);
+        self->half_cyc = Py_False;
+        Py_INCREF(Py_False);
+        self->sub_half_cyc = Py_False;
+        Py_INCREF(Py_False);
+    }
+    return (PyObject*)self;
+}
+
+static void RawObservation_dealloc(RawObservation* self)
+{
+    Py_XDECREF(self->pr_valid);
+    Py_XDECREF(self->cp_valid);
+    Py_XDECREF(self->half_cyc);
+    Py_XDECREF(self->sub_half_cyc);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject* RawObservation_str(RawObservation* self)
+{
+    char buffer[512];
+    snprintf(
+        buffer,
+        sizeof(buffer),
+        "RawObservation(\n"
+        "    gnss_id=%d, sv_id=%u, sig_id=%u, freq_id=%u\n"
+        "    pr_mes=%.3f, cp_mes=%.3f, do_mes=%.3f\n"
+        "    locktime=%u, cno=%u\n"
+        "    pr_stdev=%u, cp_stdev=%u, do_stdev=%u\n"
+        "    pr_valid=%s, cp_valid=%s, half_cyc=%s, sub_half_cyc=%s\n"
+        ")",
+        self->gnss_id,
+        self->sv_id,
+        self->sig_id,
+        self->freq_id,
+        self->pr_mes,
+        self->cp_mes,
+        (double)self->do_mes,
+        self->locktime,
+        self->cno,
+        self->pr_stdev,
+        self->cp_stdev,
+        self->do_stdev,
+        PyObject_IsTrue(self->pr_valid) ? "True" : "False",
+        PyObject_IsTrue(self->cp_valid) ? "True" : "False",
+        PyObject_IsTrue(self->half_cyc) ? "True" : "False",
+        PyObject_IsTrue(self->sub_half_cyc) ? "True" : "False"
+    );
+    return PyUnicode_FromString(buffer);
+}
+
+static PyMemberDef RawObservation_members[] = {
+    {
+        "pr_mes",
+        T_DOUBLE,
+        offsetof(RawObservation, pr_mes),
+        0,
+        "Pseudorange measurement (m)"
+    },
+    {
+        "cp_mes",
+        T_DOUBLE,
+        offsetof(RawObservation, cp_mes),
+        0,
+        "Carrier phase measurement (cycles)"
+    },
+    {
+        "do_mes",
+        T_FLOAT,
+        offsetof(RawObservation, do_mes),
+        0,
+        "Doppler measurement (Hz)"
+    },
+    {
+        "gnss_id",
+        T_INT,
+        offsetof(RawObservation, gnss_id),
+        0,
+        "GNSS constellation ID (use GnssId IntEnum to interpret)"
+    },
+    {
+        "sv_id",
+        T_UBYTE,
+        offsetof(RawObservation, sv_id),
+        0,
+        "Satellite vehicle ID"
+    },
+    {
+        "sig_id",
+        T_UBYTE,
+        offsetof(RawObservation, sig_id),
+        0,
+        "Signal identifier"
+    },
+    {
+        "freq_id",
+        T_UBYTE,
+        offsetof(RawObservation, freq_id),
+        0,
+        "GLONASS frequency slot + 7"
+    },
+    {
+        "locktime",
+        T_USHORT,
+        offsetof(RawObservation, locktime),
+        0,
+        "Carrier phase locktime counter (ms)"
+    },
+    {
+        "cno",
+        T_UBYTE,
+        offsetof(RawObservation, cno),
+        0,
+        "Carrier-to-noise ratio (dBHz)"
+    },
+    {
+        "pr_stdev",
+        T_UBYTE,
+        offsetof(RawObservation, pr_stdev),
+        0,
+        "Pseudorange standard deviation index"
+    },
+    {
+        "cp_stdev",
+        T_UBYTE,
+        offsetof(RawObservation, cp_stdev),
+        0,
+        "Carrier phase standard deviation index"
+    },
+    {
+        "do_stdev",
+        T_UBYTE,
+        offsetof(RawObservation, do_stdev),
+        0,
+        "Doppler standard deviation index"
+    },
+    {
+        "pr_valid",
+        T_OBJECT_EX,
+        offsetof(RawObservation, pr_valid),
+        0,
+        "Pseudorange measurement valid"
+    },
+    {
+        "cp_valid",
+        T_OBJECT_EX,
+        offsetof(RawObservation, cp_valid),
+        0,
+        "Carrier phase measurement valid"
+    },
+    {
+        "half_cyc",
+        T_OBJECT_EX,
+        offsetof(RawObservation, half_cyc),
+        0,
+        "Half cycle ambiguity/subtracted"
+    },
+    {
+        "sub_half_cyc",
+        T_OBJECT_EX,
+        offsetof(RawObservation, sub_half_cyc),
+        0,
+        "Half cycle subtracted from phase"
+    },
+    {NULL}
+};
+
+static PyTypeObject RawObservationType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "jimmypaputto.gnsshat.RawObservation",
+    .tp_doc = "Raw observation from UBX-RXM-RAWX",
+    .tp_basicsize = sizeof(RawObservation),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_new = RawObservation_new,
+    .tp_dealloc = (destructor)RawObservation_dealloc,
+    .tp_str = (reprfunc)RawObservation_str,
+    .tp_repr = (reprfunc)RawObservation_str,
+    .tp_members = RawObservation_members,
+};
+
+/* ---- RawMeasurements ---- */
+
+static PyObject* RawMeasurements_new(PyTypeObject* type, PyObject* args,
+    PyObject* kwds)
+{
+    RawMeasurements* self = (RawMeasurements*)type->tp_alloc(type, 0);
+    if (self)
+    {
+        self->rcv_tow = 0.0;
+        self->week = 0;
+        self->leap_s = 0;
+        self->num_meas = 0;
+        self->version = 0;
+        self->leap_sec_determined = Py_False;
+        Py_INCREF(Py_False);
+        self->clk_reset = Py_False;
+        Py_INCREF(Py_False);
+        self->observations = PyList_New(0);
+    }
+    return (PyObject*)self;
+}
+
+static void RawMeasurements_dealloc(RawMeasurements* self)
+{
+    Py_XDECREF(self->leap_sec_determined);
+    Py_XDECREF(self->clk_reset);
+    Py_XDECREF(self->observations);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject* RawMeasurements_str(RawMeasurements* self)
+{
+    Py_ssize_t n = 0;
+    if (self->observations && PyList_Check(self->observations))
+        n = PyList_Size(self->observations);
+
+    PyObject* obs_parts = PyUnicode_FromString("");
+    if (obs_parts && self->observations && PyList_Check(self->observations))
+    {
+        for (Py_ssize_t i = 0; i < n; i++)
+        {
+            PyObject* item = PyList_GetItem(self->observations, i);
+            PyObject* item_str = PyObject_Str(item);
+            if (!item_str)
+                break;
+
+            PyObject* prefix = PyUnicode_FromFormat("\n  [%zd] ", i);
+            if (!prefix) { Py_DECREF(item_str); break; }
+
+            PyObject* tmp = PyUnicode_Concat(obs_parts, prefix);
+            Py_DECREF(prefix);
+            if (!tmp) { Py_DECREF(item_str); break; }
+
+            Py_DECREF(obs_parts);
+            obs_parts = PyUnicode_Concat(tmp, item_str);
+            Py_DECREF(tmp);
+            Py_DECREF(item_str);
+            if (!obs_parts)
+            {
+                obs_parts = PyUnicode_FromString("(error)");
+                break;
+            }
+        }
+    }
+
+    char header[256];
+    snprintf(header, sizeof(header),
+        "RawMeasurements(\n"
+        "    rcv_tow=%.3f, week=%u, leap_s=%d\n"
+        "    num_meas=%u, version=%u\n"
+        "    leap_sec_determined=%s, clk_reset=%s\n",
+        self->rcv_tow,
+        self->week,
+        self->leap_s,
+        self->num_meas,
+        self->version,
+        PyObject_IsTrue(self->leap_sec_determined) ? "True" : "False",
+        PyObject_IsTrue(self->clk_reset) ? "True" : "False"
+    );
+
+    PyObject* result = PyUnicode_FromFormat(
+        "%s    observations (%zd):%U\n"
+        ")",
+        header,
+        n,
+        obs_parts
+    );
+
+    Py_DECREF(obs_parts);
+    return result;
+}
+
+static PyMemberDef RawMeasurements_members[] = {
+    {
+        "rcv_tow",
+        T_DOUBLE,
+        offsetof(RawMeasurements, rcv_tow),
+        0,
+        "Receiver time of week (s)"
+    },
+    {
+        "week",
+        T_USHORT,
+        offsetof(RawMeasurements, week),
+        0,
+        "GPS week number"
+    },
+    {
+        "leap_s",
+        T_BYTE,
+        offsetof(RawMeasurements, leap_s),
+        0,
+        "GPS-UTC leap seconds (s)"
+    },
+    {
+        "num_meas",
+        T_UBYTE,
+        offsetof(RawMeasurements, num_meas),
+        0,
+        "Number of measurements in UBX message"
+    },
+    {
+        "version",
+        T_UBYTE,
+        offsetof(RawMeasurements, version),
+        0,
+        "Message version"
+    },
+    {
+        "leap_sec_determined",
+        T_OBJECT_EX,
+        offsetof(RawMeasurements, leap_sec_determined),
+        0,
+        "Leap seconds have been determined"
+    },
+    {
+        "clk_reset",
+        T_OBJECT_EX,
+        offsetof(RawMeasurements, clk_reset),
+        0,
+        "Clock reset applied"
+    },
+    {
+        "observations",
+        T_OBJECT_EX,
+        offsetof(RawMeasurements, observations),
+        0,
+        "List of RawObservation objects"
+    },
+    {NULL}
+};
+
+static PyTypeObject RawMeasurementsType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "jimmypaputto.gnsshat.RawMeasurements",
+    .tp_doc = "Raw measurements from UBX-RXM-RAWX",
+    .tp_basicsize = sizeof(RawMeasurements),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_new = RawMeasurements_new,
+    .tp_dealloc = (destructor)RawMeasurements_dealloc,
+    .tp_str = (reprfunc)RawMeasurements_str,
+    .tp_repr = (reprfunc)RawMeasurements_str,
+    .tp_members = RawMeasurements_members,
 };
 
 /* ---- DilutionOverPrecision ---- */
@@ -2465,6 +2872,33 @@ static inline SatelliteInfo* SatelliteInfo_alloc(void)
     return self;
 }
 
+static inline RawObservation* RawObservation_alloc(void)
+{
+    RawObservation* self =
+        (RawObservation*)RawObservationType.tp_alloc(&RawObservationType, 0);
+    if (self)
+    {
+        self->pr_valid = Py_False; Py_INCREF(Py_False);
+        self->cp_valid = Py_False; Py_INCREF(Py_False);
+        self->half_cyc = Py_False; Py_INCREF(Py_False);
+        self->sub_half_cyc = Py_False; Py_INCREF(Py_False);
+    }
+    return self;
+}
+
+static inline RawMeasurements* RawMeasurements_alloc(void)
+{
+    RawMeasurements* self =
+        (RawMeasurements*)RawMeasurementsType.tp_alloc(&RawMeasurementsType, 0);
+    if (self)
+    {
+        self->leap_sec_determined = Py_False; Py_INCREF(Py_False);
+        self->clk_reset = Py_False; Py_INCREF(Py_False);
+        self->observations = PyList_New(0);
+    }
+    return self;
+}
+
 static inline Navigation* Navigation_alloc(void)
 {
     Navigation* self =
@@ -2477,6 +2911,7 @@ static inline Navigation* Navigation_alloc(void)
         self->rf_blocks = NULL;
         self->rf_blocks_spectrum = NULL;
         self->satellites = NULL;
+        self->raw_measurements = NULL;
     }
     return self;
 }
@@ -2828,6 +3263,87 @@ static PyObject* convert_navigation_to_python(const jp_gnss_navigation_t* nav)
     }
 
     nav_obj->satellites = satellites_list;
+
+    /* Convert raw measurements data */
+    RawMeasurements* raw = RawMeasurements_alloc();
+    if (!raw)
+    {
+        Py_DECREF(nav_obj);
+        return NULL;
+    }
+
+    raw->rcv_tow = nav->raw_measurements.rcv_tow;
+    raw->week = nav->raw_measurements.week;
+    raw->leap_s = nav->raw_measurements.leap_s;
+    raw->num_meas = nav->raw_measurements.num_meas;
+    raw->version = nav->raw_measurements.version;
+
+    Py_DECREF(raw->leap_sec_determined);
+    raw->leap_sec_determined = nav->raw_measurements.leap_sec_determined
+        ? Py_True : Py_False;
+    Py_INCREF(raw->leap_sec_determined);
+
+    Py_DECREF(raw->clk_reset);
+    raw->clk_reset = nav->raw_measurements.clk_reset ? Py_True : Py_False;
+    Py_INCREF(raw->clk_reset);
+
+    PyObject* obs_list = PyList_New(nav->raw_measurements.num_observations);
+    if (!obs_list)
+    {
+        Py_DECREF(nav_obj);
+        Py_DECREF(raw);
+        return NULL;
+    }
+
+    for (int i = 0; i < nav->raw_measurements.num_observations; i++)
+    {
+        RawObservation* obs = RawObservation_alloc();
+        if (!obs)
+        {
+            Py_DECREF(nav_obj);
+            Py_DECREF(raw);
+            Py_DECREF(obs_list);
+            return NULL;
+        }
+
+        obs->pr_mes = nav->raw_measurements.observations[i].pr_mes;
+        obs->cp_mes = nav->raw_measurements.observations[i].cp_mes;
+        obs->do_mes = nav->raw_measurements.observations[i].do_mes;
+        obs->gnss_id = nav->raw_measurements.observations[i].gnss_id;
+        obs->sv_id = nav->raw_measurements.observations[i].sv_id;
+        obs->sig_id = nav->raw_measurements.observations[i].sig_id;
+        obs->freq_id = nav->raw_measurements.observations[i].freq_id;
+        obs->locktime = nav->raw_measurements.observations[i].locktime;
+        obs->cno = nav->raw_measurements.observations[i].cno;
+        obs->pr_stdev = nav->raw_measurements.observations[i].pr_stdev;
+        obs->cp_stdev = nav->raw_measurements.observations[i].cp_stdev;
+        obs->do_stdev = nav->raw_measurements.observations[i].do_stdev;
+
+        Py_DECREF(obs->pr_valid);
+        obs->pr_valid = nav->raw_measurements.observations[i].pr_valid
+            ? Py_True : Py_False;
+        Py_INCREF(obs->pr_valid);
+
+        Py_DECREF(obs->cp_valid);
+        obs->cp_valid = nav->raw_measurements.observations[i].cp_valid
+            ? Py_True : Py_False;
+        Py_INCREF(obs->cp_valid);
+
+        Py_DECREF(obs->half_cyc);
+        obs->half_cyc = nav->raw_measurements.observations[i].half_cyc
+            ? Py_True : Py_False;
+        Py_INCREF(obs->half_cyc);
+
+        Py_DECREF(obs->sub_half_cyc);
+        obs->sub_half_cyc = nav->raw_measurements.observations[i].sub_half_cyc
+            ? Py_True : Py_False;
+        Py_INCREF(obs->sub_half_cyc);
+
+        PyList_SetItem(obs_list, i, (PyObject*)obs);
+    }
+
+    raw->observations = obs_list;
+    nav_obj->raw_measurements = (PyObject*)raw;
 
     return (PyObject*)nav_obj;
 }
@@ -3419,6 +3935,7 @@ static PyObject* Navigation_new(PyTypeObject* type, PyObject* args,
         self->rf_blocks = PyList_New(0);
         self->rf_blocks_spectrum = PyList_New(0);
         self->satellites = PyList_New(0);
+        self->raw_measurements = (PyObject*)RawMeasurements_alloc();
     }
     return (PyObject*)self;
 }
@@ -3431,6 +3948,7 @@ static void Navigation_dealloc(Navigation* self)
     Py_XDECREF(self->rf_blocks);
     Py_XDECREF(self->rf_blocks_spectrum);
     Py_XDECREF(self->satellites);
+    Py_XDECREF(self->raw_measurements);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -3476,6 +3994,13 @@ static PyMemberDef Navigation_members[] = {
         offsetof(Navigation, satellites),
         0,
         "Satellite information from NAV-SAT"
+    },
+    {
+        "raw_measurements",
+        T_OBJECT_EX,
+        offsetof(Navigation, raw_measurements),
+        0,
+        "Raw measurements from UBX-RXM-RAWX"
     },
     {NULL}
 };
@@ -3578,6 +4103,16 @@ static PyObject* Navigation_str(Navigation* self)
         }
     }
 
+    /* Build raw measurements string */
+    PyObject* raw_str = PyUnicode_FromString("N/A");
+    if (self->raw_measurements)
+    {
+        Py_DECREF(raw_str);
+        raw_str = PyObject_Str(self->raw_measurements);
+        if (!raw_str)
+            raw_str = PyUnicode_FromString("(error)");
+    }
+
     PyObject* result = PyUnicode_FromFormat(
         "===== Navigation =====\n"
         "\n--- PVT ---\n%U\n"
@@ -3585,6 +4120,7 @@ static PyObject* Navigation_str(Navigation* self)
         "\n--- Geofencing ---\n%U\n"
         "\n--- RF Blocks ---%U\n"
         "\n--- Satellites (%zd) ---%U\n"
+        "\n--- Raw Measurements ---\n%U\n"
         "=======================",
         pvt_str,
         dop_str,
@@ -3592,7 +4128,8 @@ static PyObject* Navigation_str(Navigation* self)
         rf_parts,
         self->satellites && PyList_Check(self->satellites)
             ? PyList_Size(self->satellites) : 0,
-        sat_parts
+        sat_parts,
+        raw_str
     );
 
     Py_XDECREF(pvt_str);
@@ -3600,6 +4137,7 @@ static PyObject* Navigation_str(Navigation* self)
     Py_DECREF(geo_str);
     Py_DECREF(rf_parts);
     Py_DECREF(sat_parts);
+    Py_DECREF(raw_str);
 
     return result;
 }
@@ -3729,6 +4267,10 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
         return NULL;
     if (PyType_Ready(&SatelliteInfoType) < 0)
         return NULL;
+    if (PyType_Ready(&RawObservationType) < 0)
+        return NULL;
+    if (PyType_Ready(&RawMeasurementsType) < 0)
+        return NULL;
     if (PyType_Ready(&GeofencingCfgType) < 0)
         return NULL;
     if (PyType_Ready(&GeofencingNavType) < 0)
@@ -3774,6 +4316,14 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
     Py_INCREF(&SatelliteInfoType);
     PyModule_AddObject(m, "SatelliteInfo",
         (PyObject*)&SatelliteInfoType);
+
+    Py_INCREF(&RawObservationType);
+    PyModule_AddObject(m, "RawObservation",
+        (PyObject*)&RawObservationType);
+
+    Py_INCREF(&RawMeasurementsType);
+    PyModule_AddObject(m, "RawMeasurements",
+        (PyObject*)&RawMeasurementsType);
 
     Py_INCREF(&PulseType);
     PyModule_AddObject(m, "Pulse", (PyObject*)&PulseType);
@@ -4004,6 +4554,7 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
     PyModule_AddIntConstant(m, "MAX_GEOFENCES", UBLOX_MAX_GEOFENCES);
     PyModule_AddIntConstant(m, "MAX_RF_BLOCKS", UBLOX_MAX_RF_BLOCKS);
     PyModule_AddIntConstant(m, "MAX_SATELLITES", UBLOX_MAX_SATELLITES);
+    PyModule_AddIntConstant(m, "MAX_RAW_OBSERVATIONS", UBLOX_MAX_RAW_OBSERVATIONS);
 
     return m;
 }

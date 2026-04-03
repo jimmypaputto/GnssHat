@@ -111,6 +111,7 @@ install(
         src/ublox/RtkConfig.hpp
         src/ublox/TimingConfig.hpp
         src/ublox/SatelliteInfo.hpp
+        src/ublox/RawObservation.hpp
         src/ublox/TimeMark.hpp
         src/ublox/TimepulsePinConfig.hpp
         src/ublox/RFBlockSpectrumData.hpp

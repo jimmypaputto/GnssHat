@@ -484,13 +484,14 @@ bool M9NStartup::execute()
         return false;
     }
 
-    constexpr std::array<uint32_t, 6> msgoutKeys = {
+    constexpr std::array<uint32_t, 7> msgoutKeys = {
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_SPAN_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_SPI,
-        UbxCfgKeys::CFG_MSGOUT_UBX_NAV_GEOFENCE_SPI
+        UbxCfgKeys::CFG_MSGOUT_UBX_NAV_GEOFENCE_SPI,
+        UbxCfgKeys::CFG_MSGOUT_UBX_RXM_RAWX_SPI
     };
     result = configure(msgoutKeys);
     if (!result)
@@ -659,6 +660,7 @@ std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigVa
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,      {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_SPI,      {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_GEOFENCE_SPI, {0x01}},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_RXM_RAWX_SPI,     {0x01}},
 
     {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1005_UART2, {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1074_UART2, {0x01}},

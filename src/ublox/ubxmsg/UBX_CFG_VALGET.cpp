@@ -83,6 +83,7 @@ std::unordered_map<uint32_t, uint8_t> ConfigKeySizeMap::keySizes_ = {
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,      1},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_SPI,      1},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_GEOFENCE_SPI, 1},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_RXM_RAWX_SPI,     1},
 
     {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1005_UART2, 1},
     {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1074_UART2, 1},

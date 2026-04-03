@@ -1,0 +1,9 @@
+cmake_minimum_required(VERSION 3.10)
+
+project(PrintRawObservations)
+
+add_executable(PrintRawObservationsAdvanced src/PrintRawObservationsAdvanced.cpp)
+target_link_libraries(PrintRawObservationsAdvanced GnssHat)
+
+add_executable(PrintRawObservationsBasic src/PrintRawObservationsBasic.cpp)
+target_link_libraries(PrintRawObservationsBasic GnssHat)

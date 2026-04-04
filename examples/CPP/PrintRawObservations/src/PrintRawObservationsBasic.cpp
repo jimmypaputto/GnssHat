@@ -39,18 +39,18 @@ void printRawObservations(const Navigation& navigation)
            raw.clkReset ? "Yes" : "No");
     printf("Observations: %zu\r\n\r\n", observations.size());
 
-    printf("%-10s %-4s %-4s %-6s %-16s %-16s %-14s %-6s %-4s %-4s\r\n",
+    printf("%-10s %-4s %-6s %-6s %-16s %-16s %-14s %-6s %-4s %-4s\r\n",
            "System", "SV", "Sig", "C/N0", "PR (m)", "CP (cyc)",
            "Doppler (Hz)", "Lock", "PR?", "CP?");
-    printf("---------- ---- ---- ------ ---------------- "
+    printf("---------- ---- ------ ------ ---------------- "
            "---------------- -------------- ------ ---- ----\r\n");
 
     for (const auto& obs : observations)
     {
-        printf("%-10s %-4u %-4u %-4u dB %-16.3f %-16.3f %-14.3f %-6u %-4s %-4s\r\n",
+        printf("%-10s %-4u %-6s %-4u dB %-16.3f %-16.3f %-14.3f %-6u %-4s %-4s\r\n",
                gnssIdToString(obs.gnssId),
                obs.svId,
-               obs.sigId,
+               Utils::gnssSignalId2string(obs.gnssId, obs.sigId).c_str(),
                obs.cno,
                obs.prMes,
                obs.cpMes,

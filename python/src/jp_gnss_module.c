@@ -4548,7 +4548,8 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
         {"BEIDOU",  JP_GNSS_GNSS_ID_BEIDOU},
         {"IMES",    JP_GNSS_GNSS_ID_IMES},
         {"QZSS",    JP_GNSS_GNSS_ID_QZSS},
-        {"GLONASS", JP_GNSS_GNSS_ID_GLONASS}
+        {"GLONASS", JP_GNSS_GNSS_ID_GLONASS},
+        {"NAVIC",   JP_GNSS_GNSS_ID_NAVIC}
     );
 
     /* ── SvQuality ──────────────────────────────────────────────────── */

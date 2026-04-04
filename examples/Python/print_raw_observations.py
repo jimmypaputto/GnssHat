@@ -28,8 +28,37 @@ def gnss_id_name(gnss_id: int) -> str:
         gnsshat.GnssId.IMES:    "IMES",
         gnsshat.GnssId.QZSS:    "QZSS",
         gnsshat.GnssId.GLONASS: "GLONASS",
+        gnsshat.GnssId.NAVIC:   "NAVIC",
     }
     return names.get(gnss_id, "Unknown")
+
+
+def gnss_signal_id_name(gnss_id: int, sig_id: int) -> str:
+    signal_names = {
+        gnsshat.GnssId.GPS: {
+            0: "L1CA", 3: "L2CL", 4: "L2CM", 6: "L5I", 7: "L5Q"
+        },
+        gnsshat.GnssId.SBAS: {
+            0: "L1CA"
+        },
+        gnsshat.GnssId.GALILEO: {
+            0: "E1C", 1: "E1B", 3: "E5aI", 4: "E5aQ", 5: "E5bI", 6: "E5bQ"
+        },
+        gnsshat.GnssId.BEIDOU: {
+            0: "B1ID1", 1: "B1ID2", 2: "B2ID1", 3: "B2ID2",
+            5: "B1Cp", 6: "B1Cd", 7: "B2ap", 8: "B2ad"
+        },
+        gnsshat.GnssId.QZSS: {
+            0: "L1CA", 1: "L1S", 4: "L2CM", 5: "L2CL", 8: "L5I", 9: "L5Q"
+        },
+        gnsshat.GnssId.GLONASS: {
+            0: "L1OF", 2: "L2OF"
+        },
+        gnsshat.GnssId.NAVIC: {
+            0: "L5A"
+        },
+    }
+    return signal_names.get(gnss_id, {}).get(sig_id, "Unknown")
 
 
 def print_raw_observations(nav):
@@ -45,15 +74,15 @@ def print_raw_observations(nav):
     print(f"Observations: {len(observations)}")
     print()
 
-    print(f"{'System':<10} {'SV':<4} {'Sig':<4} {'C/N0':<6} "
+    print(f"{'System':<10} {'SV':<4} {'Sig':<6} {'C/N0':<6} "
           f"{'PR (m)':<16} {'CP (cyc)':<16} {'Doppler (Hz)':<14} "
           f"{'Lock':<6} {'PR✓':<4} {'CP✓':<4}")
-    print("-" * 100)
+    print("-" * 102)
 
     for obs in observations:
         print(f"{gnss_id_name(obs.gnss_id):<10} "
               f"{obs.sv_id:<4} "
-              f"{obs.sig_id:<4} "
+              f"{gnss_signal_id_name(obs.gnss_id, obs.sig_id):<6} "
               f"{obs.cno:<4} dB "
               f"{obs.pr_mes:<16.3f} "
               f"{obs.cp_mes:<16.3f} "
@@ -62,7 +91,7 @@ def print_raw_observations(nav):
               f"{'Y' if obs.pr_valid else 'N':<4} "
               f"{'Y' if obs.cp_valid else 'N':<4}")
 
-    print("-" * 100)
+    print("-" * 102)
     print()
 
 

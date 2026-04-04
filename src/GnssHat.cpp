@@ -797,20 +797,95 @@ std::string gnssId2string(const EGnssId e)
 {
     switch (e)
     {
+        case EGnssId::GPS:
+            return "GPS";
+        case EGnssId::SBAS:
+            return "SBAS";
+        case EGnssId::Galileo:
+            return "Galileo";
+        case EGnssId::BeiDou:
+            return "BeiDou";
+        case EGnssId::IMES:
+            return "IMES";
+        case EGnssId::QZSS:
+            return "QZSS";
+        case EGnssId::GLONASS:
+            return "GLONASS";
+        case EGnssId::NAVIC:
+            return "NAVIC";
+        default:
+            return "Unknown";
+    }
+}
+
+std::string gnssSignalId2string(const EGnssId gnssId, const uint8_t sigId)
+{
+    switch (gnssId)
+    {
     case EGnssId::GPS:
-        return "GPS";
+        switch (static_cast<EGPSSignalId>(sigId))
+        {
+            case EGPSSignalId::GPS_L1CA: return "L1CA";
+            case EGPSSignalId::GPS_L2CL: return "L2CL";
+            case EGPSSignalId::GPS_L2CM: return "L2CM";
+            case EGPSSignalId::GPS_L5I:  return "L5I";
+            case EGPSSignalId::GPS_L5Q:  return "L5Q";
+            default: return "Unknown";
+        }
     case EGnssId::SBAS:
-        return "SBAS";
+        switch (static_cast<ESBASSignalId>(sigId))
+        {
+            case ESBASSignalId::L1CA: return "L1CA";
+            default: return "Unknown";
+        }
     case EGnssId::Galileo:
-        return "Galileo";
+        switch (static_cast<EGalileoSignalId>(sigId))
+        {
+            case EGalileoSignalId::E1C:  return "E1C";
+            case EGalileoSignalId::E1B:  return "E1B";
+            case EGalileoSignalId::E5aI: return "E5aI";
+            case EGalileoSignalId::E5aQ: return "E5aQ";
+            case EGalileoSignalId::E5bI: return "E5bI";
+            case EGalileoSignalId::E5bQ: return "E5bQ";
+            default: return "Unknown";
+        }
     case EGnssId::BeiDou:
-        return "BeiDou";
-    case EGnssId::IMES:
-        return "IMES";
+        switch (static_cast<EBeiDouSignalId>(sigId))
+        {
+            case EBeiDouSignalId::B1ID1: return "B1ID1";
+            case EBeiDouSignalId::B1ID2: return "B1ID2";
+            case EBeiDouSignalId::B2ID1: return "B2ID1";
+            case EBeiDouSignalId::B2ID2: return "B2ID2";
+            case EBeiDouSignalId::B1Cp:  return "B1Cp";
+            case EBeiDouSignalId::B1Cd:  return "B1Cd";
+            case EBeiDouSignalId::B2ap:  return "B2ap";
+            case EBeiDouSignalId::B2ad:  return "B2ad";
+            default: return "Unknown";
+        }
     case EGnssId::QZSS:
-        return "QZSS";
+        switch (static_cast<EQZSSSignalId>(sigId))
+        {
+            case EQZSSSignalId::L1CA: return "L1CA";
+            case EQZSSSignalId::L1S:  return "L1S";
+            case EQZSSSignalId::L2CM: return "L2CM";
+            case EQZSSSignalId::L2CL: return "L2CL";
+            case EQZSSSignalId::L5I:  return "L5I";
+            case EQZSSSignalId::L5Q:  return "L5Q";
+            default: return "Unknown";
+        }
     case EGnssId::GLONASS:
-        return "GLONASS";
+        switch (static_cast<EGLONASSSignalId>(sigId))
+        {
+            case EGLONASSSignalId::L1OF: return "L1OF";
+            case EGLONASSSignalId::L2OF: return "L2OF";
+            default: return "Unknown";
+        }
+    case EGnssId::NAVIC:
+        switch (static_cast<ENavICSignalId>(sigId))
+        {
+            case ENavICSignalId::L5A: return "L5A";
+            default: return "Unknown";
+        }
     default:
         return "Unknown";
     }

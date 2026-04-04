@@ -68,6 +68,7 @@ std::string antennaPower2string(const EAntennaPower e);
 std::string geofencingStatus2string(const EGeofencingStatus e);
 std::string geofenceStatus2string(const EGeofenceStatus e);
 std::string gnssId2string(const EGnssId e);
+std::string gnssSignalId2string(const EGnssId gnssId, uint8_t sigId);
 std::string svQuality2string(const ESvQuality e);
 std::string timeMarkMode2string(const ETimeMarkMode e);
 std::string timeMarkRun2string(const ETimeMarkRun e);

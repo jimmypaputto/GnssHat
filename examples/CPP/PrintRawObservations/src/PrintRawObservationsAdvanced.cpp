@@ -127,7 +127,7 @@ void printTableRow(const std::string& label, const std::string& value, int label
 void printObservationHeader()
 {
     printf("| " COLOR_BOLD
-           "%-10s %-4s %-4s %-4s %-6s %-16s %-16s %-14s %-6s %-4s %-4s %-5s"
+           "%-10s %-4s %-6s %-4s %-6s %-16s %-16s %-14s %-6s %-4s %-4s %-5s"
            COLOR_RESET " |\n",
            "System", "SV", "Sig", "Freq", "C/N0", "PR (m)", "CP (cyc)",
            "Doppler (Hz)", "Lock", "PR?", "CP?", "HlfCy");
@@ -150,11 +150,11 @@ void printObservationRow(const RawObservation& obs)
     else
         color = COLOR_RED;
 
-    printf("| %s%-10s %-4u %-4u %-4u %-4u dB %-16.3f %-16.3f %-14.3f %-6u %-4s %-4s %-5s" COLOR_RESET " |\n",
+    printf("| %s%-10s %-4u %-6s %-4u %-4u dB %-16.3f %-16.3f %-14.3f %-6u %-4s %-4s %-5s" COLOR_RESET " |\n",
            color,
            Utils::gnssId2string(obs.gnssId).c_str(),
            obs.svId,
-           obs.sigId,
+           Utils::gnssSignalId2string(obs.gnssId, obs.sigId).c_str(),
            obs.freqId,
            obs.cno,
            obs.prMes,

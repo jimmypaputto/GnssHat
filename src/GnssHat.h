@@ -130,7 +130,8 @@ typedef enum
     JP_GNSS_GNSS_ID_BEIDOU  = 3,
     JP_GNSS_GNSS_ID_IMES    = 4,
     JP_GNSS_GNSS_ID_QZSS    = 5,
-    JP_GNSS_GNSS_ID_GLONASS = 6
+    JP_GNSS_GNSS_ID_GLONASS = 6,
+    JP_GNSS_GNSS_ID_NAVIC   = 7
 } jp_gnss_gnss_id_t;
 
 typedef enum

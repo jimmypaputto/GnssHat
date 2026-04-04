@@ -578,7 +578,7 @@ def nav_to_pvt_data(nav):
 
 
 def nav_to_full_data(nav):
-    """Serialize full Navigation object (DOP, Geofencing, RF Blocks) for native mode"""
+    """Serialize Navigation data (DOP, Geofencing, Satellites) for native mode"""
     from jimmypaputto import gnsshat
 
     dop = nav.dop
@@ -608,41 +608,6 @@ def nav_to_full_data(nav):
         'combined_state': geofence_state_map.get(geofencing_nav.combined_state, "Unknown"),
         'geofences': [geofence_state_map.get(int(s), "Unknown") for s in geofencing_nav.geofences],
     }
-
-    jamming_map = {
-        int(gnsshat.JammingState.UNKNOWN): "Unknown",
-        int(gnsshat.JammingState.OK_NO_SIGNIFICANT_JAMMING): "OK",
-        int(gnsshat.JammingState.WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK): "Warning",
-        int(gnsshat.JammingState.CRITICAL_INTERFERENCE_VISIBLE_AND_NO_FIX): "Critical",
-    }
-    antenna_status_map = {
-        int(gnsshat.AntennaStatus.INIT): "Init",
-        int(gnsshat.AntennaStatus.DONT_KNOW): "Unknown",
-        int(gnsshat.AntennaStatus.OK): "OK",
-        int(gnsshat.AntennaStatus.SHORT): "Short",
-        int(gnsshat.AntennaStatus.OPEN): "Open",
-    }
-    antenna_power_map = {
-        int(gnsshat.AntennaPower.OFF): "Off",
-        int(gnsshat.AntennaPower.ON): "On",
-        int(gnsshat.AntennaPower.DONT_KNOW): "Unknown",
-    }
-    band_map = {
-        int(gnsshat.RfBand.L1): "L1",
-        int(gnsshat.RfBand.L2_OR_L5): "L2/L5",
-    }
-
-    rf_blocks_data = []
-    for rf in nav.rf_blocks:
-        rf_blocks_data.append({
-            'band': band_map.get(rf.id, "Unknown"),
-            'jamming_state': jamming_map.get(rf.jamming_state, "Unknown"),
-            'antenna_status': antenna_status_map.get(rf.antenna_status, "Unknown"),
-            'antenna_power': antenna_power_map.get(rf.antenna_power, "Unknown"),
-            'noise_per_ms': int(rf.noise_per_ms),
-            'agc_monitor': float(rf.agc_monitor),
-            'cw_suppression': float(rf.cw_interference_suppression_level),
-        })
 
     gnss_id_map = {
         int(gnsshat.GnssId.GPS): "GPS",
@@ -680,9 +645,50 @@ def nav_to_full_data(nav):
     return {
         'dop': dop_data,
         'geofencing': geofencing_data,
-        'rf_blocks': rf_blocks_data,
         'satellites': satellites_data,
     }
+
+
+def nav_to_rf_data(nav):
+    """Serialize RF Blocks from Navigation object (throttled separately)"""
+    from jimmypaputto import gnsshat
+
+    jamming_map = {
+        int(gnsshat.JammingState.UNKNOWN): "Unknown",
+        int(gnsshat.JammingState.OK_NO_SIGNIFICANT_JAMMING): "OK",
+        int(gnsshat.JammingState.WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK): "Warning",
+        int(gnsshat.JammingState.CRITICAL_INTERFERENCE_VISIBLE_AND_NO_FIX): "Critical",
+    }
+    antenna_status_map = {
+        int(gnsshat.AntennaStatus.INIT): "Init",
+        int(gnsshat.AntennaStatus.DONT_KNOW): "Unknown",
+        int(gnsshat.AntennaStatus.OK): "OK",
+        int(gnsshat.AntennaStatus.SHORT): "Short",
+        int(gnsshat.AntennaStatus.OPEN): "Open",
+    }
+    antenna_power_map = {
+        int(gnsshat.AntennaPower.OFF): "Off",
+        int(gnsshat.AntennaPower.ON): "On",
+        int(gnsshat.AntennaPower.DONT_KNOW): "Unknown",
+    }
+    band_map = {
+        int(gnsshat.RfBand.L1): "L1",
+        int(gnsshat.RfBand.L2_OR_L5): "L2/L5",
+    }
+
+    rf_blocks_data = []
+    for rf in nav.rf_blocks:
+        rf_blocks_data.append({
+            'band': band_map.get(rf.id, "Unknown"),
+            'jamming_state': jamming_map.get(rf.jamming_state, "Unknown"),
+            'antenna_status': antenna_status_map.get(rf.antenna_status, "Unknown"),
+            'antenna_power': antenna_power_map.get(rf.antenna_power, "Unknown"),
+            'noise_per_ms': int(rf.noise_per_ms),
+            'agc_monitor': float(rf.agc_monitor),
+            'cw_suppression': float(rf.cw_interference_suppression_level),
+        })
+
+    return rf_blocks_data
 
 
 def native_reader_thread():
@@ -690,6 +696,8 @@ def native_reader_thread():
     print("Native GnssHat reader thread started")
 
     hat = gps_state['hat']
+    last_rf_time = 0.0
+
     while gps_state['running']:
         try:
             nav = hat.wait_and_get_fresh_navigation()
@@ -698,33 +706,23 @@ def native_reader_thread():
             if not pvt_data:
                 continue
 
-            # Set reference position on first valid position (non-zero lat/lon)
-            if gps_state['reference_position'] is None:
-                lat, lon = pvt_data['latitude'], pvt_data['longitude']
-                if lat != 0.0 and lon != 0.0:
-                    gps_state['reference_position'] = (lat, lon)
-                    print(f"Reference position set: {gps_state['reference_position']}")
-
-            # Calculate offset from reference
-            current_pos = (pvt_data['latitude'], pvt_data['longitude'])
-            x_offset, y_offset = calculate_offset_meters(
-                gps_state['reference_position'],
-                current_pos
-            )
-
             data = {
                 'pvt': pvt_data,
-                'offset_x': x_offset,
-                'offset_y': y_offset,
-                'has_reference': gps_state['reference_position'] is not None
             }
 
-            # Add full navigation data (DOP, Geofencing, RF) for native mode
             try:
                 extra = nav_to_full_data(nav)
                 data.update(extra)
             except Exception as e:
                 print(f"Error serializing extra nav data: {e}")
+
+            now = time.monotonic()
+            if now - last_rf_time >= 1.0:
+                last_rf_time = now
+                try:
+                    data['rf_blocks'] = nav_to_rf_data(nav)
+                except Exception as e:
+                    print(f"Error serializing RF data: {e}")
 
             # Check for time mark data (non-blocking)
             if gps_state.get('time_mark_enabled'):
@@ -810,19 +808,9 @@ def gps_reader_thread():
                         )
                         print(f"Reference position set: {gps_state['reference_position']}")
                 
-                # Calculate offset from reference
-                current_pos = (pvt_data['latitude'], pvt_data['longitude'])
-                x_offset, y_offset = calculate_offset_meters(
-                    gps_state['reference_position'],
-                    current_pos
-                )
-                
                 # Prepare data for transmission
                 data = {
                     'pvt': pvt_data,
-                    'offset_x': x_offset,
-                    'offset_y': y_offset,
-                    'has_reference': gps_state['reference_position'] is not None
                 }
 
                 # Add satellite data from GSV sentences
@@ -1199,21 +1187,8 @@ def ros2_reader_thread():
 
             pvt_data = ros2_nav_to_pvt_data(nav_msg)
 
-            if gps_state['reference_position'] is None:
-                lat, lon = pvt_data['latitude'], pvt_data['longitude']
-                if lat != 0.0 and lon != 0.0:
-                    gps_state['reference_position'] = (lat, lon)
-                    print(f"Reference position set: {gps_state['reference_position']}")
-
-            current_pos = (pvt_data['latitude'], pvt_data['longitude'])
-            x_offset, y_offset = calculate_offset_meters(
-                gps_state['reference_position'], current_pos)
-
             data = {
                 'pvt': pvt_data,
-                'offset_x': x_offset,
-                'offset_y': y_offset,
-                'has_reference': gps_state['reference_position'] is not None,
             }
 
             try:
@@ -1264,8 +1239,6 @@ def api_status():
     """Get current GPS status"""
     return jsonify({
         'running': gps_state['running'],
-        'has_reference': gps_state['reference_position'] is not None,
-        'reference_position': gps_state['reference_position']
     })
 
 
@@ -1296,12 +1269,8 @@ def handle_disconnect():
 
 @socketio.on('reset_reference')
 def handle_reset_reference():
-    """Reset reference position to current location"""
-    if gps_state['current_data'] and gps_state['current_data']['pvt']:
-        pvt = gps_state['current_data']['pvt']
-        gps_state['reference_position'] = (pvt['latitude'], pvt['longitude'])
-        print(f"Reference position reset to: {gps_state['reference_position']}")
-        emit('reference_reset', {'position': gps_state['reference_position']}, broadcast=True)
+    """Legacy handler — reference is now managed on the frontend"""
+    pass
 
 
 # ─── NTRIP Client API (native mode, RTK HAT only) ───────────────────────────

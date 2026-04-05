@@ -1080,13 +1080,14 @@ def ros2_config_msg_to_json(config_msg):
     # ROS 2 specific fields
     result['publish_standard_topics'] = bool(config_msg.publish_standard_topics)
     result['use_ntrip_rtcm'] = bool(config_msg.use_ntrip_rtcm)
+    result['save_to_flash'] = bool(config_msg.save_to_flash)
 
     return result
 
 
 def json_to_ros2_config_msg(data):
     """Convert JSON config from frontend to jp_gnss_hat/msg/GnssConfig ROS message"""
-    from gnss.msg import GnssConfig as GnssConfigMsg, Geofence as GeofenceMsg
+    from jp_gnss_hat.msg import GnssConfig as GnssConfigMsg, Geofence as GeofenceMsg
 
     msg = GnssConfigMsg()
     msg.measurement_rate_hz = int(data['measurement_rate_hz'])
@@ -1160,6 +1161,7 @@ def json_to_ros2_config_msg(data):
     # ROS 2 specific fields
     msg.publish_standard_topics = bool(data.get('publish_standard_topics', True))
     msg.use_ntrip_rtcm = bool(data.get('use_ntrip_rtcm', False))
+    msg.save_to_flash = bool(data.get('save_to_flash', False))
 
     return msg
 

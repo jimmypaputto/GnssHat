@@ -85,8 +85,8 @@ void print(const Geofencing& geofencing)
         {
             switch (s)
             {
-                case EGeofencingStatus::NotAvalaible:
-                    return "NotAvalaible";
+                case EGeofencingStatus::NotAvailable:
+                    return "NotAvailable";
                 case EGeofencingStatus::Active:
                     return "Active";
             }

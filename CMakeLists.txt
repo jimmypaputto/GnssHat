@@ -2,13 +2,13 @@
 
 cmake_minimum_required(VERSION 3.12)
 
-project(GnssHat)
+project(GnssHat VERSION 1.0.0)
 
 option(BUILD_PYTHON "Build Python bindings" OFF)
 option(BUILD_EXAMPLES "Build C and C++ examples" OFF)
 
 set(LIBGPIOD_VERSION 2)
-add_compile_definitions(LIBGPIO_VERSION=${LIBGPIOD_VERSION})
+add_compile_definitions(LIBGPIOD_VERSION=${LIBGPIOD_VERSION})
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -87,6 +87,11 @@ set(LIB_SOURCES
 )
 
 add_library(GnssHat SHARED ${LIB_SOURCES})
+
+set_target_properties(GnssHat PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+)
 
 target_link_libraries(GnssHat gpiod pthread util)
 
@@ -173,7 +178,6 @@ install(
         src/ublox/Geofencing.hpp
         src/ublox/GnssConfig.hpp
         src/ublox/Navigation.hpp
-        src/ublox/NmeaForwarder.hpp
         src/ublox/PositionVelocityTime.hpp
         src/ublox/RFBlock.hpp
         src/ublox/RTK.hpp

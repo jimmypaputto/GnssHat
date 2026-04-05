@@ -31,7 +31,7 @@ struct Geofencing
     {
         explicit Nav()
         :   iTOW(0),
-            geofencingStatus(EGeofencingStatus::NotAvalaible),
+            geofencingStatus(EGeofencingStatus::NotAvailable),
             numberOfGeofences(0),
             combinedState(EGeofenceStatus::Unknown)
         {

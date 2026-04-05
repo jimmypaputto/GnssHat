@@ -10,7 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
 set(LIBGPIOD_VERSION 2)
-add_compile_definitions(LIBGPIO_VERSION=${LIBGPIOD_VERSION})
+add_compile_definitions(LIBGPIOD_VERSION=${LIBGPIOD_VERSION})
 
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
     execute_process(

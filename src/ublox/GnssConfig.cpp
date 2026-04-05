@@ -12,15 +12,15 @@
 namespace JimmyPaputto
 {
 
-bool checkMeasurmentRate(const uint16_t measurmentRate)
+bool checkMeasurementRate(const uint16_t measurementRate)
 {
-    if (measurmentRate > 25 || measurmentRate < 1)
+    if (measurementRate > 25 || measurementRate < 1)
     {
         fprintf(
             stderr,
             "[GnssConfig] Invalid measurement rate: %d, "
             "should be 1 - 25 Hz\r\n",
-            measurmentRate
+            measurementRate
         );
         return false;
     }

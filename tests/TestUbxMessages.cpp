@@ -320,12 +320,12 @@ TEST(MonRf, DeserializesTwoBlocks)
     ASSERT_EQ(msg.rfBlocks().size(), 2u);
 
     EXPECT_EQ(msg.rfBlocks()[0].id, EBand::L1);
-    EXPECT_EQ(msg.rfBlocks()[0].jammingState, EJammingState::Ok_NoSignifantJamming);
+    EXPECT_EQ(msg.rfBlocks()[0].jammingState, EJammingState::Ok_NoSignificantJamming);
     EXPECT_EQ(msg.rfBlocks()[0].antennaStatus, EAntennaStatus::Ok);
     EXPECT_EQ(msg.rfBlocks()[0].antennaPower, EAntennaPower::On);
 
     EXPECT_EQ(msg.rfBlocks()[1].id, EBand::L2orL5);
-    EXPECT_EQ(msg.rfBlocks()[1].jammingState, EJammingState::Warning_InferenceVisibleButFixOk);
+    EXPECT_EQ(msg.rfBlocks()[1].jammingState, EJammingState::Warning_InterferenceVisibleButFixOk);
 }
 
 
@@ -358,12 +358,12 @@ TEST(NavGeofence, DeserializesActiveGeofencing)
 TEST(NavGeofence, NotAvailable)
 {
     std::vector<uint8_t> frame(14, 0);
-    frame[11] = 0x00; // NotAvalaible
+    frame[11] = 0x00; // NotAvailable
 
     UBX_NAV_GEOFENCE msg(frame);
     auto nav = msg.nav();
 
-    EXPECT_EQ(nav.geofencingStatus, EGeofencingStatus::NotAvalaible);
+    EXPECT_EQ(nav.geofencingStatus, EGeofencingStatus::NotAvailable);
     EXPECT_EQ(nav.numberOfGeofences, 0);
 }
 

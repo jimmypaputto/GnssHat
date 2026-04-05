@@ -41,7 +41,7 @@ struct GnssConfig
     bool saveToFlash{false};
 };
 
-bool checkMeasurmentRate(const uint16_t measurmentRate);
+bool checkMeasurementRate(const uint16_t measurementRate);
 bool checkTimepulsePinConfig(const TimepulsePinConfig& timepulsePinConfig);
 bool checkGeofencing(const std::optional<GnssConfig::Geofencing>& geofencing);
 bool checkTiming(const std::optional<TimingConfig>& timing);

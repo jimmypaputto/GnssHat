@@ -342,7 +342,7 @@ GnssHat::~GnssHat()
 template<class StartupStrategy>
 bool validateConfig(const GnssConfig& config)
 {
-    if (!checkMeasurmentRate(config.measurementRate_Hz))
+    if (!checkMeasurementRate(config.measurementRate_Hz))
         return false;
     if (!checkTimepulsePinConfig(config.timepulsePinConfig))
         return false;
@@ -707,12 +707,12 @@ std::string jammingState2string(const EJammingState e)
     {
     case EJammingState::Unknown:
         return "Unknown";
-    case EJammingState::Ok_NoSignifantJamming:
-        return "Ok_NoSignifantJamming";
-    case EJammingState::Warning_InferenceVisibleButFixOk:
-        return "Warning_InferenceVisibleButFixOk";
-    case EJammingState::Critical_InferenceVisibleAndNoFix:
-        return "Critical_InferenceVisibleAndNoFix";
+    case EJammingState::Ok_NoSignificantJamming:
+        return "Ok_NoSignificantJamming";
+    case EJammingState::Warning_InterferenceVisibleButFixOk:
+        return "Warning_InterferenceVisibleButFixOk";
+    case EJammingState::Critical_InterferenceVisibleAndNoFix:
+        return "Critical_InterferenceVisibleAndNoFix";
     default:
         return "Unknown";
     }
@@ -769,7 +769,7 @@ std::string geofencingStatus2string(const EGeofencingStatus e)
 {
     switch (e)
     {
-    case EGeofencingStatus::NotAvalaible:
+    case EGeofencingStatus::NotAvailable:
         return "NotAvailable";
     case EGeofencingStatus::Active:
         return "Active";

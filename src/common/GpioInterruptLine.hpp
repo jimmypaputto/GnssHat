@@ -9,7 +9,7 @@
 
 
 struct gpiod_chip;
-#if LIBGPIO_VERSION >= 2
+#if LIBGPIOD_VERSION >= 2
 struct gpiod_line_request;
 struct gpiod_edge_event_buffer;
 #else
@@ -52,7 +52,7 @@ public:
 private:
     unsigned int pin_;
     struct gpiod_chip* chip_ = nullptr;
-#if LIBGPIO_VERSION >= 2
+#if LIBGPIOD_VERSION >= 2
     struct gpiod_line_request* lineReq_ = nullptr;
     mutable struct gpiod_edge_event_buffer* eventBuffer_ = nullptr;
 #else

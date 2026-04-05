@@ -7,16 +7,16 @@ using namespace JimmyPaputto;
 
 TEST(MeasurementRate, ValidRanges)
 {
-    EXPECT_TRUE(checkMeasurmentRate(1));
-    EXPECT_TRUE(checkMeasurmentRate(10));
-    EXPECT_TRUE(checkMeasurmentRate(25));
+    EXPECT_TRUE(checkMeasurementRate(1));
+    EXPECT_TRUE(checkMeasurementRate(10));
+    EXPECT_TRUE(checkMeasurementRate(25));
 }
 
 TEST(MeasurementRate, InvalidValues)
 {
-    EXPECT_FALSE(checkMeasurmentRate(0));
-    EXPECT_FALSE(checkMeasurmentRate(26));
-    EXPECT_FALSE(checkMeasurmentRate(100));
+    EXPECT_FALSE(checkMeasurementRate(0));
+    EXPECT_FALSE(checkMeasurementRate(26));
+    EXPECT_FALSE(checkMeasurementRate(100));
 }
 
 TEST(GeofencingValidation, NulloptIsValid)

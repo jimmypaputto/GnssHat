@@ -1993,20 +1993,41 @@ static bool validate_config(PyObject* config_dict)
         }
     }
 
-    /* ── time_base config validation ────────────────────────────────── */
-    PyObject* time_base_dict = PyDict_GetItemString(config_dict, "time_base");
-    if (time_base_dict && time_base_dict != Py_None &&
-        !PyDict_Check(time_base_dict))
+    /* ── timing config validation ───────────────────────────────────── */
+    PyObject* timing_dict = PyDict_GetItemString(config_dict, "timing");
+    if (timing_dict && timing_dict != Py_None &&
+        !PyDict_Check(timing_dict))
     {
         PyErr_SetString(PyExc_TypeError,
-            "time_base must be a dictionary or None");
+            "timing must be a dictionary or None");
         return false;
     }
 
-    if (time_base_dict && time_base_dict != Py_None)
+    if (timing_dict && timing_dict != Py_None)
     {
-        if (!validate_base_config_dict(time_base_dict, "time_base"))
+        PyObject* enable_tm = PyDict_GetItemString(timing_dict,
+            "enable_time_mark");
+        if (enable_tm && !PyBool_Check(enable_tm))
+        {
+            PyErr_SetString(PyExc_TypeError,
+                "timing.enable_time_mark must be a boolean");
             return false;
+        }
+
+        PyObject* tb_dict = PyDict_GetItemString(timing_dict, "time_base");
+        if (tb_dict && tb_dict != Py_None &&
+            !PyDict_Check(tb_dict))
+        {
+            PyErr_SetString(PyExc_TypeError,
+                "timing.time_base must be a dictionary or None");
+            return false;
+        }
+
+        if (tb_dict && tb_dict != Py_None)
+        {
+            if (!validate_base_config_dict(tb_dict, "timing.time_base"))
+                return false;
+        }
     }
 
     /* ── save_to_flash validation ───────────────────────────────────── */
@@ -2333,11 +2354,6 @@ static void populate_config_from_dict(PyObject* config_dict, jp_gnss_gnss_config
     if (save_flash)
         config->save_to_flash = PyObject_IsTrue(save_flash);
 
-    /* ── enable_l5_gps config (-1=auto, 0=off, 1=on) ────────────── */
-    config->enable_l5_gps = -1;
-    PyObject* enable_l5_gps = PyDict_GetItemString(config_dict, "enable_l5_gps");
-    if (enable_l5_gps && enable_l5_gps != Py_None)
-        config->enable_l5_gps = PyObject_IsTrue(enable_l5_gps) ? 1 : 0;
 }
 
 #define CHECK_HAT(self) do { \

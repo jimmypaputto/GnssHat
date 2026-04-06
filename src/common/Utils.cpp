@@ -28,7 +28,7 @@ bool try3times(std::function<bool()> task)
 
 void setGpio(const char* chipname, const uint32_t line_num, int value)
 {
-#if LIBGPIO_VERSION < 2
+#if LIBGPIOD_VERSION < 2
     gpiod_chip* chip = gpiod_chip_open_by_name(chipname);
     if (!chip)
     {
@@ -132,7 +132,7 @@ void setGpio(const char* chipname, const uint32_t line_num, int value)
 
 int getGpio(const char* chipname, const uint32_t line_num)
 {
-#if LIBGPIO_VERSION < 2
+#if LIBGPIOD_VERSION < 2
     gpiod_chip* chip = gpiod_chip_open_by_name(chipname);
     if (!chip)
     {

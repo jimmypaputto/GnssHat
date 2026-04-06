@@ -2,9 +2,13 @@
 
 cmake_minimum_required(VERSION 3.12)
 
-project(GnssHat)
+project(GnssHat VERSION 1.0.0)
+
+option(BUILD_PYTHON "Build Python bindings" OFF)
+option(BUILD_EXAMPLES "Build C and C++ examples" OFF)
+
 set(LIBGPIOD_VERSION 2)
-add_compile_definitions(LIBGPIO_VERSION=${LIBGPIOD_VERSION})
+add_compile_definitions(LIBGPIOD_VERSION=${LIBGPIOD_VERSION})
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -84,7 +88,78 @@ set(LIB_SOURCES
 
 add_library(GnssHat SHARED ${LIB_SOURCES})
 
+set_target_properties(GnssHat PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+)
+
 target_link_libraries(GnssHat gpiod pthread util)
+
+if(BUILD_EXAMPLES)
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include)
+    execute_process(COMMAND ln -snf ${CMAKE_SOURCE_DIR}/src ${CMAKE_BINARY_DIR}/include/jimmypaputto)
+    target_include_directories(GnssHat PUBLIC $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>)
+
+    # C examples
+    add_subdirectory(examples/C/Geofencing)
+    add_subdirectory(examples/C/HotStart)
+    add_subdirectory(examples/C/JammingDetector)
+    add_subdirectory(examples/C/PrintNavigation)
+    add_subdirectory(examples/C/PrintSatellites)
+    add_subdirectory(examples/C/RTK)
+    add_subdirectory(examples/C/TimeBase)
+    add_subdirectory(examples/C/TimeMark)
+    add_subdirectory(examples/C/TimepulseInterrupt)
+
+    # C++ examples
+    add_subdirectory(examples/CPP/Geofencing)
+    add_subdirectory(examples/CPP/HotStart)
+    add_subdirectory(examples/CPP/JammingDetector)
+    add_subdirectory(examples/CPP/PrintNavigation)
+    add_subdirectory(examples/CPP/PrintSatellites)
+    add_subdirectory(examples/CPP/RTK)
+    add_subdirectory(examples/CPP/TimeBase)
+    add_subdirectory(examples/CPP/TimeMark)
+    add_subdirectory(examples/CPP/TimepulseInterrupt)
+
+    # Create BinariesSymlinks directory with symlinks to C++ example binaries
+    set(SYMLINK_DIR ${CMAKE_SOURCE_DIR}/examples/BinariesSymlinks)
+    file(MAKE_DIRECTORY ${SYMLINK_DIR})
+
+    set(CPP_TARGETS
+        Geofencing
+        HotStart
+        JammingDetector
+        PrintNavigationAdvanced
+        PrintNavigationBasic
+        PrintSatellitesBasic
+        PrintSatellitesAdvanced
+        RtkBase
+        RtkRover
+        TimeBase
+        TimeMark
+        TimepulseInterrupt
+    )
+
+    set(SYMLINK_COMMANDS)
+    foreach(TARGET_NAME ${CPP_TARGETS})
+        list(APPEND SYMLINK_COMMANDS
+            COMMAND ln -snf $<TARGET_FILE:${TARGET_NAME}> ${SYMLINK_DIR}/${TARGET_NAME}
+        )
+    endforeach()
+
+    add_custom_target(BinariesSymlinks ALL
+        ${SYMLINK_COMMANDS}
+        DEPENDS ${CPP_TARGETS}
+        COMMENT "Creating symlinks in examples/BinariesSymlinks/"
+    )
+
+    set(SYMLINK_FILES)
+    foreach(TARGET_NAME ${CPP_TARGETS})
+        list(APPEND SYMLINK_FILES ${SYMLINK_DIR}/${TARGET_NAME})
+    endforeach()
+    set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES ${SYMLINK_FILES})
+endif()
 
 install(TARGETS GnssHat
     LIBRARY DESTINATION /usr/local/lib
@@ -103,7 +178,6 @@ install(
         src/ublox/Geofencing.hpp
         src/ublox/GnssConfig.hpp
         src/ublox/Navigation.hpp
-        src/ublox/NmeaForwarder.hpp
         src/ublox/PositionVelocityTime.hpp
         src/ublox/RFBlock.hpp
         src/ublox/RTK.hpp
@@ -125,3 +199,7 @@ install(
     DESTINATION
         /usr/local/include/jimmypaputto
 )
+
+if(BUILD_PYTHON)
+    add_subdirectory(python)
+endif()

@@ -98,7 +98,7 @@ def print_geofencing(geofencing):
 
 def main():
     ubx_hat = gnsshat.GnssHat()
-    ubx_hat.hard_reset_cold_start()
+    ubx_hat.soft_reset_hot_start()
 
     is_startup_done = ubx_hat.start(create_default_config())
     if not is_startup_done:

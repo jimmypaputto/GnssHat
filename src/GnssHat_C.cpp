@@ -55,7 +55,7 @@ static_assert(static_cast<int>(EGeofenceStatus::Unknown) == JP_GNSS_GEOFENCE_STA
 static_assert(static_cast<int>(EGeofenceStatus::Inside) == JP_GNSS_GEOFENCE_STATUS_INSIDE);
 static_assert(static_cast<int>(EGeofenceStatus::Outside) == JP_GNSS_GEOFENCE_STATUS_OUTSIDE);
 
-static_assert(static_cast<int>(EGeofencingStatus::NotAvalaible) == JP_GNSS_GEOFENCING_STATUS_NOT_AVAILABLE);
+static_assert(static_cast<int>(EGeofencingStatus::NotAvailable) == JP_GNSS_GEOFENCING_STATUS_NOT_AVAILABLE);
 static_assert(static_cast<int>(EGeofencingStatus::Active) == JP_GNSS_GEOFENCING_STATUS_ACTIVE);
 
 static_assert(static_cast<int>(EGnssBand::UNKNOWN) == JP_GNSS_RF_BAND_UNKNOWN);
@@ -65,9 +65,9 @@ static_assert(static_cast<int>(EGnssBand::L3) == JP_GNSS_RF_BAND_L3);
 static_assert(static_cast<int>(EGnssBand::L5) == JP_GNSS_RF_BAND_L5);
 static_assert(static_cast<int>(EGnssBand::L2orL5) == JP_GNSS_RF_BAND_L2_OR_L5);
 static_assert(static_cast<int>(EJammingState::Unknown) == JP_GNSS_JAMMING_STATE_UNKNOWN);
-static_assert(static_cast<int>(EJammingState::Ok_NoSignifantJamming) == JP_GNSS_JAMMING_STATE_OK_NO_SIGNIFICANT_JAMMING);
-static_assert(static_cast<int>(EJammingState::Warning_InferenceVisibleButFixOk) == JP_GNSS_JAMMING_STATE_WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK);
-static_assert(static_cast<int>(EJammingState::Critical_InferenceVisibleAndNoFix) == JP_GNSS_JAMMING_STATE_CRITICAL_INTERFERENCE_VISIBLE_AND_NO_FIX);
+static_assert(static_cast<int>(EJammingState::Ok_NoSignificantJamming) == JP_GNSS_JAMMING_STATE_OK_NO_SIGNIFICANT_JAMMING);
+static_assert(static_cast<int>(EJammingState::Warning_InterferenceVisibleButFixOk) == JP_GNSS_JAMMING_STATE_WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK);
+static_assert(static_cast<int>(EJammingState::Critical_InterferenceVisibleAndNoFix) == JP_GNSS_JAMMING_STATE_CRITICAL_INTERFERENCE_VISIBLE_AND_NO_FIX);
 
 static_assert(static_cast<int>(EAntennaStatus::Init) == JP_GNSS_ANTENNA_STATUS_INIT);
 static_assert(static_cast<int>(EAntennaStatus::DontKnow) == JP_GNSS_ANTENNA_STATUS_DONT_KNOW);
@@ -404,8 +404,6 @@ std::optional<GnssConfig> convert_gnss_config(
     }
  
     cpp_config.saveToFlash = c_config.save_to_flash;
-    if (c_config.enable_l5_gps >= 0)
-        cpp_config.enableL5_GPS = static_cast<bool>(c_config.enable_l5_gps);
  
     return cpp_config;
 }
@@ -864,7 +862,6 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
     std::memset(&config->rtk, 0, sizeof(config->rtk));
     config->has_timing = false;
     std::memset(&config->timing, 0, sizeof(config->timing));
-    config->enable_l5_gps = -1;
     config->save_to_flash = false;
 }
 

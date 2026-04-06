@@ -13,7 +13,7 @@ One Pi acts as the **base station** (NTRIP caster), the other as the **rover** (
 │      ▼         │        │      │         │
 │ NTRIP Caster   │◄───────│ NTRIP Client   │
 │ :2101          │  WiFi  │ (pygnssutils)  │
-│ /MY_RTK_BASE   │  /LAN  │               │
+│ /MY_RTK_BASE   │  /LAN  │                │
 └────────────────┘        └────────────────┘
 ```
 

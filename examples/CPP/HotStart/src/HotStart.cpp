@@ -20,7 +20,9 @@ JimmyPaputto::GnssConfig createDefaultConfig()
             .pulseWhenNoFix = std::nullopt,
             .polarity = JimmyPaputto::ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
         },
-        .geofencing = std::nullopt
+        .geofencing = std::nullopt,
+        .rtk = std::nullopt,
+        .timing = std::nullopt
     };
 }
 
@@ -48,7 +50,7 @@ auto main() -> int
     auto stop = std::chrono::high_resolution_clock::now();
     auto time2fix =
         std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();
-    printf("Cold start took %lld ms\r\n", time2fix);
+    printf("Cold start took %ld ms\r\n", time2fix);
 
     printf("Wait 40s to collect data for hot start\r\n");
     std::this_thread::sleep_for(std::chrono::seconds(40));
@@ -66,7 +68,7 @@ auto main() -> int
     stop = std::chrono::high_resolution_clock::now();
     time2fix =
         std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();
-    printf("Hot start took %lld ms\r\n", time2fix);
+    printf("Hot start took %ld ms\r\n", time2fix);
 
     return 0;
 }

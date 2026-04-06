@@ -20,7 +20,7 @@ class IRunStrategy
 public:
     virtual ~IRunStrategy() = default;
 
-    virtual void execute() = 0;
+    virtual void execute(std::stop_token stoken) = 0;
 };
 
 class RunBase
@@ -33,7 +33,7 @@ protected:
     ICommDriver& commDriver_;
     UbxParser& ubxParser_;
 
-    static constexpr uint32_t runRxBuffSize = 4096;
+    static constexpr uint32_t runRxBuffSize = 8192;
     std::vector<uint8_t> runRxBuff_;
     uint32_t runRxBuffOffset_;
 };
@@ -45,7 +45,7 @@ public:
         Notifier& txReadyNotifier, Notifier& navigationNotifier);
     ~M9NRun() override = default;
 
-    void execute() override;
+    void execute(std::stop_token stoken) override;
 
 private:
     Notifier& txReadyNotifier_;
@@ -58,7 +58,7 @@ public:
     F10TRun(ICommDriver& commDriver, UbxParser& ubxParser);
     ~F10TRun() override = default;
 
-    void execute() override;
+    void execute(std::stop_token stoken) override;
 };
 
 class F9PRun : public M9NRun
@@ -67,7 +67,8 @@ public:
     F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
         Notifier& txReadyNotifier, Notifier& navigationNotifier,
         Rtcm3Store& rtcm3Store, const GnssConfig& config);
-    ~F9PRun() override = default;
+
+    ~F9PRun() override;
 
 private:
     void executeUartBase();

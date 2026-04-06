@@ -42,7 +42,7 @@ public:
     ~Ublox();
 
     bool startup();
-    void run();
+    void run(std::stop_token stoken);
 
     static void powerOnUbloxSom();
     static void powerOffUbloxSom();

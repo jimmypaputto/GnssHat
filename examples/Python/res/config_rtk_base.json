@@ -1,0 +1,24 @@
+{
+    "measurement_rate_hz": 1,
+    "dynamic_model": "STATIONARY",
+    "timepulse_pin_config": {
+        "active": true,
+        "fixed_pulse": {
+            "frequency": 1,
+            "pulse_width": 0.1
+        },
+        "pulse_when_no_fix": null,
+        "polarity": "RISING_EDGE"
+    },
+    "geofencing": null,
+    "rtk": {
+        "mode": "BASE",
+        "base": {
+            "base_mode": "SURVEY_IN",
+            "survey_in": {
+                "minimum_observation_time_s": 120,
+                "required_position_accuracy_m": 50.0
+            }
+        }
+    }
+}

@@ -6,6 +6,11 @@
 #ifndef GNSS_HAT_H_
 #define GNSS_HAT_H_
 
+#define GNSS_HAT_VERSION_MAJOR 1
+#define GNSS_HAT_VERSION_MINOR 0
+#define GNSS_HAT_VERSION_PATCH 0
+#define GNSS_HAT_VERSION "1.0.0"
+
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -386,7 +391,6 @@ typedef struct
     jp_gnss_rtk_config_t rtk;
     bool has_timing;
     jp_gnss_timing_config_t timing;
-    int8_t enable_l5_gps;
     bool save_to_flash;
 } jp_gnss_gnss_config_t;
 

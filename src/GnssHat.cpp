@@ -121,6 +121,7 @@ protected:
     Notifier timeMarkNotifier_;
     GnssConfig config_;
 
+    std::stop_source stopSource_;
     std::jthread ubloxThread_;
     std::atomic<bool> timepulseEnabled_{false};
 };
@@ -129,9 +130,7 @@ class GnssL1Hat : public GnssHat
 {
 public:
     explicit GnssL1Hat()
-    :   GnssHat(
-            std::make_unique<SpiDriver>()
-        )
+    :   GnssHat(std::make_unique<SpiDriver>())
     {}
 
     ~GnssL1Hat() override = default;
@@ -163,6 +162,8 @@ public:
     {
         disableTimeMarkTrigger();
         stopSource_.request_stop();
+        stopUbloxThread();
+        nmeaForwarder_.reset();
     }
 
     bool start(const GnssConfig& config) override
@@ -240,7 +241,6 @@ public:
     }
 
 private:
-    std::stop_source stopSource_;
     std::unique_ptr<TimeMarkTrigger> timeMarkTrigger_;
     std::atomic<bool> timeMarkTriggerEnabled_{false};
 };
@@ -255,7 +255,9 @@ public:
 
     ~GnssL1L5TRtkHat() override
     {
+        stopSource_.request_stop();
         stopUbloxThread();
+        txReady_.reset();
         runStrategy_.reset();
     }
 
@@ -330,13 +332,17 @@ GnssHat::GnssHat(std::unique_ptr<ICommDriver>&& commDriver)
 
 GnssHat::~GnssHat()
 {
+    stopSource_.request_stop();
     stopUbloxThread();
+    txReady_.reset();
+    timepulse_.reset();
+    nmeaForwarder_.reset();
 }
 
 template<class StartupStrategy>
 bool validateConfig(const GnssConfig& config)
 {
-    if (!checkMeasurmentRate(config.measurementRate_Hz))
+    if (!checkMeasurementRate(config.measurementRate_Hz))
         return false;
     if (!checkTimepulsePinConfig(config.timepulsePinConfig))
         return false;
@@ -352,19 +358,6 @@ bool validateConfig(const GnssConfig& config)
                 "use L1/L5 GNSS TIME HAT\r\n"
             );
             return false;
-        }
-
-        if constexpr (std::is_same_v<StartupStrategy, M9NStartup>)
-        {
-            if (config.enableL5_GPS.has_value())
-            {
-                fprintf(
-                    stderr,
-                    "[GnssConfig] L5 band is not supported on L1 GNSS HAT "
-                    "(NEO-M9N) - enableL5_GPS must be nullopt\r\n"
-                );
-                return false;
-            }
         }
 
         return checkGeofencing(config.geofencing);
@@ -440,6 +433,19 @@ bool GnssHat::start(const GnssConfig& config)
         return false;
     }
 
+    if (config.geofencing.has_value())
+    {
+        const auto& geo = config.geofencing.value();
+        Geofencing::Cfg cfg{};
+        cfg.confidenceLevel = geo.confidenceLevel;
+        cfg.geofences = geo.geofences;
+        cfg.pioEnabled = geo.pioPinPolarity.has_value();
+        cfg.pinPolarity = geo.pioPinPolarity.value_or(
+            EPioPinPolarity::LowMeansInside);
+        cfg.pioPinNumber = geofencingPioPin;
+        gnss_.geofencingCfg(cfg);
+    }
+
     if constexpr (!std::is_same_v<RunStrategy, F10TRun>)
     {
         txReady_ = std::make_unique<TxReadyInterrupt>(
@@ -451,7 +457,7 @@ bool GnssHat::start(const GnssConfig& config)
     ubloxThread_ = std::jthread([this](std::stop_token stoken){
         while (!stoken.stop_requested())
         {
-            ublox_->run();
+            ublox_->run(stoken);
         }
     });
 
@@ -460,7 +466,11 @@ bool GnssHat::start(const GnssConfig& config)
 
 Navigation GnssHat::waitAndGetFreshNavigation()
 {
-    navigationNotifier_.wait();
+    if (!navigationNotifier_.wait(stopSource_.get_token()))
+    {
+        Navigation empty;
+        return empty;
+    }
 
     Navigation navigation;
     if (gnss_.lock())
@@ -507,9 +517,11 @@ void GnssHat::disableTimepulse()
 
 void GnssHat::hardResetUbloxSom_ColdStart() const
 {
+    constexpr auto timeForUbloxToWakeUp = std::chrono::milliseconds(1000);
     Ublox::powerOffUbloxSom();
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    std::this_thread::sleep_for(timeForUbloxToWakeUp);
     Ublox::powerOnUbloxSom();
+    std::this_thread::sleep_for(timeForUbloxToWakeUp);
 }
 
 void GnssHat::softResetUbloxSom_HotStart()
@@ -563,10 +575,6 @@ bool GnssHat::enableTimeMarkTrigger()
 
 void GnssHat::disableTimeMarkTrigger()
 {
-    fprintf(stderr,
-        "[GNSS] TimeMarkTrigger is not supported on %.*s. "
-        "Use L1/L5 GNSS TIME HAT.\r\n",
-        static_cast<int>(name().size()), name().data());
 }
 
 void GnssHat::triggerTimeMark(ETimeMarkTriggerEdge)
@@ -699,12 +707,12 @@ std::string jammingState2string(const EJammingState e)
     {
     case EJammingState::Unknown:
         return "Unknown";
-    case EJammingState::Ok_NoSignifantJamming:
-        return "Ok_NoSignifantJamming";
-    case EJammingState::Warning_InferenceVisibleButFixOk:
-        return "Warning_InferenceVisibleButFixOk";
-    case EJammingState::Critical_InferenceVisibleAndNoFix:
-        return "Critical_InferenceVisibleAndNoFix";
+    case EJammingState::Ok_NoSignificantJamming:
+        return "Ok_NoSignificantJamming";
+    case EJammingState::Warning_InterferenceVisibleButFixOk:
+        return "Warning_InterferenceVisibleButFixOk";
+    case EJammingState::Critical_InterferenceVisibleAndNoFix:
+        return "Critical_InterferenceVisibleAndNoFix";
     default:
         return "Unknown";
     }
@@ -769,7 +777,7 @@ std::string geofencingStatus2string(const EGeofencingStatus e)
 {
     switch (e)
     {
-    case EGeofencingStatus::NotAvalaible:
+    case EGeofencingStatus::NotAvailable:
         return "NotAvailable";
     case EGeofencingStatus::Active:
         return "Active";

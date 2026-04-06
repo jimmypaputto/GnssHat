@@ -32,18 +32,16 @@ struct GnssConfig
         uint8_t confidenceLevel;
         std::optional<EPioPinPolarity> pioPinPolarity;
     };
-    std::optional<Geofencing> geofencing;
+    std::optional<Geofencing> geofencing{};
 
-    std::optional<RtkConfig> rtk;
+    std::optional<RtkConfig> rtk{};
 
-    std::optional<TimingConfig> timing;
-
-    std::optional<bool> enableL5_GPS{};
+    std::optional<TimingConfig> timing{};
 
     bool saveToFlash{false};
 };
 
-bool checkMeasurmentRate(const uint16_t measurmentRate);
+bool checkMeasurementRate(const uint16_t measurementRate);
 bool checkTimepulsePinConfig(const TimepulsePinConfig& timepulsePinConfig);
 bool checkGeofencing(const std::optional<GnssConfig::Geofencing>& geofencing);
 bool checkTiming(const std::optional<TimingConfig>& timing);

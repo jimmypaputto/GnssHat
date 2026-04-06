@@ -19,7 +19,7 @@ GpioInterruptLine::GpioInterruptLine(
     unsigned int pin, Edge edge, const char* consumer)
 :   pin_(pin)
 {
-#if LIBGPIO_VERSION >= 2
+#if LIBGPIOD_VERSION >= 2
     chip_ = gpiod_chip_open(CHIP_NAME);
     if (!chip_)
     {
@@ -155,7 +155,7 @@ GpioInterruptLine::GpioInterruptLine(
 
 GpioInterruptLine::~GpioInterruptLine()
 {
-#if LIBGPIO_VERSION >= 2
+#if LIBGPIOD_VERSION >= 2
     if (eventBuffer_)
         gpiod_edge_event_buffer_free(eventBuffer_);
     if (lineReq_)
@@ -170,7 +170,7 @@ GpioInterruptLine::~GpioInterruptLine()
 
 GpioInterruptLine::EventType GpioInterruptLine::waitEvent(int64_t timeoutNs)
 {
-#if LIBGPIO_VERSION >= 2
+#if LIBGPIOD_VERSION >= 2
     int ret = gpiod_line_request_wait_edge_events(lineReq_, timeoutNs);
     if (ret < 0)
         return EventType::Error;
@@ -225,7 +225,7 @@ GpioInterruptLine::EventType GpioInterruptLine::waitEvent(int64_t timeoutNs)
 
 int GpioInterruptLine::getValue() const
 {
-#if LIBGPIO_VERSION >= 2
+#if LIBGPIOD_VERSION >= 2
     auto val = gpiod_line_request_get_value(lineReq_, pin_);
     return val == GPIOD_LINE_VALUE_ACTIVE ? 1 : 0;
 #else

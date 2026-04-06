@@ -15,7 +15,7 @@ The application supports **three data source modes**:
 |------|-------------|--------------|
 | `native` | Direct module communication via the GnssHat library (SPI) | Installed `jimmypaputto` (GnssHat) library |
 | `external_tty` | NMEA sentence reading from a serial port (`/dev/jimmypaputto/gnss`) | `pyserial`, `pynmea2`, connected UART port |
-| `ros2` | ROS 2 topic subscription to `/jp_gnss/navigation` | ROS 2 environment, `jp_gnss` package |
+| `ros2` | ROS 2 topic subscription to `/gnss/navigation` | ROS 2 environment, `jp_gnss_hat` package |
 
 ---
 
@@ -52,16 +52,16 @@ Default port: `/dev/jimmypaputto/gnss` @ 9600 baud (configurable via `SERIAL_POR
 
 ### ROS 2 Mode
 
-Subscribes to the navigation topic from the `jp_gnss` ROS 2 node.
+Subscribes to the navigation topic from the `jp_gnss_hat` ROS 2 node.
 
 ```bash
-# Without node name — topic: /jp_gnss/navigation
+# Without node name — topic: /gnss/navigation
 python3 app.py ros2
 
-# With node name (e.g. rover) — topic: /jp_gnss/rover/navigation
+# With node name (e.g. rover) — topic: /gnss/rover/navigation
 python3 app.py ros2 rover
 
-# With node name (e.g. base) — topic: /jp_gnss/base/navigation
+# With node name (e.g. base) — topic: /gnss/base/navigation
 python3 app.py ros2 base
 ```
 
@@ -78,9 +78,9 @@ The optional `node_name` argument affects the topic and configuration service pr
 
 | Command | Navigation Topic | get_config Service | set_config Service |
 |---------|-----------------|-------------------|-------------------|
-| `app.py ros2` | `/jp_gnss/navigation` | `/jp_gnss/get_config` | `/jp_gnss/set_config` |
-| `app.py ros2 rover` | `/jp_gnss/rover/navigation` | `/jp_gnss/rover/get_config` | `/jp_gnss/rover/set_config` |
-| `app.py ros2 base` | `/jp_gnss/base/navigation` | `/jp_gnss/base/get_config` | `/jp_gnss/base/set_config` |
+| `app.py ros2` | `/gnss/navigation` | `/gnss/get_config` | `/gnss/set_config` |
+| `app.py ros2 rover` | `/gnss/rover/navigation` | `/gnss/rover/get_config` | `/gnss/rover/set_config` |
+| `app.py ros2 base` | `/gnss/base/navigation` | `/gnss/base/get_config` | `/gnss/base/set_config` |
 
 This allows simultaneous monitoring of multiple nodes (e.g. base and rover in an RTK setup) — each in its own application instance.
 

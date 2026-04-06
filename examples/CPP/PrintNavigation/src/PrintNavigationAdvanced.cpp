@@ -129,7 +129,7 @@ void printTableRow(const std::string& label, const std::string& value, int label
            (int)(valuePadding + extraBytes), value.c_str());
 }
 
-void printNavigationTable(const Navigation& navigation)
+void printNavigationTable(const Navigation& navigation, const std::string& hatName)
 {
     int termWidth, termHeight;
     getTerminalSize(termWidth, termHeight);
@@ -141,15 +141,15 @@ void printNavigationTable(const Navigation& navigation)
     drawHorizontalLine(termWidth - 2, '-');
     printf("+\n");
 
-    std::string title = "u-blox NEO-M9N GNSS Navigation Data";
-    int padding = (termWidth - title.length() - 2) / 2;
+    std::string title = hatName + " Navigation Data";
+    int padding = static_cast<int>((termWidth - title.length() - 2) / 2);
     printf("|%*s%s%*s|\n", padding, "", title.c_str(), 
-           termWidth - title.length() - padding - 2, "");
+           static_cast<int>(termWidth - title.length() - padding - 2), "");
 
     std::string timestamp = "Updated: " + Utils::utcTimeFromGnss_ISO8601(navigation.pvt);
-    padding = (termWidth - timestamp.length() - 2) / 2;
+    padding = static_cast<int>((termWidth - timestamp.length() - 2) / 2);
     printf("|%*s%s%*s|\n", padding, "", timestamp.c_str(), 
-           termWidth - timestamp.length() - padding - 2, "");
+           static_cast<int>(termWidth - timestamp.length() - padding - 2), "");
 
     printf("+");
     drawHorizontalLine(termWidth - 2, '-');
@@ -282,7 +282,9 @@ GnssConfig createDefaultConfig()
             .pulseWhenNoFix = std::nullopt,
             .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
         },
-        .geofencing = std::nullopt
+        .geofencing = std::nullopt,
+        .rtk = std::nullopt,
+        .timing = std::nullopt
     };
 }
 
@@ -296,7 +298,10 @@ auto main() -> int
     ubxHat->softResetUbloxSom_HotStart();
 
     clearScreen();
-    printf(COLOR_BOLD COLOR_GREEN "Initializing u-blox NEO-M9N GNSS...\n" COLOR_RESET);
+    printf(
+        COLOR_BOLD COLOR_GREEN "Initializing %s...\n" COLOR_RESET,
+        std::string(ubxHat->name()).c_str()
+    );
     printf("Please wait for startup to complete...\n");
 
     const bool isStartupDone = ubxHat->start(createDefaultConfig());
@@ -309,9 +314,8 @@ auto main() -> int
 
     while (running)
     {
-        const auto navigation = ubxHat->navigation();
-        printNavigationTable(navigation);
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        const auto navigation = ubxHat->waitAndGetFreshNavigation();
+        printNavigationTable(navigation, std::string(ubxHat->name()));
     }
 
     showCursor();

@@ -11,6 +11,7 @@ class GPSMap {
         this.trail = []; // Complete position history (never clears except on reset)
         this.originSet = false; // Whether reference position has been set
         this.geofences = []; // Array of {offsetX, offsetY, radius} in meters
+        this.referencePosition = null; // {lat, lon} — set on first valid fix
         
         // Animation
         this.animationFrame = null;
@@ -61,37 +62,48 @@ class GPSMap {
         this.height = rect.height;
     }
     
-    updatePosition(x, y) {
-        // Initialize trail on first valid position
+    calculateOffset(lat, lon) {
+        if (!this.referencePosition) return { x: 0, y: 0 };
+        const DEG_TO_M = 111320;
+        const cosLat = Math.cos(this.referencePosition.lat * Math.PI / 180);
+        return {
+            x: (lon - this.referencePosition.lon) * DEG_TO_M * cosLat,
+            y: (lat - this.referencePosition.lat) * DEG_TO_M,
+        };
+    }
+
+    updatePositionFromLatLon(lat, lon) {
+        if (!this.referencePosition) {
+            if (lat !== 0.0 && lon !== 0.0) {
+                this.referencePosition = { lat, lon };
+            } else {
+                return null;
+            }
+        }
+
+        const offset = this.calculateOffset(lat, lon);
+
         if (!this.originSet) {
             this.originSet = true;
-            this.trail = [{ x, y }];
-            this.position = { x, y };
+            this.trail = [offset];
+            this.position = offset;
             this.updateScaleDisplay();
-            // Resolve pending geofences now that we have a reference
             if (this._pendingGeofences) {
-                const data = window.lastGPSData;
-                if (data && data.pvt && data.has_reference) {
-                    this._computeGeofenceOffsets(this._pendingGeofences, data);
-                    this._pendingGeofences = null;
-                }
-            }
-            return;
-        }
-        
-        this.position = { x, y };
-        
-        // Add to trail - NEVER clear it (persistent trail)
-        this.trail.push({ x, y });
-
-        // Resolve pending geofences if not yet done
-        if (this._pendingGeofences) {
-            const data = window.lastGPSData;
-            if (data && data.pvt && data.has_reference) {
-                this._computeGeofenceOffsets(this._pendingGeofences, data);
+                this._computeGeofenceOffsetsFromRef(this._pendingGeofences);
                 this._pendingGeofences = null;
             }
+            return offset;
         }
+
+        this.position = offset;
+        this.trail.push(offset);
+
+        if (this._pendingGeofences) {
+            this._computeGeofenceOffsetsFromRef(this._pendingGeofences);
+            this._pendingGeofences = null;
+        }
+
+        return offset;
     }
     
     getGridSpacing() {
@@ -343,29 +355,23 @@ class GPSMap {
     setGeofences(geofences) {
         // geofences: array of {lat, lon, radius}
         this._rawGeofences = geofences;
-        // Convert to relative offsets from reference position
-        const data = window.lastGPSData;
-        if (!data || !data.pvt || !data.has_reference) {
-            // No reference yet — store raw and convert on next draw
+        if (!this.referencePosition) {
             this._pendingGeofences = geofences;
             this.geofences = [];
             return;
         }
         this._pendingGeofences = null;
-        this._computeGeofenceOffsets(geofences, data);
+        this._computeGeofenceOffsetsFromRef(geofences);
     }
 
-    _computeGeofenceOffsets(geofences, data) {
-        const curLat = data.pvt.latitude;
-        const curLon = data.pvt.longitude;
-        const curOffX = data.offset_x;
-        const curOffY = data.offset_y;
+    _computeGeofenceOffsetsFromRef(geofences) {
+        if (!this.referencePosition) return;
         const DEG_TO_M = 111320;
-        const cosLat = Math.cos(curLat * Math.PI / 180);
+        const cosLat = Math.cos(this.referencePosition.lat * Math.PI / 180);
 
         this.geofences = geofences.map(gf => ({
-            offsetX: curOffX + (gf.lon - curLon) * DEG_TO_M * cosLat,
-            offsetY: curOffY + (gf.lat - curLat) * DEG_TO_M,
+            offsetX: (gf.lon - this.referencePosition.lon) * DEG_TO_M * cosLat,
+            offsetY: (gf.lat - this.referencePosition.lat) * DEG_TO_M,
             radius: gf.radius,
         }));
     }
@@ -386,11 +392,17 @@ class GPSMap {
     }
     
     resetOrigin() {
-        // Immediately clear trail and jump to 0,0
+        // Reset reference to current position from last GPS data
+        const data = window.lastGPSData;
+        if (data && data.pvt && data.pvt.latitude !== 0.0) {
+            this.referencePosition = {
+                lat: data.pvt.latitude,
+                lon: data.pvt.longitude,
+            };
+        }
         this.position = { x: 0, y: 0 };
         this.trail = [{ x: 0, y: 0 }];
         this.originSet = true;
-        // Re-queue geofences for recalculation with new reference
         if (this._rawGeofences && this._rawGeofences.length > 0) {
             this._pendingGeofences = this._rawGeofences;
             this.geofences = [];
@@ -466,7 +478,6 @@ function setupUIHandlers() {
             document.getElementById('pos-x').textContent = '0.00 m';
             document.getElementById('pos-y').textContent = '0.00 m';
             document.getElementById('distance').textContent = '0.00 m';
-            socket.emit('reset_reference');
         });
     }
 }
@@ -487,15 +498,13 @@ function updateGPSData(data) {
     // Store last GPS data for tab switching
     window.lastGPSData = data;
     
-    // Update map position
-    if (data.has_reference) {
-        map.updatePosition(data.offset_x, data.offset_y);
+    // Update map position — offset calculated locally
+    const offset = map.updatePositionFromLatLon(pvt.latitude, pvt.longitude);
+    if (offset) {
+        document.getElementById('pos-x').textContent = `${offset.x.toFixed(2)} m`;
+        document.getElementById('pos-y').textContent = `${offset.y.toFixed(2)} m`;
         
-        // Update position displays
-        document.getElementById('pos-x').textContent = `${data.offset_x.toFixed(2)} m`;
-        document.getElementById('pos-y').textContent = `${data.offset_y.toFixed(2)} m`;
-        
-        const distance = Math.sqrt(data.offset_x ** 2 + data.offset_y ** 2);
+        const distance = Math.sqrt(offset.x ** 2 + offset.y ** 2);
         document.getElementById('distance').textContent = `${distance.toFixed(2)} m`;
     }
     
@@ -582,6 +591,11 @@ function updateGPSData(data) {
     } else {
         // TTY mode: HDOP from pvt
         updateDataField('data-hdop', `${pvt.hdop.toFixed(2)}`);
+    }
+
+    // Satellites → sky view (all modes that provide satellite data)
+    if (data.satellites) {
+        updateSkyView(data.satellites);
     }
 }
 
@@ -1720,16 +1734,6 @@ function populateFormFromConfig(config) {
         saveFlashEl.checked = !!config.save_to_flash;
     }
 
-    // Enable L5 GPS
-    const l5El = document.getElementById('cfg-l5-en');
-    if (l5El) {
-        if (config.enable_l5_gps === null || config.enable_l5_gps === undefined) {
-            l5El.value = 'auto';
-        } else {
-            l5El.value = config.enable_l5_gps ? 'on' : 'off';
-        }
-    }
-
     // ROS 2 specific fields
     const ros2StdTopics = document.getElementById('cfg-ros2-stdtopics');
     if (ros2StdTopics) {
@@ -1899,13 +1903,6 @@ function buildConfigFromForm() {
     const saveFlashEl = document.getElementById('cfg-save-flash');
     if (saveFlashEl) {
         config.save_to_flash = saveFlashEl.checked;
-    }
-
-    // Enable L5 GPS
-    const l5El = document.getElementById('cfg-l5-en');
-    if (l5El) {
-        const v = l5El.value;
-        config.enable_l5_gps = v === 'auto' ? null : v === 'on';
     }
 
     // ROS 2 specific fields

@@ -398,12 +398,12 @@ TEST(NavGeofence, DeserializesActiveGeofencing)
 TEST(NavGeofence, NotAvailable)
 {
     std::vector<uint8_t> frame(14, 0);
-    frame[11] = 0x00; // NotAvalaible
+    frame[11] = 0x00; // NotAvailable
 
     UBX_NAV_GEOFENCE msg(frame);
     auto nav = msg.nav();
 
-    EXPECT_EQ(nav.geofencingStatus, EGeofencingStatus::NotAvalaible);
+    EXPECT_EQ(nav.geofencingStatus, EGeofencingStatus::NotAvailable);
     EXPECT_EQ(nav.numberOfGeofences, 0);
 }
 

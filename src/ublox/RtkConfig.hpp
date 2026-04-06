@@ -17,7 +17,7 @@ namespace JimmyPaputto
 struct RtkConfig final
 {
     ERtkMode mode;
-    std::optional<BaseConfig> base;
+    std::optional<BaseConfig> base{};
 };
 
 }  // JimmyPaputto

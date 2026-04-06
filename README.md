@@ -1,16 +1,16 @@
 # JP_GNSS_HAT
 
-Driver library for Jimmy Paputto GNSS HATs on Raspberry Pi. Handles the full u-blox UBX protocol and provides a high-level API in C++, C and Python. Buy our HATs at [jimmypaputto.com](https://jimmypaputto.com) -- if you have custom u-blox hardware, most of the code will still be useful.
+Driver library for Jimmy Paputto GNSS HATs on Raspberry Pi. Handles the full u-blox UBX protocol and provides a high-level API in C++, C and Python. Buy our HATs at [jimmypaputto.com](https://jimmypaputto.com) - if you have custom u-blox hardware, most of the code will still be useful.
 
 ## Supported Hardware
 
 The library auto-detects the HAT variant via `/proc/device-tree/hat/product`.
 
-| HAT | u-blox Module | Interface | RTK | Time Base | Time Mark | Geofencing |
-|-----|---------------|-----------|-----|-----------|-----------|------------|
-| L1 GNSS HAT | NEO-M9N | SPI | -- | -- | -- | Up to 4 zones |
-| L1/L5 GNSS TIME HAT | NEO-F10T | UART | -- | Survey-In / Fixed Position | EXTINT GPIO 17 | -- |
-| L1/L5 GNSS RTK HAT | NEO-F9P | SPI + UART | Base & Rover | -- | -- | Up to 4 zones |
+| HAT | u-blox Module | Interface | USB | RTK | Time Base | Time Mark | Geofencing |
+|-----|---------------|-----------|-----|-----|-----------|-----------|------------|
+| L1 GNSS HAT | NEO-M9N | SPI | Yes | -- | -- | -- | Up to 4 zones |
+| L1/L5 GNSS TIME HAT | NEO-F10T | UART | -- | -- | Survey-In / Fixed Position | EXTINT GPIO 17 | -- |
+| L1/L5 GNSS RTK HAT | NEO-F9P | SPI + UART | Yes | Base & Rover | -- | -- | Up to 4 zones |
 
 ## Installation
 
@@ -26,41 +26,43 @@ For Python bindings you also need:
 sudo apt-get install python3-dev
 ```
 
-### Build & install the library
+### Build & install
 
 ```sh
 git clone https://github.com/jimmypaputto/GnssHat.git
 cd GnssHat
 mkdir -p build && cd build
-cmake ..
-make -j$(nproc)
+cmake .. -DBUILD_PYTHON=ON -DBUILD_EXAMPLES=ON
+make
 sudo make install
 sudo ldconfig
 ```
 
-### Build & install Python module (optional)
+| Flag | Description |
+|------|-------------|
+| `BUILD_PYTHON` | Build and install the Python CPython extension module |
+| `BUILD_EXAMPLES` | Build all C and C++ examples. Binaries are symlinked into `examples/BinariesSymlinks/` for convenience |
 
-Requires the C++ library to be installed first.
+Both flags are optional.
 
-```sh
-cd python
-mkdir -p build && cd build
-cmake ..
-make -j$(nproc)
-sudo make install
-```
-
-### Build examples (optional)
+### Build/First run troubleshooting
 
 ```sh
-# All at once (from repo root):
-scripts/build_all_examples.sh
-
-# Or a single example:
-cd examples/CPP/PrintNavigation
-mkdir -p build && cd build
-cmake .. && make
+[UART] Failed to open UART device: No such file or directory
+[UART] Cannot init epoll - UART not initialized
 ```
+It likely means that UART on the rpi is disabled/busy or configured differently. You might want to enable it for development use via raspi-config if you're using hat that requires it.
+
+```sh
+/home/pi/GnssHat/src/common/GpioInterruptLine.cpp:160:9: error: ‘gpiod_edge_event_buffer_free’ was not declared in this scope; did you mean ‘gpiod_edge_event_buffer’?
+```
+That is due to the wrong version of libgpiod specified in the CMakeLists.txt. Set the version to 1 or 2, depending on your setup:
+```sh
+set(LIBGPIOD_VERSION 1)
+or
+set(LIBGPIOD_VERSION 2)
+```
+For most recent rpi images that would be version 2.
 
 ## Quick Start
 
@@ -246,15 +248,15 @@ Full field documentation is in the C++ headers: [`Navigation.hpp`](src/ublox/Nav
 
 The RTK HAT (NEO-F9P) supports centimeter-level positioning. Access RTK functionality via `hat->rtk()`:
 
-**Base station** -- configure Survey-In (auto-determine position) or Fixed Position (known ECEF/LLA coordinates), then retrieve RTCM3 corrections:
+**Base station** - configure Survey-In (auto-determine position) or Fixed Position (known ECEF/LLA coordinates), then retrieve RTCM3 corrections:
 
 ```cpp
 auto corrections = hat->rtk()->base()->getTinyCorrections();  // compact set (M4M)
-auto corrections = hat->rtk()->base()->getFullCorrections();   // full set (M7M)
-auto frame = hat->rtk()->base()->getRtcm3Frame(1077);          // specific message
+auto corrections = hat->rtk()->base()->getFullCorrections();  // full set (M7M)
+auto frame = hat->rtk()->base()->getRtcm3Frame(1077);         // specific message
 ```
 
-**Rover** -- inject corrections received from a base station:
+**Rover** - inject corrections received from a base station:
 
 ```cpp
 hat->rtk()->rover()->applyCorrections(corrections);
@@ -268,8 +270,8 @@ The TIME HAT (NEO-F10T) supports a time base mode that improves time accuracy by
 
 Two modes are available:
 
-- **Survey-In** -- the module auto-determines its position over a configurable observation period and accuracy threshold
-- **Fixed Position** -- provide known coordinates (ECEF or LLA) directly, skipping the survey phase
+- **Survey-In** - the module auto-determines its position over a configurable observation period and accuracy threshold
+- **Fixed Position** - provide known coordinates (ECEF or LLA) directly, skipping the survey phase
 
 ```cpp
 // C++ Survey-In example
@@ -342,7 +344,9 @@ The u-blox module outputs a configurable pulse signal on GPIO 5. Use `enableTime
 
 The library can forward NMEA sentences (GGA, RMC, GSA, GSV, ZDA) to a virtual serial port for gpsd. Call `startForwardForGpsd()` to create the virtual TTY, then point gpsd at the path returned by `getGpsdDevicePath()`. The TIME HAT can also be used directly with gpsd via UART (`/dev/ttyAMA0`).
 
-See [`examples/GpsdIntegration/`](examples/GpsdIntegration/) for a ready-to-use systemd daemon and setup scripts.
+**USB shortcut (L1 HAT & RTK HAT):** The L1 GNSS HAT and L1/L5 RTK HAT have an exposed USB port connected directly to the u-blox module. Plug a USB cable from the HAT to the Raspberry Pi and the module appears as `/dev/ttyACM0` - gpsd can read it directly without the bridge daemon or the library. This is the simplest way to get gpsd running on these two HATs.
+
+See [`examples/GpsdIntegration/`](examples/GpsdIntegration/) for a ready-to-use systemd daemon, USB setup, and configuration scripts.
 
 ### Time Server
 
@@ -390,6 +394,7 @@ GnssHat/
 │   └── common/                      GPIO, synchronization, utilities
 ├── python/                          Python CPython extension module
 ├── examples/                        C, C++, Python examples + Visualization + GPSD + TimeServer
+│   └── BinariesSymlinks/            Symlinks to C++ binaries (created by BUILD_EXAMPLES)
 └── scripts/                         Build and dependency scripts
 ```
 

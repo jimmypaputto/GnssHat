@@ -13,6 +13,7 @@
 #include <variant>
 
 #include "common/Utils.hpp"
+#include "ublox/Geofencing.hpp"
 #include "ublox/SpiDriver.hpp"
 #include "ublox/UartDriver.hpp"
 #include "ublox/UbxCfgKeys.hpp"
@@ -299,7 +300,7 @@ M9NStartup::M9NStartup(ICommDriver& commDriver,
             ecv[UbxCfgKeys::CFG_GEOFENCE_USE_PIO] = {0x00};
             ecv[UbxCfgKeys::CFG_GEOFENCE_PINPOL] = {0x00};
         }
-        ecv[UbxCfgKeys::CFG_GEOFENCE_PIN] = {0x06};  // PIO pin 6
+        ecv[UbxCfgKeys::CFG_GEOFENCE_PIN] = {geofencingPioPin};
 
         const auto& fences = geo->geofences;
         const uint8_t numFences =
@@ -341,7 +342,7 @@ M9NStartup::M9NStartup(ICommDriver& commDriver,
         ecv[UbxCfgKeys::CFG_GEOFENCE_CONFLVL]  = {0x00};
         ecv[UbxCfgKeys::CFG_GEOFENCE_USE_PIO]  = {0x00};
         ecv[UbxCfgKeys::CFG_GEOFENCE_PINPOL]   = {0x00};
-        ecv[UbxCfgKeys::CFG_GEOFENCE_PIN]      = {0x06};
+        ecv[UbxCfgKeys::CFG_GEOFENCE_PIN]      = {geofencingPioPin};
 
         for (uint8_t i = 0; i < 4; ++i)
         {
@@ -355,9 +356,6 @@ M9NStartup::M9NStartup(ICommDriver& commDriver,
 
 bool M9NStartup::execute()
 {
-    constexpr auto timeForUbloxToWakeUp = std::chrono::milliseconds(1000);
-    std::this_thread::sleep_for(timeForUbloxToWakeUp);
-
     bool result = false;
 
     constexpr std::array<uint32_t, 5> spiKeys = {
@@ -484,7 +482,8 @@ bool M9NStartup::execute()
         return false;
     }
 
-    constexpr std::array<uint32_t, 5> msgoutKeys = {
+    constexpr std::array<uint32_t, 6> msgoutKeys = {
+        UbxCfgKeys::CFG_MSGOUT_UBX_MON_SPAN_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,
@@ -652,6 +651,7 @@ std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigVa
 
     {UbxCfgKeys::CFG_MSGOUT_UBX_TIM_TM2_UART1, {0x00}},
 
+    {UbxCfgKeys::CFG_MSGOUT_UBX_MON_SPAN_SPI,     {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,       {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI,      {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,      {0x01}},
@@ -844,9 +844,8 @@ F10TStartup::F10TStartup(ICommDriver& commDriver,
     rate2Registers(config.measurementRate_Hz);
     timepulsePinConfig2Registers(config.timepulsePinConfig);
 
-    const uint8_t l5Enabled = config.enableL5_GPS.value_or(true) ? 0x01 : 0x00;
-    ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {l5Enabled};
-    ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {l5Enabled};
+    ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {0x01};
+    ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {0x01};
 
     const bool enableTimeMark = config.timing.has_value()
         && config.timing->enableTimeMark;
@@ -869,8 +868,6 @@ bool F10TStartup::execute()
 {
     bool result = false;
     configRegistry_.shouldSaveConfigToFlash(false);
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     constexpr std::array<uint32_t, 5> uart1Keys = {
         UbxCfgKeys::CFG_UART1_ENABLED,
@@ -1015,9 +1012,8 @@ F9PStartup::F9PStartup(ICommDriver& commDriver,
 
     auto& ecv = StartupBase::expectedConfigValues_;
 
-    const uint8_t l5Enabled = config.enableL5_GPS.value_or(true) ? 0x01 : 0x00;
-    ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {l5Enabled};
-    ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {l5Enabled};
+    ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {0x01};
+    ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {0x01};
 
     ecv[UbxCfgKeys::CFG_SPIINPROT_RTCM3X] = {0x00};
     ecv[UbxCfgKeys::CFG_SPIINPROT_SPARTN] = {0x00};

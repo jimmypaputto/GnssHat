@@ -11,7 +11,17 @@
 namespace JimmyPaputto
 {
 
-enum class EBand : std::uint8_t
+enum class EGnssBand : std::uint8_t
+{
+    UNKNOWN = 0x00,
+    L1     = 0x01,
+    L2     = 0x02,
+    L3     = 0x03,
+    L5     = 0x04,
+    L2orL5 = 0xF1
+};
+
+enum class EM9StrictGnssBandMapping : std::uint8_t
 {
     L1     = 0x00,
     L2orL5 = 0x01
@@ -19,10 +29,10 @@ enum class EBand : std::uint8_t
 
 enum class EJammingState : std::uint8_t
 {
-    Unknown                           = 0x00,
-    Ok_NoSignifantJamming             = 0x01,
-    Warning_InferenceVisibleButFixOk  = 0x02,
-    Critical_InferenceVisibleAndNoFix = 0x03
+    Unknown                              = 0x00,
+    Ok_NoSignificantJamming              = 0x01,
+    Warning_InterferenceVisibleButFixOk  = 0x02,
+    Critical_InterferenceVisibleAndNoFix = 0x03
 };
 
 enum class EAntennaStatus : std::uint8_t
@@ -43,7 +53,7 @@ enum class EAntennaPower : std::uint8_t
 
 struct RfBlock
 {
-    EBand id;
+    uint8_t id;
     EJammingState jammingState;
     EAntennaStatus antennaStatus;
     EAntennaPower antennaPower;
@@ -56,6 +66,7 @@ struct RfBlock
     uint8_t magI;
     int8_t ofsQ;
     uint8_t magQ;
+    EGnssBand gnssBand;
 
     static constexpr uint8_t maxNumberOfRfBlocks = 2;
 };

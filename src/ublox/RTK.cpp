@@ -95,7 +95,8 @@ void Rover::applyCorrections(
 }
 
 Rtk::Rtk(Rtcm3Store& rtcm3Store, const GnssConfig& config)
-:   base_(nullptr)
+:   base_(nullptr),
+    rover_(nullptr)
 {
     if (config.rtk == std::nullopt)
         return;

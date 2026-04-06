@@ -14,6 +14,8 @@
 namespace JimmyPaputto
 {
 
+constexpr uint8_t geofencingPioPin = 6;
+
 struct Geofencing
 {
     struct Cfg
@@ -29,7 +31,7 @@ struct Geofencing
     {
         explicit Nav()
         :   iTOW(0),
-            geofencingStatus(EGeofencingStatus::NotAvalaible),
+            geofencingStatus(EGeofencingStatus::NotAvailable),
             numberOfGeofences(0),
             combinedState(EGeofenceStatus::Unknown)
         {

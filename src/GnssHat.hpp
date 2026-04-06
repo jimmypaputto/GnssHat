@@ -5,6 +5,11 @@
 #ifndef GNSS_HAT_HPP_
 #define GNSS_HAT_HPP_
 
+#define GNSS_HAT_VERSION_MAJOR 1
+#define GNSS_HAT_VERSION_MINOR 0
+#define GNSS_HAT_VERSION_PATCH 0
+#define GNSS_HAT_VERSION "1.0.0"
+
 #include <string>
 #include <string_view>
 #include <optional>
@@ -58,7 +63,7 @@ public:
 namespace Utils
 {
 
-std::string eBand2string(const EBand e);
+std::string eBand2string(const EGnssBand e);
 std::string eFixQuality2string(const EFixQuality e);
 std::string eFixStatus2string(const EFixStatus e);
 std::string eFixType2string(const EFixType e);

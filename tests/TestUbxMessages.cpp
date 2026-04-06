@@ -298,10 +298,9 @@ TEST_F(NavSatTest, NegativeElevation)
     EXPECT_EQ(msg.satellites()[0].elevation, -10);
 }
 
-
-TEST(MonRf, DeserializesTwoBlocks)
+TEST(MonRf, DeserializesTwoBlocksM9)
 {
-    std::vector<uint8_t> frame(10 + 2 * 24, 0);
+    std::vector<uint8_t> frame(10 + 2 * 24, 0x00);
     frame[7] = 2; // numberOfRfBlocks
 
     // Block 0: L1
@@ -309,23 +308,64 @@ TEST(MonRf, DeserializesTwoBlocks)
     frame[11] = 0x01; // jammingState=Ok
     frame[12] = 0x02; // antennaStatus=Ok
     frame[13] = 0x01; // antennaPower=On
+    frame[31] = 0x00; // gnssBand 0x00 for M9
 
     // Block 1: L2/L5
     frame[10 + 24] = 0x01; // L2/L5
     frame[11 + 24] = 0x02; // jammingState=Warning
     frame[12 + 24] = 0x02;
     frame[13 + 24] = 0x01;
+    frame[31 + 24] = 0x00;
 
     UBX_MON_RF msg(frame);
     ASSERT_EQ(msg.rfBlocks().size(), 2u);
 
-    EXPECT_EQ(msg.rfBlocks()[0].id, EBand::L1);
+    EXPECT_EQ(msg.rfBlocks()[0].id, 0x00);
     EXPECT_EQ(msg.rfBlocks()[0].jammingState, EJammingState::Ok_NoSignifantJamming);
     EXPECT_EQ(msg.rfBlocks()[0].antennaStatus, EAntennaStatus::Ok);
     EXPECT_EQ(msg.rfBlocks()[0].antennaPower, EAntennaPower::On);
+    EXPECT_EQ(msg.rfBlocks()[0].gnssBand, EGnssBand::L1);
 
-    EXPECT_EQ(msg.rfBlocks()[1].id, EBand::L2orL5);
+    EXPECT_EQ(msg.rfBlocks()[1].id, 0x01);
     EXPECT_EQ(msg.rfBlocks()[1].jammingState, EJammingState::Warning_InferenceVisibleButFixOk);
+    EXPECT_EQ(msg.rfBlocks()[1].antennaStatus, EAntennaStatus::Ok);
+    EXPECT_EQ(msg.rfBlocks()[1].antennaPower, EAntennaPower::On);
+    EXPECT_EQ(msg.rfBlocks()[1].gnssBand, EGnssBand::L2orL5);
+}
+
+TEST(MonRf, DeserializesTwoBlocksF10T)
+{
+    std::vector<uint8_t> frame(10 + 2 * 24, 0x00);
+    frame[7] = 2; // numberOfRfBlocks
+
+    // Block 0: L1
+    frame[10] = 0x00; // L1
+    frame[11] = 0x01; // jammingState=Ok
+    frame[12] = 0x02; // antennaStatus=Ok
+    frame[13] = 0x01; // antennaPower=On
+    frame[31] = 0x01; // gnssBand 0x00 for M9
+
+    // Block 1: L2/L5
+    frame[10 + 24] = 0x01; // L2/L5
+    frame[11 + 24] = 0x02; // jammingState=Warning
+    frame[12 + 24] = 0x02;
+    frame[13 + 24] = 0x01;
+    frame[31 + 24] = 0x04;
+
+    UBX_MON_RF msg(frame);
+    ASSERT_EQ(msg.rfBlocks().size(), 2u);
+
+    EXPECT_EQ(msg.rfBlocks()[0].id, 0x00);
+    EXPECT_EQ(msg.rfBlocks()[0].jammingState, EJammingState::Ok_NoSignifantJamming);
+    EXPECT_EQ(msg.rfBlocks()[0].antennaStatus, EAntennaStatus::Ok);
+    EXPECT_EQ(msg.rfBlocks()[0].antennaPower, EAntennaPower::On);
+    EXPECT_EQ(msg.rfBlocks()[0].gnssBand, EGnssBand::L1);
+
+    EXPECT_EQ(msg.rfBlocks()[1].id, 0x01);
+    EXPECT_EQ(msg.rfBlocks()[1].jammingState, EJammingState::Warning_InferenceVisibleButFixOk);
+    EXPECT_EQ(msg.rfBlocks()[1].antennaStatus, EAntennaStatus::Ok);
+    EXPECT_EQ(msg.rfBlocks()[1].antennaPower, EAntennaPower::On);
+    EXPECT_EQ(msg.rfBlocks()[1].gnssBand, EGnssBand::L5);
 }
 
 
@@ -358,12 +398,12 @@ TEST(NavGeofence, DeserializesActiveGeofencing)
 TEST(NavGeofence, NotAvailable)
 {
     std::vector<uint8_t> frame(14, 0);
-    frame[11] = 0x00; // NotAvalaible
+    frame[11] = 0x00; // NotAvailable
 
     UBX_NAV_GEOFENCE msg(frame);
     auto nav = msg.nav();
 
-    EXPECT_EQ(nav.geofencingStatus, EGeofencingStatus::NotAvalaible);
+    EXPECT_EQ(nav.geofencingStatus, EGeofencingStatus::NotAvailable);
     EXPECT_EQ(nav.numberOfGeofences, 0);
 }
 

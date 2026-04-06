@@ -7,6 +7,8 @@
 #include <jimmypaputto/GnssHat.hpp>
 
 
+using namespace JimmyPaputto;
+
 /*
  * Geofencing confidence levels map:
  * 0 - no confidence required
@@ -17,40 +19,40 @@
  * 5 - 99.9999%
  */
 
-JimmyPaputto::GnssConfig createDefaultConfig()
+GnssConfig createDefaultConfig()
 {
-    const auto geofencing = JimmyPaputto::GnssConfig::Geofencing {
-        .geofences = std::vector<JimmyPaputto::Geofence> {
-            JimmyPaputto::Geofence {
+    const auto geofencing = GnssConfig::Geofencing {
+        .geofences = std::vector<Geofence> {
+            Geofence {
                 .lat = 41.902205071091224,
                 .lon = 12.4539203390548,
                 .radius = 2005
             },
-            JimmyPaputto::Geofence {
+            Geofence {
                 .lat = 52.257211745024186,
                 .lon = 20.311759615806704,
                 .radius = 1810
             }
         },
         .confidenceLevel = 3,
-        .pioPinPolarity = JimmyPaputto::EPioPinPolarity::LowMeansOutside
+        .pioPinPolarity = EPioPinPolarity::LowMeansOutside
     };
 
-    return JimmyPaputto::GnssConfig {
+    return GnssConfig {
         .measurementRate_Hz = 1,
-        .dynamicModel = JimmyPaputto::EDynamicModel::Stationary,
-        .timepulsePinConfig = JimmyPaputto::TimepulsePinConfig {
+        .dynamicModel = EDynamicModel::Stationary,
+        .timepulsePinConfig = TimepulsePinConfig {
             .active = true,
-            .fixedPulse = JimmyPaputto::TimepulsePinConfig::Pulse { 1, 0.1 },
+            .fixedPulse = TimepulsePinConfig::Pulse { 1, 0.1 },
             .pulseWhenNoFix = std::nullopt,
             .polarity =
-                JimmyPaputto::ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
+                ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
         },
         .geofencing = geofencing
     };
 }
 
-void print(const JimmyPaputto::Geofencing& geofencing)
+void print(const Geofencing& geofencing)
 {
     printf("Geofencing:\r\n");
     printf("  Configuration:\r\n");
@@ -79,13 +81,13 @@ void print(const JimmyPaputto::Geofencing& geofencing)
     printf("  Navigation:\r\n");
 
     const auto geofencingStatus2str =
-        [](const JimmyPaputto::EGeofencingStatus s) -> const char*
+        [](const EGeofencingStatus s) -> const char*
         {
             switch (s)
             {
-                case JimmyPaputto::EGeofencingStatus::NotAvalaible:
-                    return "NotAvalaible";
-                case JimmyPaputto::EGeofencingStatus::Active:
+                case EGeofencingStatus::NotAvailable:
+                    return "NotAvailable";
+                case EGeofencingStatus::Active:
                     return "Active";
             }
             return "Fatal error";
@@ -96,13 +98,13 @@ void print(const JimmyPaputto::Geofencing& geofencing)
     printf("    Number of geofences: %d\r\n", geofencing.nav.numberOfGeofences);
 
     const auto geofenceStatus2str =
-        [](const JimmyPaputto::EGeofenceStatus s) -> const char*
+        [](const EGeofenceStatus s) -> const char*
         {
             switch (s)
             {
-                case JimmyPaputto::EGeofenceStatus::Unknown: return "Unknown";
-                case JimmyPaputto::EGeofenceStatus::Inside: return "Inside";
-                case JimmyPaputto::EGeofenceStatus::Outside: return "Outside";
+                case EGeofenceStatus::Unknown: return "Unknown";
+                case EGeofenceStatus::Inside: return "Inside";
+                case EGeofenceStatus::Outside: return "Outside";
             }
             return "Fatal error";
         };
@@ -118,8 +120,8 @@ void print(const JimmyPaputto::Geofencing& geofencing)
 
 auto main() -> int
 {
-    auto* ubxHat = JimmyPaputto::IGnssHat::create();
-    ubxHat->hardResetUbloxSom_ColdStart();
+    auto* ubxHat = IGnssHat::create();
+    ubxHat->softResetUbloxSom_HotStart();
     const bool isStartupDone = ubxHat->start(createDefaultConfig());
     if (!isStartupDone)
     {

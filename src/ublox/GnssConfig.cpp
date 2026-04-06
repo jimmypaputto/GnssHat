@@ -12,15 +12,15 @@
 namespace JimmyPaputto
 {
 
-bool checkMeasurmentRate(const uint16_t measurmentRate)
+bool checkMeasurementRate(const uint16_t measurementRate)
 {
-    if (measurmentRate > 25 || measurmentRate < 1)
+    if (measurementRate > 25 || measurementRate < 1)
     {
         fprintf(
             stderr,
             "[GnssConfig] Invalid measurement rate: %d, "
             "should be 1 - 25 Hz\r\n",
-            measurmentRate
+            measurementRate
         );
         return false;
     }
@@ -41,6 +41,16 @@ bool checkGeofencing(const std::optional<GnssConfig::Geofencing>& geofencing)
             "[GnssConfig] Invalid confidence level: %d, "
             "should be 0 (lowest) - 5 (highest)\r\n",
             geofencing->confidenceLevel
+        );
+        return false;
+    }
+
+    if (geofencing->geofences.empty())
+    {
+        fprintf(
+            stderr,
+            "[GnssConfig] Geofencing enabled but no geofences defined, "
+            "use std::nullopt to disable geofencing\r\n"
         );
         return false;
     }

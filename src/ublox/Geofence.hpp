@@ -26,7 +26,7 @@ enum class EGeofenceStatus: uint8_t
 
 enum class EGeofencingStatus: uint8_t
 {
-    NotAvalaible = 0x00,
+    NotAvailable = 0x00,
     Active       = 0x01
 };
 

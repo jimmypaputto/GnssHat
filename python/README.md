@@ -23,20 +23,20 @@ print(f"{nav.pvt.latitude:.6f}, {nav.pvt.longitude:.6f}")
 
 ## Installation
 
-Requires the C++ library to be installed first.
-
 ```bash
-# 1. Install dependencies
 sudo apt install build-essential cmake libgpiod-dev python3-dev
 
-# 2. Build and install the C++ library
-cd GnssHat/UbloxNeoM9N_Hat
+cd GnssHat
 mkdir -p build && cd build
-cmake .. && make -j$(nproc)
+cmake .. -DBUILD_PYTHON=ON
+make -j$(nproc)
 sudo make install && sudo ldconfig
+```
 
-# 3. Build and install Python bindings
-cd GnssHat/UbloxNeoM9N_Hat/python
+The Python module can also be built standalone (requires the C++ library installed first):
+
+```bash
+cd GnssHat/python
 mkdir -p build && cd build
 cmake .. && make -j$(nproc)
 sudo make install
@@ -87,13 +87,15 @@ config = {
         }
     },
 
-    # Time Base (TIME HAT only) — None or omit to disable
-    # Same structure as rtk.base:
-    'time_base': {
-        'base_mode': gnsshat.BaseMode.SURVEY_IN,
-        'survey_in': {
-            'minimum_observation_time_s': 60,
-            'required_position_accuracy_m': 5.0
+    # Timing (TIME HAT only) — None or omit to disable
+    'timing': {
+        'enable_time_mark': False,           # Enable UBX-TIM-TM2 time mark events
+        'time_base': {                       # Optional — Survey-In or Fixed Position for improved time accuracy
+            'base_mode': gnsshat.BaseMode.SURVEY_IN,
+            'survey_in': {
+                'minimum_observation_time_s': 60,
+                'required_position_accuracy_m': 5.0
+            }
         }
     }
 }
@@ -120,6 +122,11 @@ config = {
 | `rtk_get_tiny_corrections()` | Get compact RTCM3 correction frames from RTK base. Returns `list[bytes]`. |
 | `rtk_get_rtcm3_frame(msg_id)` | Get a specific RTCM3 frame by message ID. Returns `bytes`. |
 | `rtk_apply_corrections(frames)` | Send RTCM3 correction frames to RTK rover. Takes `list[bytes]`. |
+| `get_time_mark()` | Get current time mark data (non-blocking). Returns `TimeMark` or `None`. |
+| `wait_and_get_fresh_time_mark()` | Block until new time mark event arrives. Releases GIL. |
+| `enable_time_mark_trigger()` | Enable EXTINT pin (GPIO 17) as output for software-triggered time marks. |
+| `disable_time_mark_trigger()` | Disable EXTINT trigger. |
+| `trigger_time_mark(edge)` | Trigger a time mark event. Optional `TimeMarkTriggerEdge` arg (default `TOGGLE`). |
 
 Supports context manager:
 
@@ -220,6 +227,29 @@ All navigation objects have `__str__` and `__repr__` for easy printing.
 | `cfg` | `GeofencingCfg` | `.confidence_level`, `.geofences` (list of `Geofence`) |
 | `nav` | `GeofencingNav` | `.status`, `.number_of_geofences`, `.combined_state`, `.geofences` (list of status ints) |
 
+### TimeMark
+
+Returned by `get_time_mark()` and `wait_and_get_fresh_time_mark()`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `channel` | `int` | Time mark channel |
+| `mode` | `int` | `TimeMarkMode` enum value |
+| `run` | `int` | `TimeMarkRun` enum value |
+| `time_base` | `int` | `TimeMarkTimeBase` enum value |
+| `new_rising_edge` | `bool` | New rising edge detected |
+| `new_falling_edge` | `bool` | New falling edge detected |
+| `utc_available` | `bool` | UTC available |
+| `time_valid` | `bool` | Time valid |
+| `count` | `int` | Time mark event count |
+| `week_number_rising` | `int` | GPS week number of rising edge |
+| `week_number_falling` | `int` | GPS week number of falling edge |
+| `tow_rising_ms` | `int` | TOW of rising edge (ms) |
+| `tow_sub_rising_ns` | `int` | Sub-millisecond TOW of rising edge (ns) |
+| `tow_falling_ms` | `int` | TOW of falling edge (ms) |
+| `tow_sub_falling_ns` | `int` | Sub-millisecond TOW of falling edge (ns) |
+| `accuracy_estimate_ns` | `int` | Accuracy estimate (ns) |
+
 ## Enums
 
 All enums are `IntEnum` types accessed as `gnsshat.<EnumName>.<MEMBER>`.
@@ -243,3 +273,7 @@ All enums are `IntEnum` types accessed as `gnsshat.<EnumName>.<MEMBER>`.
 | `FixedPositionType` | `ECEF`, `LLA` |
 | `GnssId` | `GPS`, `SBAS`, `GALILEO`, `BEIDOU`, `IMES`, `QZSS`, `GLONASS` |
 | `SvQuality` | `NO_SIGNAL`, `SEARCHING`, `SIGNAL_ACQUIRED`, `SIGNAL_DETECTED_BUT_UNUSABLE`, `CODE_LOCKED_AND_TIME_SYNCHRONIZED`, `CODE_AND_CARRIER_LOCKED_1`, `CODE_AND_CARRIER_LOCKED_2`, `CODE_AND_CARRIER_LOCKED_3` |
+| `TimeMarkMode` | `SINGLE`, `RUNNING` |
+| `TimeMarkRun` | `ARMED`, `STOPPED` |
+| `TimeMarkTimeBase` | `RECEIVER`, `GNSS`, `UTC` |
+| `TimeMarkTriggerEdge` | `RISING`, `FALLING`, `TOGGLE` |

@@ -6,7 +6,7 @@ from jimmypaputto import gnsshat
 def create_default_config() -> dict:
     """Create configuration optimized for jamming detection"""
     return {
-        'measurement_rate_hz': 5,
+        'measurement_rate_hz': 1,
         'dynamic_model': gnsshat.DynamicModel.STATIONARY,
         'timepulse_pin_config': {
             'active': True,
@@ -43,7 +43,7 @@ def antenna_power_to_str(power: int) -> str:
 
 def print_rf_block(rf_block):
     """Print detailed RF block information"""
-    print(f"RF Block {rf_block.id} ({rf_band_to_str(rf_block.id)} band):")
+    print(f"RF Block {rf_block.gnss_band} ({rf_band_to_str(rf_block.gnss_band)} band):")
     print(f"  Noise per ms: {rf_block.noise_per_ms}")
     print(f"  AGC monitor, percentage of max gain: {rf_block.agc_monitor:.2f}%")
     print(f"  Antenna status: {antenna_status_to_str(rf_block.antenna_status)}")

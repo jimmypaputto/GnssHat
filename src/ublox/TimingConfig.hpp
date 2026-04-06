@@ -16,7 +16,7 @@ namespace JimmyPaputto
 struct TimingConfig final
 {
     bool enableTimeMark{false};
-    std::optional<BaseConfig> timeBase;
+    std::optional<BaseConfig> timeBase{};
 };
 
 }  // JimmyPaputto

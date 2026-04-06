@@ -6,6 +6,11 @@
 #ifndef GNSS_HAT_H_
 #define GNSS_HAT_H_
 
+#define GNSS_HAT_VERSION_MAJOR 1
+#define GNSS_HAT_VERSION_MINOR 0
+#define GNSS_HAT_VERSION_PATCH 0
+#define GNSS_HAT_VERSION "1.0.0"
+
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -17,6 +22,7 @@ extern "C" {
 #define UBLOX_MAX_GEOFENCES  4
 #define UBLOX_MAX_RF_BLOCKS  2
 #define UBLOX_MAX_SATELLITES 64
+#define UBLOX_SPECTRUM_BINS  256
 
 typedef enum
 {
@@ -88,8 +94,12 @@ typedef enum
 
 typedef enum
 {
-    JP_GNSS_RF_BAND_L1       = 0x00,
-    JP_GNSS_RF_BAND_L2_OR_L5 = 0x01
+    JP_GNSS_RF_BAND_UNKNOWN  = 0x00,
+    JP_GNSS_RF_BAND_L1       = 0x01,
+    JP_GNSS_RF_BAND_L2       = 0x02,
+    JP_GNSS_RF_BAND_L3       = 0x03,
+    JP_GNSS_RF_BAND_L5       = 0x04,
+    JP_GNSS_RF_BAND_L2_OR_L5 = 0xF1
 } jp_gnss_rf_band_t;
 
 typedef enum
@@ -253,7 +263,7 @@ typedef struct
 
 typedef struct
 {
-    jp_gnss_rf_band_t id;
+    uint8_t id;
     jp_gnss_jamming_state_t jamming_state;
     jp_gnss_antenna_status_t antenna_status;
     jp_gnss_antenna_power_t antenna_power;
@@ -266,7 +276,18 @@ typedef struct
     uint8_t mag_i;
     int8_t ofs_q;
     uint8_t mag_q;
+    jp_gnss_rf_band_t gnss_band;
 } jp_gnss_rf_block_t;
+
+typedef struct
+{
+    uint8_t id;
+    uint8_t data[UBLOX_SPECTRUM_BINS];
+    uint32_t span;
+    uint32_t resolution;
+    uint32_t center_freq;
+    uint8_t gain;
+} jp_gnss_rf_block_spectrum_data_t;
 
 typedef struct
 {
@@ -370,7 +391,6 @@ typedef struct
     jp_gnss_rtk_config_t rtk;
     bool has_timing;
     jp_gnss_timing_config_t timing;
-    int8_t enable_l5_gps;
     bool save_to_flash;
 } jp_gnss_gnss_config_t;
 
@@ -416,6 +436,8 @@ typedef struct
     jp_gnss_geofencing_t geofencing;
     uint8_t num_rf_blocks;
     jp_gnss_rf_block_t rf_blocks[UBLOX_MAX_RF_BLOCKS];
+    uint8_t num_rf_blocks_spectrum;
+    jp_gnss_rf_block_spectrum_data_t rf_blocks_spectrum[UBLOX_MAX_RF_BLOCKS];
     uint8_t num_satellites;
     jp_gnss_satellite_info_t satellites[UBLOX_MAX_SATELLITES];
 } jp_gnss_navigation_t;

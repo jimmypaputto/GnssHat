@@ -1,6 +1,6 @@
 {
     "measurement_rate_hz": 20,
-    "dynamic_model": 0,
+    "dynamic_model": "PORTABLE",
     "geofencing": {
         "confidence_level": 3,
         "geofences": [
@@ -23,6 +23,6 @@
             "pulse_width": 0.1
         },
         "pulse_when_no_fix": null,
-        "polarity": 1
+        "polarity": "RISING_EDGE"
     }
 }

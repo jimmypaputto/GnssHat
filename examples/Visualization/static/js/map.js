@@ -11,6 +11,7 @@ class GPSMap {
         this.trail = []; // Complete position history (never clears except on reset)
         this.originSet = false; // Whether reference position has been set
         this.geofences = []; // Array of {offsetX, offsetY, radius} in meters
+        this.referencePosition = null; // {lat, lon} — set on first valid fix
         
         // Animation
         this.animationFrame = null;
@@ -61,37 +62,48 @@ class GPSMap {
         this.height = rect.height;
     }
     
-    updatePosition(x, y) {
-        // Initialize trail on first valid position
+    calculateOffset(lat, lon) {
+        if (!this.referencePosition) return { x: 0, y: 0 };
+        const DEG_TO_M = 111320;
+        const cosLat = Math.cos(this.referencePosition.lat * Math.PI / 180);
+        return {
+            x: (lon - this.referencePosition.lon) * DEG_TO_M * cosLat,
+            y: (lat - this.referencePosition.lat) * DEG_TO_M,
+        };
+    }
+
+    updatePositionFromLatLon(lat, lon) {
+        if (!this.referencePosition) {
+            if (lat !== 0.0 && lon !== 0.0) {
+                this.referencePosition = { lat, lon };
+            } else {
+                return null;
+            }
+        }
+
+        const offset = this.calculateOffset(lat, lon);
+
         if (!this.originSet) {
             this.originSet = true;
-            this.trail = [{ x, y }];
-            this.position = { x, y };
+            this.trail = [offset];
+            this.position = offset;
             this.updateScaleDisplay();
-            // Resolve pending geofences now that we have a reference
             if (this._pendingGeofences) {
-                const data = window.lastGPSData;
-                if (data && data.pvt && data.has_reference) {
-                    this._computeGeofenceOffsets(this._pendingGeofences, data);
-                    this._pendingGeofences = null;
-                }
-            }
-            return;
-        }
-        
-        this.position = { x, y };
-        
-        // Add to trail - NEVER clear it (persistent trail)
-        this.trail.push({ x, y });
-
-        // Resolve pending geofences if not yet done
-        if (this._pendingGeofences) {
-            const data = window.lastGPSData;
-            if (data && data.pvt && data.has_reference) {
-                this._computeGeofenceOffsets(this._pendingGeofences, data);
+                this._computeGeofenceOffsetsFromRef(this._pendingGeofences);
                 this._pendingGeofences = null;
             }
+            return offset;
         }
+
+        this.position = offset;
+        this.trail.push(offset);
+
+        if (this._pendingGeofences) {
+            this._computeGeofenceOffsetsFromRef(this._pendingGeofences);
+            this._pendingGeofences = null;
+        }
+
+        return offset;
     }
     
     getGridSpacing() {
@@ -343,29 +355,23 @@ class GPSMap {
     setGeofences(geofences) {
         // geofences: array of {lat, lon, radius}
         this._rawGeofences = geofences;
-        // Convert to relative offsets from reference position
-        const data = window.lastGPSData;
-        if (!data || !data.pvt || !data.has_reference) {
-            // No reference yet — store raw and convert on next draw
+        if (!this.referencePosition) {
             this._pendingGeofences = geofences;
             this.geofences = [];
             return;
         }
         this._pendingGeofences = null;
-        this._computeGeofenceOffsets(geofences, data);
+        this._computeGeofenceOffsetsFromRef(geofences);
     }
 
-    _computeGeofenceOffsets(geofences, data) {
-        const curLat = data.pvt.latitude;
-        const curLon = data.pvt.longitude;
-        const curOffX = data.offset_x;
-        const curOffY = data.offset_y;
+    _computeGeofenceOffsetsFromRef(geofences) {
+        if (!this.referencePosition) return;
         const DEG_TO_M = 111320;
-        const cosLat = Math.cos(curLat * Math.PI / 180);
+        const cosLat = Math.cos(this.referencePosition.lat * Math.PI / 180);
 
         this.geofences = geofences.map(gf => ({
-            offsetX: curOffX + (gf.lon - curLon) * DEG_TO_M * cosLat,
-            offsetY: curOffY + (gf.lat - curLat) * DEG_TO_M,
+            offsetX: (gf.lon - this.referencePosition.lon) * DEG_TO_M * cosLat,
+            offsetY: (gf.lat - this.referencePosition.lat) * DEG_TO_M,
             radius: gf.radius,
         }));
     }
@@ -386,11 +392,17 @@ class GPSMap {
     }
     
     resetOrigin() {
-        // Immediately clear trail and jump to 0,0
+        // Reset reference to current position from last GPS data
+        const data = window.lastGPSData;
+        if (data && data.pvt && data.pvt.latitude !== 0.0) {
+            this.referencePosition = {
+                lat: data.pvt.latitude,
+                lon: data.pvt.longitude,
+            };
+        }
         this.position = { x: 0, y: 0 };
         this.trail = [{ x: 0, y: 0 }];
         this.originSet = true;
-        // Re-queue geofences for recalculation with new reference
         if (this._rawGeofences && this._rawGeofences.length > 0) {
             this._pendingGeofences = this._rawGeofences;
             this.geofences = [];
@@ -466,7 +478,6 @@ function setupUIHandlers() {
             document.getElementById('pos-x').textContent = '0.00 m';
             document.getElementById('pos-y').textContent = '0.00 m';
             document.getElementById('distance').textContent = '0.00 m';
-            socket.emit('reset_reference');
         });
     }
 }
@@ -487,15 +498,13 @@ function updateGPSData(data) {
     // Store last GPS data for tab switching
     window.lastGPSData = data;
     
-    // Update map position
-    if (data.has_reference) {
-        map.updatePosition(data.offset_x, data.offset_y);
+    // Update map position — offset calculated locally
+    const offset = map.updatePositionFromLatLon(pvt.latitude, pvt.longitude);
+    if (offset) {
+        document.getElementById('pos-x').textContent = `${offset.x.toFixed(2)} m`;
+        document.getElementById('pos-y').textContent = `${offset.y.toFixed(2)} m`;
         
-        // Update position displays
-        document.getElementById('pos-x').textContent = `${data.offset_x.toFixed(2)} m`;
-        document.getElementById('pos-y').textContent = `${data.offset_y.toFixed(2)} m`;
-        
-        const distance = Math.sqrt(data.offset_x ** 2 + data.offset_y ** 2);
+        const distance = Math.sqrt(offset.x ** 2 + offset.y ** 2);
         document.getElementById('distance').textContent = `${distance.toFixed(2)} m`;
     }
     
@@ -574,9 +583,19 @@ function updateGPSData(data) {
         if (data.satellites) {
             updateSkyView(data.satellites);
         }
+
+        // RF Analyzer → spectrum chart + RF status
+        if (data.spectrum || data.rf_blocks) {
+            updateRfAnalyzer(data);
+        }
     } else {
         // TTY mode: HDOP from pvt
         updateDataField('data-hdop', `${pvt.hdop.toFixed(2)}`);
+    }
+
+    // Satellites → sky view (all modes that provide satellite data)
+    if (data.satellites) {
+        updateSkyView(data.satellites);
     }
 }
 
@@ -656,6 +675,247 @@ function updateDataField(id, value) {
     if (element) {
         element.textContent = value;
     }
+}
+
+// =======================
+// RF Analyzer - Spectrum Chart (MON-SPAN) + RF Status (MON-RF)
+// =======================
+
+const RF_BLOCK_COLORS = ['#4fc3f7', '#ffb74d', '#81c784', '#e57373'];
+const RF_BLOCK_LABELS = ['L1', 'L2/L5', 'RF2', 'RF3'];
+
+function drawSingleSpectrum(canvas, block, blockIndex) {
+    const container = canvas.parentElement;
+    const rect = container.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    if (width < 40 || height < 40) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const color = RF_BLOCK_COLORS[blockIndex % RF_BLOCK_COLORS.length];
+
+    // Background
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(0, 0, width, height);
+
+    const data = block.data;
+    if (!data || data.length === 0) {
+        ctx.fillStyle = '#666';
+        ctx.font = '13px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('No spectrum data', width / 2, height / 2);
+        return;
+    }
+
+    const centerFreqMHz = block.center_freq / 1e6;
+    const spanMHz = block.span / 1e6;
+    const startFreqMHz = centerFreqMHz - spanMHz / 2;
+    const endFreqMHz = centerFreqMHz + spanMHz / 2;
+
+    // Header area for label, extra headroom above data
+    const headerH = 28;
+    const margin = { top: headerH, right: 15, bottom: 32, left: 50 };
+    const plotW = width - margin.left - margin.right;
+    const plotH = height - margin.top - margin.bottom;
+    if (plotW < 10 || plotH < 10) return;
+
+    // Find amplitude range with 15% headroom
+    let maxVal = 0;
+    for (let i = 0; i < data.length; i++) {
+        if (data[i] > maxVal) maxVal = data[i];
+    }
+    if (maxVal === 0) maxVal = 255;
+    const yScale = maxVal * 1.15;
+
+    // --- Header label ---
+    const label = RF_BLOCK_LABELS[blockIndex] || ('RF' + block.id);
+    ctx.fillStyle = color;
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(
+        `${label}  ·  ${centerFreqMHz.toFixed(2)} MHz  ·  span ${spanMHz.toFixed(1)} MHz  ·  gain ${block.gain}`,
+        margin.left, headerH - 9
+    );
+    // thin separator
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(margin.left, headerH - 3);
+    ctx.lineTo(margin.left + plotW, headerH - 3);
+    ctx.stroke();
+
+    // --- Grid ---
+    ctx.strokeStyle = '#1a1a2e';
+    ctx.lineWidth = 0.5;
+
+    // Horizontal grid (amplitude)
+    const ySteps = 4;
+    ctx.font = '10px monospace';
+    ctx.fillStyle = '#555';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= ySteps; i++) {
+        const y = margin.top + (plotH / ySteps) * i;
+        ctx.beginPath();
+        ctx.moveTo(margin.left, y);
+        ctx.lineTo(margin.left + plotW, y);
+        ctx.stroke();
+        const val = Math.round(yScale * (1 - i / ySteps));
+        ctx.fillText(val.toString(), margin.left - 5, y + 3);
+    }
+
+    // Vertical grid (frequency)
+    const freqRange = endFreqMHz - startFreqMHz;
+    let freqStep;
+    if (freqRange > 5) freqStep = 1;
+    else if (freqRange > 2) freqStep = 0.5;
+    else if (freqRange > 0.5) freqStep = 0.1;
+    else freqStep = 0.05;
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#555';
+    const firstTick = Math.ceil(startFreqMHz / freqStep) * freqStep;
+    for (let freq = firstTick; freq <= endFreqMHz; freq += freqStep) {
+        const xFrac = (freq - startFreqMHz) / freqRange;
+        const x = margin.left + xFrac * plotW;
+        ctx.strokeStyle = '#1a1a2e';
+        ctx.beginPath();
+        ctx.moveTo(x, margin.top);
+        ctx.lineTo(x, margin.top + plotH);
+        ctx.stroke();
+        ctx.fillText(freq.toFixed(freqStep < 0.1 ? 2 : 1), x, margin.top + plotH + 14);
+    }
+
+    // --- Spectrum line ---
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < data.length; i++) {
+        const x = margin.left + (i / (data.length - 1)) * plotW;
+        const y = margin.top + plotH - (data[i] / yScale) * plotH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Filled area
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = color;
+    ctx.lineTo(margin.left + plotW, margin.top + plotH);
+    ctx.lineTo(margin.left, margin.top + plotH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+
+    // --- Axis labels ---
+    ctx.fillStyle = '#666';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('MHz', margin.left + plotW + 2, margin.top + plotH + 14);
+
+    ctx.save();
+    ctx.translate(10, margin.top + plotH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('Amp', 0, 0);
+    ctx.restore();
+
+    // Plot border
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(margin.left, margin.top, plotW, plotH);
+}
+
+function drawSpectrumChart(spectrumBlocks) {
+    const container = document.getElementById('spectrum-charts-container');
+    if (!container) return;
+
+    if (!spectrumBlocks || spectrumBlocks.length === 0) {
+        container.innerHTML = '<p style="color:#666;text-align:center;font:14px monospace;padding:40px 0">Waiting for spectrum data…</p>';
+        return;
+    }
+
+    // Ensure we have the right number of chart wrappers
+    const existing = container.querySelectorAll('.spectrum-single-wrap');
+    if (existing.length !== spectrumBlocks.length) {
+        container.innerHTML = '';
+        for (let i = 0; i < spectrumBlocks.length; i++) {
+            const wrap = document.createElement('div');
+            wrap.className = 'spectrum-single-wrap';
+            const cvs = document.createElement('canvas');
+            cvs.className = 'spectrum-single-canvas';
+            wrap.appendChild(cvs);
+            container.appendChild(wrap);
+        }
+    }
+
+    const wraps = container.querySelectorAll('.spectrum-single-wrap');
+    for (let i = 0; i < spectrumBlocks.length; i++) {
+        const canvas = wraps[i].querySelector('canvas');
+        drawSingleSpectrum(canvas, spectrumBlocks[i], i);
+    }
+}
+
+function updateRfAnalyzerStatus(rfBlocks) {
+    const container = document.getElementById('rfanalyzer-rf-status');
+    if (!container) return;
+
+    if (!rfBlocks || rfBlocks.length === 0) {
+        container.innerHTML = '<p class="rf-no-data">No RF data</p>';
+        return;
+    }
+
+    let html = '';
+    for (const rf of rfBlocks) {
+        const jammingClass = rf.jamming_state === 'OK' ? 'jamming-ok'
+            : rf.jamming_state === 'Warning' ? 'jamming-warning'
+            : rf.jamming_state === 'Critical' ? 'jamming-critical'
+            : 'jamming-unknown';
+
+        html += `
+        <div class="rfanalyzer-status-card">
+            <div class="rf-block-header">${rf.band}</div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">Jamming</span>
+                <span class="rf-block-value ${jammingClass}">${rf.jamming_state}</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">Antenna</span>
+                <span class="rf-block-value">${rf.antenna_status}</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">Power</span>
+                <span class="rf-block-value">${rf.antenna_power}</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">Noise/ms</span>
+                <span class="rf-block-value">${rf.noise_per_ms}</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">AGC</span>
+                <span class="rf-block-value">${rf.agc_monitor.toFixed(1)}%</span>
+            </div>
+            <div class="rf-block-row">
+                <span class="rf-block-label">CW Supp.</span>
+                <span class="rf-block-value">${rf.cw_suppression.toFixed(1)} dB</span>
+            </div>
+        </div>`;
+    }
+    container.innerHTML = html;
+}
+
+function updateRfAnalyzer(data) {
+    const rfEl = document.getElementById('rfanalyzer-map');
+    if (!rfEl) return;
+
+    drawSpectrumChart(data.spectrum);
+    updateRfAnalyzerStatus(data.rf_blocks);
 }
 
 // =======================
@@ -885,6 +1145,10 @@ window.addEventListener('resize', () => {
     if (skyviewEl && skyviewEl.classList.contains('active') && window.lastGPSData && window.lastGPSData.satellites) {
         updateSkyView(window.lastGPSData.satellites);
     }
+    const rfEl = document.getElementById('rfanalyzer-map');
+    if (rfEl && rfEl.classList.contains('active') && window.lastGPSData) {
+        updateRfAnalyzer(window.lastGPSData);
+    }
 });
 
 // =======================
@@ -1083,6 +1347,11 @@ function setupTabs() {
                 // Re-draw sky plot when switching to skyview (canvas needs resize)
                 if (tabName === 'skyview' && window.lastGPSData && window.lastGPSData.satellites) {
                     setTimeout(() => updateSkyView(window.lastGPSData.satellites), 50);
+                }
+
+                // Re-draw spectrum chart when switching to RF Analyzer
+                if (tabName === 'rfanalyzer' && window.lastGPSData) {
+                    setTimeout(() => updateRfAnalyzer(window.lastGPSData), 50);
                 }
             }
         });
@@ -1465,16 +1734,6 @@ function populateFormFromConfig(config) {
         saveFlashEl.checked = !!config.save_to_flash;
     }
 
-    // Enable L5 GPS
-    const l5El = document.getElementById('cfg-l5-en');
-    if (l5El) {
-        if (config.enable_l5_gps === null || config.enable_l5_gps === undefined) {
-            l5El.value = 'auto';
-        } else {
-            l5El.value = config.enable_l5_gps ? 'on' : 'off';
-        }
-    }
-
     // ROS 2 specific fields
     const ros2StdTopics = document.getElementById('cfg-ros2-stdtopics');
     if (ros2StdTopics) {
@@ -1644,13 +1903,6 @@ function buildConfigFromForm() {
     const saveFlashEl = document.getElementById('cfg-save-flash');
     if (saveFlashEl) {
         config.save_to_flash = saveFlashEl.checked;
-    }
-
-    // Enable L5 GPS
-    const l5El = document.getElementById('cfg-l5-en');
-    if (l5El) {
-        const v = l5El.value;
-        config.enable_l5_gps = v === 'auto' ? null : v === 'on';
     }
 
     // ROS 2 specific fields

@@ -7,28 +7,39 @@ project(jimmypaputto_gnss_python)
 # Find Python
 find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
 
-# Find our C library
-find_library(GNSS_LIBRARY GnssHat PATHS /usr/local/lib REQUIRED)
-find_path(GNSS_INCLUDE_DIR GnssHat.h PATHS /usr/local/include/jimmypaputto REQUIRED)
-
 message(STATUS "Building Python extension for Jimmy Paputto GNSS HAT")
 message(STATUS "Python: ${Python3_VERSION}")
-message(STATUS "Library: ${GNSS_LIBRARY}")
 
 # Create Python extension
 Python3_add_library(gnsshat MODULE src/jp_gnss_module.c)
 
-target_include_directories(gnsshat PRIVATE
-    ${Python3_INCLUDE_DIRS}
-    ${GNSS_INCLUDE_DIR}
-)
-
-target_link_libraries(gnsshat PRIVATE
-    ${GNSS_LIBRARY}
-    ${Python3_LIBRARIES}
-)
-
 target_compile_definitions(gnsshat PRIVATE PY_SSIZE_T_CLEAN)
+
+if(TARGET GnssHat)
+    # Built as subdirectory of the main project — link directly to build target
+    message(STATUS "Library: GnssHat (build target)")
+    target_include_directories(gnsshat PRIVATE
+        ${Python3_INCLUDE_DIRS}
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(gnsshat PRIVATE
+        GnssHat
+        ${Python3_LIBRARIES}
+    )
+else()
+    # Standalone build — find installed library
+    find_library(GNSS_LIBRARY GnssHat PATHS /usr/local/lib REQUIRED)
+    find_path(GNSS_INCLUDE_DIR GnssHat.h PATHS /usr/local/include/jimmypaputto REQUIRED)
+    message(STATUS "Library: ${GNSS_LIBRARY}")
+    target_include_directories(gnsshat PRIVATE
+        ${Python3_INCLUDE_DIRS}
+        ${GNSS_INCLUDE_DIR}
+    )
+    target_link_libraries(gnsshat PRIVATE
+        ${GNSS_LIBRARY}
+        ${Python3_LIBRARIES}
+    )
+endif()
 
 # User installation
 execute_process(

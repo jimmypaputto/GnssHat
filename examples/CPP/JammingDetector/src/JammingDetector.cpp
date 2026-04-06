@@ -12,21 +12,20 @@ using namespace JimmyPaputto;
 GnssConfig createDefaultConfig()
 {
     return GnssConfig {
-        .measurementRate_Hz = 5,
+        .measurementRate_Hz = 1,
         .dynamicModel = EDynamicModel::Stationary,
         .timepulsePinConfig = TimepulsePinConfig {
             .active = true,
             .fixedPulse = TimepulsePinConfig::Pulse { 1, 0.1 },
             .pulseWhenNoFix = std::nullopt,
             .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
-        },
-        .geofencing = std::nullopt
+        }
     };
 }
 
 void printRfBlock(const RfBlock& rfBlock)
 {
-    printf("Band %s\r\n", Utils::eBand2string(rfBlock.id).c_str());
+    printf("Band %s\r\n", Utils::eBand2string(rfBlock.gnssBand).c_str());
     printf("    Noise per ms: %d\r\n", rfBlock.noisePerMS);
     printf("    AGC monitor, percentage of max gain: %.2f%%\r\n",
         rfBlock.agcMonitor);
@@ -74,6 +73,9 @@ auto main() -> int
     while (true)
     {
         const auto rfBlocks = ubxHat->waitAndGetFreshNavigation().rfBlocks;
+        if (rfBlocks.empty())
+            continue;
+        printf("============================================\r\n");
         for (const auto& rfBlock : rfBlocks)
         {
             printRfBlock(rfBlock);

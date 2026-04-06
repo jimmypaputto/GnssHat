@@ -42,8 +42,11 @@
                     <div class="map-tabs">
                         <button class="map-tab active" data-tab="relative">📐 Relative Map</button>
                         <button class="map-tab" data-tab="terrain">🗺️ Terrain Map</button>
-                        {% if mode in ['native', 'ros2'] and hat_name != 'L1/L5 GNSS TIME HAT' %}
+                        {% if hat_name != 'L1/L5 GNSS TIME HAT' %}
                         <button class="map-tab" data-tab="skyview">🛰️ Sky View</button>
+                        {% endif %}
+                        {% if mode in ['native', 'ros2'] %}
+                        <button class="map-tab" data-tab="rfanalyzer">📊 RF Analyzer</button>
                         {% endif %}
                     </div>
                 </div>
@@ -82,7 +85,7 @@
                     </div>
                 </div>
                 
-                {% if mode in ['native', 'ros2'] and hat_name != 'L1/L5 GNSS TIME HAT' %}
+                {% if hat_name != 'L1/L5 GNSS TIME HAT' %}
                 <!-- Sky View - Satellite polar plot -->
                 <div id="skyview-map" class="map-view" style="display: none;">
                     <div class="skyview-layout">
@@ -124,6 +127,22 @@
                         <span class="legend-item"><span class="legend-dot legend-dot-outline"></span>Not used</span>
                     </div>
                     <div class="skyview-constellation-summary" id="constellation-summary">
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if mode in ['native', 'ros2'] %}
+                <!-- RF Analyzer - Spectrum from MON-SPAN + RF status from MON-RF -->
+                <div id="rfanalyzer-map" class="map-view" style="display: none;">
+                    <div class="rfanalyzer-layout">
+                        <div class="rfanalyzer-chart-wrap">
+                            <div id="spectrum-charts-container"></div>
+                        </div>
+                        <div class="rfanalyzer-info-wrap">
+                            <div id="rfanalyzer-rf-status">
+                                <p class="rf-no-data">Waiting for data...</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 {% endif %}
@@ -180,10 +199,12 @@
                                 <td class="data-label">UTC Time</td>
                                 <td class="data-value" id="data-utc-time">--:--:--</td>
                             </tr>
+                            {% if mode in ['native', 'ros2'] %}
                             <tr>
                                 <td class="data-label">Time Accuracy</td>
                                 <td class="data-value" id="data-time-accuracy">-</td>
                             </tr>
+                            {% endif %}
                             <tr>
                                 <td class="data-label">Date</td>
                                 <td class="data-value" id="data-date">----/--/--</td>
@@ -724,22 +745,6 @@
                                     Save to YAML
                                 </label>
                             </div>
-                        </fieldset>
-                        {% endif %}
-
-                        {% if hat_name != 'L1 GNSS HAT' %}
-                        <!-- L5 Band -->
-                        <fieldset class="cfg-section">
-                            <legend>📡 GPS L5 Band</legend>
-                            <div class="cfg-row">
-                                <label for="cfg-l5-en">GPS L5</label>
-                                <select id="cfg-l5-en" class="cfg-select">
-                                    <option value="auto">Auto (enabled)</option>
-                                    <option value="on">On</option>
-                                    <option value="off">Off</option>
-                                </select>
-                            </div>
-                            <div class="cfg-hint">Auto = enabled on L1/L5 HATs. Enables GPS L5 signal with L5 health override.</div>
                         </fieldset>
                         {% endif %}
 

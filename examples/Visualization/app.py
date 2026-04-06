@@ -53,8 +53,9 @@ gps_state = {
     'current_data': None,
     'last_gga': None,  # Last GGA sentence
     'last_rmc': None,  # Last RMC sentence
-    'last_gsa': None,  # Last GSA sentence
-    'last_gsv': None,  # Last GSV sentences
+    'last_gsa': [],    # Last GSA sentences (one per constellation)
+    'last_gsv': [],    # Accumulated GSV sentences (multi-part, multi-constellation)
+    'gsv_collector': {},  # {talker: {total_msgs, msgs: {num: msg}}} for multi-part GSV
     'current_config': None,  # Current GnssHat config dict
     'hat_name': None,  # HAT name string (native mode only)
     'config_lock': threading.Lock(),  # Lock for config changes
@@ -250,11 +251,115 @@ def calculate_offset_meters(ref_pos, current_pos):
     return (x_meters, y_meters)
 
 
+def _nmea_talker_to_gnss_id(talker):
+    """Map NMEA talker ID (GP, GA, GL, GB, GQ) to human-readable GNSS name"""
+    mapping = {
+        'GP': 'GPS',
+        'GA': 'Galileo',
+        'GL': 'GLONASS',
+        'GB': 'BeiDou',
+        'GQ': 'QZSS',
+        'GN': 'GPS',     # GN = combined (fallback to GPS)
+    }
+    return mapping.get(talker, 'GPS')
+
+
+def _nmea_system_id_to_gnss_id(system_id):
+    """Map NMEA 4.11 system ID from GSA to human-readable GNSS name"""
+    mapping = {
+        1: 'GPS',
+        2: 'GLONASS',
+        3: 'Galileo',
+        4: 'BeiDou',
+        5: 'QZSS',
+    }
+    return mapping.get(system_id, 'GPS')
+
+
+def parse_gsv_satellites():
+    """Parse accumulated GSV sentences into satellite data list for skyview.
+    Returns list of dicts with keys: gnss_id, sv_id, cno, elevation, azimuth,
+    used_in_fix, quality, healthy."""
+
+    # Collect used satellite PRNs from GSA sentences (per constellation)
+    used_prns = set()  # set of (gnss_name, prn)
+    gsa_list = gps_state['last_gsa']
+    for gsa in gsa_list:
+        # Determine GNSS system from GSA
+        # NMEA 4.11 provides system ID in field after VDOP
+        gnss_name = 'GPS'
+        if hasattr(gsa, 'data') and len(gsa.data) >= 18:
+            try:
+                sys_id = int(gsa.data[17])
+                gnss_name = _nmea_system_id_to_gnss_id(sys_id)
+            except (ValueError, IndexError):
+                pass
+
+        for i in range(1, 13):
+            attr = f'sv_id{i:02d}'
+            prn = getattr(gsa, attr, None) or getattr(gsa, f'sv_id{i}', None)
+            if prn:
+                try:
+                    used_prns.add((gnss_name, int(prn)))
+                except (ValueError, TypeError):
+                    pass
+
+    # Parse GSV sentences
+    satellites = []
+    gsv_sentences = gps_state['last_gsv']
+
+    for msg in gsv_sentences:
+        talker = msg.talker if hasattr(msg, 'talker') else 'GP'
+        gnss_name = _nmea_talker_to_gnss_id(talker)
+
+        # Each GSV sentence has up to 4 satellite entries
+        # Fields: sv_prn_num_X, elevation_deg_X, azimuth_X, snr_X  (X = 1..4)
+        for i in range(1, 5):
+            prn = getattr(msg, f'sv_prn_num_{i}', None)
+            if prn is None or prn == '':
+                continue
+            try:
+                sv_id = int(prn)
+            except (ValueError, TypeError):
+                continue
+
+            try:
+                elevation = int(getattr(msg, f'elevation_deg_{i}', 0) or 0)
+            except (ValueError, TypeError):
+                elevation = 0
+            try:
+                azimuth = int(getattr(msg, f'azimuth_{i}', 0) or 0)
+            except (ValueError, TypeError):
+                azimuth = 0
+            try:
+                cno = int(getattr(msg, f'snr_{i}', 0) or 0)
+            except (ValueError, TypeError):
+                cno = 0
+
+            # Determine if satellite is used in fix
+            is_used = (gnss_name, sv_id) in used_prns
+
+            satellites.append({
+                'gnss_id': gnss_name,
+                'sv_id': sv_id,
+                'cno': cno,
+                'elevation': elevation,
+                'azimuth': azimuth,
+                'quality': 'Code Locked' if cno > 0 else 'No Signal',
+                'used_in_fix': is_used,
+                'healthy': True,
+            })
+
+    return satellites
+
+
 def parse_nmea_data():
     """Combine data from NMEA sentences to create GPS data dictionary"""
     gga = gps_state['last_gga']
     rmc = gps_state['last_rmc']
-    gsa = gps_state['last_gsa']
+    gsa_list = gps_state['last_gsa']
+    # Use first GSA for fix type (all share the same fix mode)
+    gsa = gsa_list[0] if gsa_list else None
     
     if not gga and not rmc:
         return None
@@ -355,7 +460,6 @@ def create_default_config():
         'rtk': None,
         'timing': None,
         'save_to_flash': False,
-        'enable_l5_gps': None,
     }
 
 
@@ -474,7 +578,7 @@ def nav_to_pvt_data(nav):
 
 
 def nav_to_full_data(nav):
-    """Serialize full Navigation object (DOP, Geofencing, RF Blocks) for native mode"""
+    """Serialize Navigation data (DOP, Geofencing, Satellites) for native mode"""
     from jimmypaputto import gnsshat
 
     dop = nav.dop
@@ -504,41 +608,6 @@ def nav_to_full_data(nav):
         'combined_state': geofence_state_map.get(geofencing_nav.combined_state, "Unknown"),
         'geofences': [geofence_state_map.get(int(s), "Unknown") for s in geofencing_nav.geofences],
     }
-
-    jamming_map = {
-        int(gnsshat.JammingState.UNKNOWN): "Unknown",
-        int(gnsshat.JammingState.OK_NO_SIGNIFICANT_JAMMING): "OK",
-        int(gnsshat.JammingState.WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK): "Warning",
-        int(gnsshat.JammingState.CRITICAL_INTERFERENCE_VISIBLE_AND_NO_FIX): "Critical",
-    }
-    antenna_status_map = {
-        int(gnsshat.AntennaStatus.INIT): "Init",
-        int(gnsshat.AntennaStatus.DONT_KNOW): "Unknown",
-        int(gnsshat.AntennaStatus.OK): "OK",
-        int(gnsshat.AntennaStatus.SHORT): "Short",
-        int(gnsshat.AntennaStatus.OPEN): "Open",
-    }
-    antenna_power_map = {
-        int(gnsshat.AntennaPower.OFF): "Off",
-        int(gnsshat.AntennaPower.ON): "On",
-        int(gnsshat.AntennaPower.DONT_KNOW): "Unknown",
-    }
-    band_map = {
-        int(gnsshat.RfBand.L1): "L1",
-        int(gnsshat.RfBand.L2_OR_L5): "L2/L5",
-    }
-
-    rf_blocks_data = []
-    for rf in nav.rf_blocks:
-        rf_blocks_data.append({
-            'band': band_map.get(rf.id, "Unknown"),
-            'jamming_state': jamming_map.get(rf.jamming_state, "Unknown"),
-            'antenna_status': antenna_status_map.get(rf.antenna_status, "Unknown"),
-            'antenna_power': antenna_power_map.get(rf.antenna_power, "Unknown"),
-            'noise_per_ms': int(rf.noise_per_ms),
-            'agc_monitor': float(rf.agc_monitor),
-            'cw_suppression': float(rf.cw_interference_suppression_level),
-        })
 
     gnss_id_map = {
         int(gnsshat.GnssId.GPS): "GPS",
@@ -573,19 +642,78 @@ def nav_to_full_data(nav):
             'healthy': bool(sat.healthy),
         })
 
+    spectrum_data = []
+    if hasattr(nav, 'rf_blocks_spectrum') and nav.rf_blocks_spectrum:
+        for spec in nav.rf_blocks_spectrum:
+            spectrum_data.append({
+                'id': int(spec.id),
+                'data': list(spec.spectrum_data) if spec.spectrum_data else [],
+                'span': int(spec.span),
+                'resolution': int(spec.resolution),
+                'center_freq': int(spec.center_freq),
+                'gain': int(spec.gain),
+            })
+
     return {
         'dop': dop_data,
         'geofencing': geofencing_data,
-        'rf_blocks': rf_blocks_data,
         'satellites': satellites_data,
+        'spectrum': spectrum_data,
     }
 
+
+def nav_to_rf_data(nav):
+    """Serialize RF Blocks from Navigation object (throttled separately)"""
+    from jimmypaputto import gnsshat
+
+    jamming_map = {
+        int(gnsshat.JammingState.UNKNOWN): "Unknown",
+        int(gnsshat.JammingState.OK_NO_SIGNIFICANT_JAMMING): "OK",
+        int(gnsshat.JammingState.WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK): "Warning",
+        int(gnsshat.JammingState.CRITICAL_INTERFERENCE_VISIBLE_AND_NO_FIX): "Critical",
+    }
+    antenna_status_map = {
+        int(gnsshat.AntennaStatus.INIT): "Init",
+        int(gnsshat.AntennaStatus.DONT_KNOW): "Unknown",
+        int(gnsshat.AntennaStatus.OK): "OK",
+        int(gnsshat.AntennaStatus.SHORT): "Short",
+        int(gnsshat.AntennaStatus.OPEN): "Open",
+    }
+    antenna_power_map = {
+        int(gnsshat.AntennaPower.OFF): "Off",
+        int(gnsshat.AntennaPower.ON): "On",
+        int(gnsshat.AntennaPower.DONT_KNOW): "Unknown",
+    }
+    band_map = {
+        int(gnsshat.RfBand.UNKNOWN): "UNKNOWN",
+        int(gnsshat.RfBand.L1): "L1",
+        int(gnsshat.RfBand.L2): "L2",
+        int(gnsshat.RfBand.L3): "L3",
+        int(gnsshat.RfBand.L5): "L5",
+        int(gnsshat.RfBand.L2_OR_L5): "L2/L5",
+    }
+
+    rf_blocks_data = []
+    for rf in nav.rf_blocks:
+        rf_blocks_data.append({
+            'band': band_map.get(rf.gnss_band, "Unknown"),
+            'jamming_state': jamming_map.get(rf.jamming_state, "Unknown"),
+            'antenna_status': antenna_status_map.get(rf.antenna_status, "Unknown"),
+            'antenna_power': antenna_power_map.get(rf.antenna_power, "Unknown"),
+            'noise_per_ms': int(rf.noise_per_ms),
+            'agc_monitor': float(rf.agc_monitor),
+            'cw_suppression': float(rf.cw_interference_suppression_level),
+        })
+
+    return rf_blocks_data
 
 def native_reader_thread():
     """Background thread that reads navigation data from GnssHat (blocking)"""
     print("Native GnssHat reader thread started")
 
     hat = gps_state['hat']
+    last_rf_time = 0.0
+
     while gps_state['running']:
         try:
             nav = hat.wait_and_get_fresh_navigation()
@@ -594,33 +722,23 @@ def native_reader_thread():
             if not pvt_data:
                 continue
 
-            # Set reference position on first valid position (non-zero lat/lon)
-            if gps_state['reference_position'] is None:
-                lat, lon = pvt_data['latitude'], pvt_data['longitude']
-                if lat != 0.0 and lon != 0.0:
-                    gps_state['reference_position'] = (lat, lon)
-                    print(f"Reference position set: {gps_state['reference_position']}")
-
-            # Calculate offset from reference
-            current_pos = (pvt_data['latitude'], pvt_data['longitude'])
-            x_offset, y_offset = calculate_offset_meters(
-                gps_state['reference_position'],
-                current_pos
-            )
-
             data = {
                 'pvt': pvt_data,
-                'offset_x': x_offset,
-                'offset_y': y_offset,
-                'has_reference': gps_state['reference_position'] is not None
             }
 
-            # Add full navigation data (DOP, Geofencing, RF) for native mode
             try:
                 extra = nav_to_full_data(nav)
                 data.update(extra)
             except Exception as e:
                 print(f"Error serializing extra nav data: {e}")
+
+            now = time.monotonic()
+            if now - last_rf_time >= 1.0:
+                last_rf_time = now
+                try:
+                    data['rf_blocks'] = nav_to_rf_data(nav)
+                except Exception as e:
+                    print(f"Error serializing RF data: {e}")
 
             # Check for time mark data (non-blocking)
             if gps_state.get('time_mark_enabled'):
@@ -675,13 +793,21 @@ def gps_reader_thread():
                 
                 # Store sentences by type
                 if isinstance(msg, pynmea2.types.talker.GGA):
+                    # GGA starts a new NMEA cycle — reset GSA/GSV accumulators
+                    gps_state['last_gsa'] = []
+                    gps_state['last_gsv'] = []
                     gps_state['last_gga'] = msg
                 elif isinstance(msg, pynmea2.types.talker.RMC):
                     gps_state['last_rmc'] = msg
                 elif isinstance(msg, pynmea2.types.talker.GSA):
-                    gps_state['last_gsa'] = msg
+                    # GSA: multiple sentences, one per constellation.
+                    # A new block of GSA starts when we see the same talker+system
+                    # or when GGA arrives. Collect until GGA triggers emit.
+                    gps_state['last_gsa'].append(msg)
                 elif isinstance(msg, pynmea2.types.talker.GSV):
-                    gps_state['last_gsv'] = msg
+                    # GSV: multi-part per constellation.
+                    # Collect all parts; a new GGA triggers reset.
+                    gps_state['last_gsv'].append(msg)
                 
                 # Parse combined data
                 pvt_data = parse_nmea_data()
@@ -698,25 +824,44 @@ def gps_reader_thread():
                         )
                         print(f"Reference position set: {gps_state['reference_position']}")
                 
-                # Calculate offset from reference
-                current_pos = (pvt_data['latitude'], pvt_data['longitude'])
-                x_offset, y_offset = calculate_offset_meters(
-                    gps_state['reference_position'],
-                    current_pos
-                )
-                
                 # Prepare data for transmission
                 data = {
                     'pvt': pvt_data,
-                    'offset_x': x_offset,
-                    'offset_y': y_offset,
-                    'has_reference': gps_state['reference_position'] is not None
                 }
+
+                # Add satellite data from GSV sentences
+                try:
+                    satellites = parse_gsv_satellites()
+                    if satellites:
+                        data['satellites'] = satellites
+                except Exception as e:
+                    print(f"Error parsing GSV satellite data: {e}")
+
+                # Add DOP data from GSA sentences
+                try:
+                    gsa_list = gps_state['last_gsa']
+                    if gsa_list:
+                        first_gsa = gsa_list[0]
+                        pdop = float(getattr(first_gsa, 'pdop', 0) or 0)
+                        hdop_gsa = float(getattr(first_gsa, 'hdop', 0) or 0)
+                        vdop = float(getattr(first_gsa, 'vdop', 0) or 0)
+                        data['dop'] = {
+                            'geometric': pdop,  # closest approx from NMEA
+                            'position': pdop,
+                            'time': 0.0,
+                            'vertical': vdop,
+                            'horizontal': hdop_gsa if hdop_gsa > 0 else pvt_data['hdop'],
+                            'northing': 0.0,
+                            'easting': 0.0,
+                        }
+                except Exception as e:
+                    print(f"Error parsing GSA DOP data: {e}")
                 
                 gps_state['current_data'] = data
                 
-                # Emit to all connected clients (throttle to ~1Hz for UI updates)
-                if isinstance(msg, pynmea2.types.talker.GGA):  # Send on GGA (usually 1Hz)
+                # Emit to all connected clients on RMC (arrives after GGA, GSA, GSV
+                # in NmeaForwarder cycle, so satellite data is complete)
+                if isinstance(msg, pynmea2.types.talker.RMC):
                     socketio.emit('gps_update', data, namespace='/')
                 
             except pynmea2.ParseError as e:
@@ -737,10 +882,10 @@ def gps_reader_thread():
     print("GPS NMEA reader thread stopped")
 
 
-# ─── ROS 2 mode: subscribe to /jp_gnss/navigation ───────────────────────────
+# ─── ROS 2 mode: subscribe to /gnss/navigation ───────────────────────────
 
 def ros2_nav_to_pvt_data(nav_msg):
-    """Convert jp_gnss/msg/Navigation ROS message to pvt data dict"""
+    """Convert jp_gnss_hat/msg/Navigation ROS message to pvt data dict"""
     pvt = nav_msg.pvt
 
     fix_quality_map = {
@@ -800,7 +945,7 @@ def ros2_nav_to_pvt_data(nav_msg):
 
 
 def ros2_nav_to_full_data(nav_msg):
-    """Convert jp_gnss/msg/Navigation ROS message to full data dict (DOP, RF, etc.)"""
+    """Convert jp_gnss_hat/msg/Navigation ROS message to full data dict (DOP, RF, etc.)"""
     dop = nav_msg.dop
     dop_data = {
         'geometric': float(dop.geometric),
@@ -863,11 +1008,12 @@ def ros2_nav_to_full_data(nav_msg):
         'geofencing': geofencing_data,
         'rf_blocks': rf_blocks_data,
         'satellites': satellites_data,
+        'spectrum': [],
     }
 
 
 def ros2_config_msg_to_json(config_msg):
-    """Convert jp_gnss/msg/GnssConfig ROS message to JSON-serializable dict"""
+    """Convert jp_gnss_hat/msg/GnssConfig ROS message to JSON-serializable dict"""
     result = {
         'measurement_rate_hz': int(config_msg.measurement_rate_hz),
         'dynamic_model': int(config_msg.dynamic_model),
@@ -951,13 +1097,14 @@ def ros2_config_msg_to_json(config_msg):
     # ROS 2 specific fields
     result['publish_standard_topics'] = bool(config_msg.publish_standard_topics)
     result['use_ntrip_rtcm'] = bool(config_msg.use_ntrip_rtcm)
+    result['save_to_flash'] = bool(config_msg.save_to_flash)
 
     return result
 
 
 def json_to_ros2_config_msg(data):
-    """Convert JSON config from frontend to jp_gnss/msg/GnssConfig ROS message"""
-    from jp_gnss.msg import GnssConfig as GnssConfigMsg, Geofence as GeofenceMsg
+    """Convert JSON config from frontend to jp_gnss_hat/msg/GnssConfig ROS message"""
+    from jp_gnss_hat.msg import GnssConfig as GnssConfigMsg, Geofence as GeofenceMsg
 
     msg = GnssConfigMsg()
     msg.measurement_rate_hz = int(data['measurement_rate_hz'])
@@ -1031,23 +1178,24 @@ def json_to_ros2_config_msg(data):
     # ROS 2 specific fields
     msg.publish_standard_topics = bool(data.get('publish_standard_topics', True))
     msg.use_ntrip_rtcm = bool(data.get('use_ntrip_rtcm', False))
+    msg.save_to_flash = bool(data.get('save_to_flash', False))
 
     return msg
 
 
 def _ros2_topic_prefix():
-    """Return the ROS 2 topic/service prefix, e.g. '/jp_gnss' or '/jp_gnss/rover'."""
+    """Return the ROS 2 topic/service prefix, e.g. '/gnss' or '/gnss/rover'."""
     if ROS2_NODE_NAME:
-        return f'/jp_gnss/{ROS2_NODE_NAME}'
-    return '/jp_gnss'
+        return f'/gnss/{ROS2_NODE_NAME}'
+    return '/gnss'
 
 
 def ros2_reader_thread():
-    """Background thread: spins an rclpy node subscribed to /jp_gnss/[node_name/]navigation"""
+    """Background thread: spins an rclpy node subscribed to /gnss/[node_name/]navigation"""
     from rclpy.node import Node as RclpyNode
-    from jp_gnss.msg import Navigation as NavigationMsg
+    from jp_gnss_hat.msg import Navigation as NavigationMsg
 
-    node = RclpyNode('jp_gnss_viz')
+    node = RclpyNode('jp_gnss_hat_viz')
 
     def nav_callback(nav_msg):
         try:
@@ -1058,21 +1206,8 @@ def ros2_reader_thread():
 
             pvt_data = ros2_nav_to_pvt_data(nav_msg)
 
-            if gps_state['reference_position'] is None:
-                lat, lon = pvt_data['latitude'], pvt_data['longitude']
-                if lat != 0.0 and lon != 0.0:
-                    gps_state['reference_position'] = (lat, lon)
-                    print(f"Reference position set: {gps_state['reference_position']}")
-
-            current_pos = (pvt_data['latitude'], pvt_data['longitude'])
-            x_offset, y_offset = calculate_offset_meters(
-                gps_state['reference_position'], current_pos)
-
             data = {
                 'pvt': pvt_data,
-                'offset_x': x_offset,
-                'offset_y': y_offset,
-                'has_reference': gps_state['reference_position'] is not None,
             }
 
             try:
@@ -1123,8 +1258,6 @@ def api_status():
     """Get current GPS status"""
     return jsonify({
         'running': gps_state['running'],
-        'has_reference': gps_state['reference_position'] is not None,
-        'reference_position': gps_state['reference_position']
     })
 
 
@@ -1155,12 +1288,8 @@ def handle_disconnect():
 
 @socketio.on('reset_reference')
 def handle_reset_reference():
-    """Reset reference position to current location"""
-    if gps_state['current_data'] and gps_state['current_data']['pvt']:
-        pvt = gps_state['current_data']['pvt']
-        gps_state['reference_position'] = (pvt['latitude'], pvt['longitude'])
-        print(f"Reference position reset to: {gps_state['reference_position']}")
-        emit('reference_reset', {'position': gps_state['reference_position']}, broadcast=True)
+    """Legacy handler — reference is now managed on the frontend"""
+    pass
 
 
 # ─── NTRIP Client API (native mode, RTK HAT only) ───────────────────────────
@@ -1386,8 +1515,6 @@ def json_to_native_config(data):
         config['timing'] = None
 
     config['save_to_flash'] = bool(data.get('save_to_flash', False))
-    l5_val = data.get('enable_l5_gps')
-    config['enable_l5_gps'] = None if l5_val is None else bool(l5_val)
 
     return config
 
@@ -1430,14 +1557,15 @@ def api_set_config():
             gps_state['running'] = False
             if gps_state['thread']:
                 gps_state['thread'].join(timeout=5)
+                if gps_state['thread'].is_alive():
+                    print("Warning: reader thread still alive after join timeout")
                 gps_state['thread'] = None
 
-            # 2. Destroy old hat
+            # 2. Destroy old hat (destructor stops C++ threads & releases HW)
             socketio.emit('config_progress', {'step': 'destroy', 'message': 'Destroying old GnssHat object...'}, namespace='/')
             if gps_state['hat']:
                 del gps_state['hat']
                 gps_state['hat'] = None
-            time.sleep(1)
 
             # 3. Create new hat
             socketio.emit('config_progress', {'step': 'create', 'message': 'Creating new GnssHat object...'}, namespace='/')
@@ -1539,9 +1667,9 @@ def _ros2_call_service(srv_type, srv_name, request, timeout=10.0):
 
 
 def _ros2_get_config():
-    """GET /api/config handler for ros2 mode — calls /jp_gnss/get_config service"""
+    """GET /api/config handler for ros2 mode — calls /gnss/get_config service"""
     try:
-        from jp_gnss.srv import GetGnssConfig
+        from jp_gnss_hat.srv import GetGnssConfig
         srv_name = f'{_ros2_topic_prefix()}/get_config'
         resp = _ros2_call_service(
             GetGnssConfig, srv_name, GetGnssConfig.Request())
@@ -1555,8 +1683,8 @@ def _ros2_get_config():
 
 
 def _ros2_set_config():
-    """POST /api/config handler for ros2 mode — calls /jp_gnss/set_config service"""
-    from jp_gnss.srv import SetGnssConfig
+    """POST /api/config handler for ros2 mode — calls /gnss/set_config service"""
+    from jp_gnss_hat.srv import SetGnssConfig
 
     data = request.get_json()
     if not data:
@@ -1684,7 +1812,7 @@ def start_gps_external_tty():
 
 
 def start_gps_ros2():
-    """Start ROS 2 subscriber thread for /jp_gnss/[node_name/]navigation topic"""
+    """Start ROS 2 subscriber thread for /gnss/[node_name/]navigation topic"""
     import rclpy
 
     nav_topic = f'{_ros2_topic_prefix()}/navigation'
@@ -1739,8 +1867,9 @@ def stop_gps():
     gps_state['current_data'] = None
     gps_state['last_gga'] = None
     gps_state['last_rmc'] = None
-    gps_state['last_gsa'] = None
-    gps_state['last_gsv'] = None
+    gps_state['last_gsa'] = []
+    gps_state['last_gsv'] = []
+    gps_state['gsv_collector'] = {}
     
     print("GPS stopped")
 
@@ -1758,7 +1887,7 @@ if __name__ == '__main__':
         'node_name',
         nargs='?',
         default=None,
-        help='Optional ROS 2 node name (e.g. rover, base). Changes topic prefix to /jp_gnss/<node_name>/...'
+        help='Optional ROS 2 node name (e.g. rover, base). Changes topic prefix to /gnss/<node_name>/...'
     )
     args = parser.parse_args()
     RUN_MODE = args.mode

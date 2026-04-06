@@ -55,9 +55,9 @@ bool Ublox::startup()
     return startup_.execute();
 }
 
-void Ublox::run()
+void Ublox::run(std::stop_token stoken)
 {
-    run_.execute();
+    run_.execute(stoken);
 }
 
 }  // JimmyPaputto

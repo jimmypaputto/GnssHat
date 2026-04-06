@@ -36,13 +36,17 @@ def main():
 
     print("Startup done, ublox configured")
 
+    hat.enable_timepulse()  # if you use kernel pps it will fail
     counter = 0
     try:
         while True:
             hat.timepulse()
-            nav = hat.navigation()
+            nav = hat.get_navigation()
             utc = nav.pvt.utc_time
-            print(f"Timepulse: {counter}, {utc}")
+            date = nav.pvt.date
+            time_valid = "VALID" if utc.valid else "INVALID"
+            date_valid = "VALID" if date.valid else "INVALID"
+            print(f"[{gnsshat.utc_time_iso8601(nav.pvt)}] Timepulse: {counter} | time:{time_valid} date:{date_valid} acc:{utc.accuracy}ns")
             counter += 1
 
     except KeyboardInterrupt:

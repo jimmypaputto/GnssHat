@@ -32,8 +32,8 @@ sudo apt-get install python3-dev
 git clone https://github.com/jimmypaputto/GnssHat.git
 cd GnssHat
 mkdir -p build && cd build
-cmake .. [-DBUILD_PYTHON=ON] [-DBUILD_EXAMPLES=ON]
-make -j$(nproc)
+cmake .. -DBUILD_PYTHON=ON -DBUILD_EXAMPLES=ON
+make
 sudo make install
 sudo ldconfig
 ```
@@ -42,6 +42,27 @@ sudo ldconfig
 |------|-------------|
 | `BUILD_PYTHON` | Build and install the Python CPython extension module |
 | `BUILD_EXAMPLES` | Build all C and C++ examples. Binaries are symlinked into `examples/BinariesSymlinks/` for convenience |
+
+Both flags are optional.
+
+### Build/First run troubleshooting
+
+```sh
+[UART] Failed to open UART device: No such file or directory
+[UART] Cannot init epoll - UART not initialized
+```
+It likely means that UART on the rpi is disabled/busy or configured differently. You might want to enable it for development use via raspi-config if you're using hat that requires it.
+
+```sh
+/home/pi/GnssHat/src/common/GpioInterruptLine.cpp:160:9: error: ‘gpiod_edge_event_buffer_free’ was not declared in this scope; did you mean ‘gpiod_edge_event_buffer’?
+```
+That is due to the wrong version of libgpiod specified in the CMakeLists.txt. Set the version to 1 or 2, depending on your setup:
+```sh
+set(LIBGPIOD_VERSION 1)
+or
+set(LIBGPIOD_VERSION 2)
+```
+For most recent rpi images that would be version 2.
 
 ## Quick Start
 

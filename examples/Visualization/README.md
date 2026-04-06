@@ -35,9 +35,9 @@ pip install -r requirements.txt
 Direct communication with the GNSS module through the GnssHat library. Requires root privileges (SPI).
 
 ```bash
-sudo python3 app.py
+python3 app.py
 # or explicitly:
-sudo python3 app.py native
+python3 app.py native
 ```
 
 ### External TTY Mode

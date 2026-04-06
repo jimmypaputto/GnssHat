@@ -685,14 +685,18 @@ def nav_to_rf_data(nav):
         int(gnsshat.AntennaPower.DONT_KNOW): "Unknown",
     }
     band_map = {
+        int(gnsshat.RfBand.UNKNOWN): "UNKNOWN",
         int(gnsshat.RfBand.L1): "L1",
+        int(gnsshat.RfBand.L2): "L2",
+        int(gnsshat.RfBand.L3): "L3",
+        int(gnsshat.RfBand.L5): "L5",
         int(gnsshat.RfBand.L2_OR_L5): "L2/L5",
     }
 
     rf_blocks_data = []
     for rf in nav.rf_blocks:
         rf_blocks_data.append({
-            'band': band_map.get(rf.id, "Unknown"),
+            'band': band_map.get(rf.gnss_band, "Unknown"),
             'jamming_state': jamming_map.get(rf.jamming_state, "Unknown"),
             'antenna_status': antenna_status_map.get(rf.antenna_status, "Unknown"),
             'antenna_power': antenna_power_map.get(rf.antenna_power, "Unknown"),
@@ -702,49 +706,6 @@ def nav_to_rf_data(nav):
         })
 
     return rf_blocks_data
-
-
-def nav_to_rf_data(nav):
-    """Serialize RF Blocks from Navigation object (throttled separately)"""
-    from jimmypaputto import gnsshat
-
-    jamming_map = {
-        int(gnsshat.JammingState.UNKNOWN): "Unknown",
-        int(gnsshat.JammingState.OK_NO_SIGNIFICANT_JAMMING): "OK",
-        int(gnsshat.JammingState.WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK): "Warning",
-        int(gnsshat.JammingState.CRITICAL_INTERFERENCE_VISIBLE_AND_NO_FIX): "Critical",
-    }
-    antenna_status_map = {
-        int(gnsshat.AntennaStatus.INIT): "Init",
-        int(gnsshat.AntennaStatus.DONT_KNOW): "Unknown",
-        int(gnsshat.AntennaStatus.OK): "OK",
-        int(gnsshat.AntennaStatus.SHORT): "Short",
-        int(gnsshat.AntennaStatus.OPEN): "Open",
-    }
-    antenna_power_map = {
-        int(gnsshat.AntennaPower.OFF): "Off",
-        int(gnsshat.AntennaPower.ON): "On",
-        int(gnsshat.AntennaPower.DONT_KNOW): "Unknown",
-    }
-    band_map = {
-        int(gnsshat.RfBand.L1): "L1",
-        int(gnsshat.RfBand.L2_OR_L5): "L2/L5",
-    }
-
-    rf_blocks_data = []
-    for rf in nav.rf_blocks:
-        rf_blocks_data.append({
-            'band': band_map.get(rf.id, "Unknown"),
-            'jamming_state': jamming_map.get(rf.jamming_state, "Unknown"),
-            'antenna_status': antenna_status_map.get(rf.antenna_status, "Unknown"),
-            'antenna_power': antenna_power_map.get(rf.antenna_power, "Unknown"),
-            'noise_per_ms': int(rf.noise_per_ms),
-            'agc_monitor': float(rf.agc_monitor),
-            'cw_suppression': float(rf.cw_interference_suppression_level),
-        })
-
-    return rf_blocks_data
-
 
 def native_reader_thread():
     """Background thread that reads navigation data from GnssHat (blocking)"""

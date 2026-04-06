@@ -88,6 +88,18 @@ void Gnss::rawMeasurements(const RawMeasurements& rawMeasurements)
     }
 }
 
+void Gnss::subframe(const SubframeData& subframe)
+{
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        auto& buf = navigation_.subframeBuffer;
+        if (buf.subframes.size() >= SubframeBuffer::maxSubframes)
+            buf.subframes.erase(buf.subframes.begin());
+        buf.subframes.push_back(subframe);
+        xSemaphore_.releaseResource();
+    }
+}
+
 void Gnss::timeMark(const TimeMark& timeMark)
 {
     if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))

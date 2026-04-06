@@ -12,6 +12,7 @@
 #include "RawObservation.hpp"
 #include "RFBlockSpectrumData.hpp"
 #include "SatelliteInfo.hpp"
+#include "SubframeData.hpp"
 
 
 namespace JimmyPaputto
@@ -26,6 +27,7 @@ struct Navigation
     std::vector<RfBlockSpectrumData> rfBlocksSpectrumData;
     std::vector<SatelliteInfo> satellites;
     RawMeasurements rawMeasurements;
+    SubframeBuffer subframeBuffer;
 };
 
 }  // JimmyPaputto

@@ -21,6 +21,7 @@
 #include "ubxmsg/UBX_NAV_SAT.hpp"
 #include "ubxmsg/UBX_TIM_TM2.hpp"
 #include "ubxmsg/UBX_RXM_RAWX.hpp"
+#include "ubxmsg/UBX_RXM_SFRBX.hpp"
 
 
 namespace JimmyPaputto
@@ -131,6 +132,11 @@ UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
     callbacks_[to_underlying(UBX_RXM_RAWX)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
         const auto& ubxRxmRawx = static_cast<ubxmsg::UBX_RXM_RAWX&>(ubxMsg);
         Gnss::instance().rawMeasurements(ubxRxmRawx.rawMeasurements());
+    };
+
+    callbacks_[to_underlying(UBX_RXM_SFRBX)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
+        const auto& ubxRxmSfrbx = static_cast<ubxmsg::UBX_RXM_SFRBX&>(ubxMsg);
+        Gnss::instance().subframe(ubxRxmSfrbx.subframe());
     };
 }
 

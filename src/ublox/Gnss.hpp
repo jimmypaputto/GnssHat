@@ -30,6 +30,7 @@ public:
     void rfBlocksSpectrumData(const std::vector<RfBlockSpectrumData>& rfBlocksSpectrumData);
     void satellites(const std::vector<SatelliteInfo>& satellites);
     void rawMeasurements(const RawMeasurements& rawMeasurements);
+    void subframe(const SubframeData& subframe);
 
     void timeMark(const TimeMark& timeMark);
     std::optional<TimeMark> timeMark() const;

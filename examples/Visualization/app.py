@@ -63,41 +63,51 @@ gps_state = {
 
 # NTRIP client state (native mode, RTK HAT rover only)
 ntrip_state = {
-    'client': None,              # GNSSNTRIPClient instance
-    'stop_event': None,          # threading.Event to signal shutdown
-    'rtcm_queue': None,          # queue.Queue receiving (raw, parsed) tuples
+    'client': None,              # gnsshat.NtripClient instance
     'corrections_thread': None,  # Thread applying RTCM3 frames to HAT
+    'stop_event': None,          # threading.Event to signal shutdown
     'connected': False,
     'config': None,              # Last-used NTRIP connection parameters
 }
 
+# NTRIP caster state (native mode, RTK HAT base only)
+caster_state = {
+    'caster': None,              # gnsshat.NtripCaster instance
+    'feed_thread': None,         # Thread feeding RTCM3 corrections
+    'stop_event': None,          # threading.Event to signal shutdown
+    'running': False,
+    'config': None,              # Last-used caster parameters
+}
+
 
 def _ntrip_corrections_thread():
-    """Background thread: drains RTCM3 frames from the NTRIP queue and
-    applies them to the GNSS receiver in batches (same pattern as
+    """Background thread: receives RTCM3 frames from the native NtripClient
+    and applies them to the GNSS receiver (same pattern as
     examples/Python/rtk_rover.py)."""
-    from queue import Empty
 
     stop_event = ntrip_state['stop_event']
-    rtcm_queue = ntrip_state['rtcm_queue']
+    client = ntrip_state['client']
 
     while not stop_event.is_set():
-        frames = []
-        try:
-            raw, _parsed = rtcm_queue.get(timeout=1.0)
-            frames.append(raw)
-        except Empty:
-            continue
+        if not client.is_connected():
+            socketio.emit('ntrip_status',
+                          {'state': 'error', 'message': 'NTRIP connection lost'},
+                          namespace='/')
+            ntrip_state['connected'] = False
+            break
 
-        # Drain any additional queued frames into the same batch
-        while not rtcm_queue.empty():
-            try:
-                raw, _parsed = rtcm_queue.get_nowait()
-                frames.append(raw)
-            except Empty:
-                break
+        try:
+            frames = client.receive()
+        except Exception as e:
+            print(f"NTRIP receive error: {e}")
+            socketio.emit('ntrip_status',
+                          {'state': 'error', 'message': f'Receive error: {e}'},
+                          namespace='/')
+            ntrip_state['connected'] = False
+            break
 
         if not frames:
+            time.sleep(0.1)
             continue
 
         hat = gps_state.get('hat')
@@ -113,15 +123,66 @@ def _ntrip_corrections_thread():
                           namespace='/')
 
 
-def start_ntrip(config):
-    """Start NTRIP client and corrections thread.
+def _caster_feed_thread():
+    """Background thread: waits for TIME_ONLY_FIX, then feeds RTCM3
+    corrections from the HAT to the NTRIP caster (same pattern as
+    examples/Python/rtk_base.py)."""
+    from jimmypaputto import gnsshat
 
-    config: dict with keys caster, port, mountpoint, username, password,
-            version ('1.0' or '2.0'), https (bool).
+    stop_event = caster_state['stop_event']
+    caster = caster_state['caster']
+
+    # Wait for TIME_ONLY_FIX before pulling corrections
+    print("Caster: waiting for TIME_ONLY_FIX...")
+    while not stop_event.is_set():
+        hat = gps_state.get('hat')
+        if hat is None:
+            time.sleep(1)
+            continue
+        try:
+            nav = hat.get_navigation()
+            if nav and nav.pvt.fix_type == int(gnsshat.FixType.TIME_ONLY_FIX):
+                print("Caster: TIME_ONLY_FIX acquired, starting correction feed")
+                break
+        except Exception:
+            pass
+        time.sleep(1)
+
+    # Feed corrections loop
+    while not stop_event.is_set():
+        hat = gps_state.get('hat')
+        if hat is None:
+            time.sleep(1)
+            continue
+
+        try:
+            frames = hat.rtk_get_full_corrections()
+            if frames:
+                caster.feed(frames)
+                # Update caster position from latest navigation
+                nav = hat.get_navigation()
+                if nav:
+                    caster.update_position(
+                        float(nav.pvt.latitude),
+                        float(nav.pvt.longitude))
+                # Emit client count update
+                socketio.emit('caster_status', {
+                    'state': 'running',
+                    'client_count': caster.client_count(),
+                }, namespace='/')
+        except Exception as e:
+            print(f"Caster feed error: {e}")
+
+        time.sleep(1)
+
+
+def start_ntrip(config):
+    """Start native NTRIP client and corrections thread.
+
+    config: dict with keys caster, port, mountpoint, username, password.
     Returns (success: bool, error_message: str | None).
     """
-    from queue import Queue
-    from pygnssutils import GNSSNTRIPClient
+    from jimmypaputto import gnsshat
 
     if ntrip_state['connected']:
         stop_ntrip()
@@ -133,55 +194,35 @@ def start_ntrip(config):
     if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
         return False, 'NTRIP requires L1/L5 GNSS RTK HAT'
 
-    stop_event = threading.Event()
-    rtcm_queue = Queue()
-
-    ntrip_state['stop_event'] = stop_event
-    ntrip_state['rtcm_queue'] = rtcm_queue
-
-    client = GNSSNTRIPClient()
-    ntrip_state['client'] = client
-
-    caster = config.get('caster', '')
+    caster_host = config.get('caster', '')
     port = int(config.get('port', 2101))
     mountpoint = config.get('mountpoint', '')
     username = config.get('username', '')
     password = config.get('password', '')
-    version = config.get('version', '2.0')
-    use_https = bool(config.get('https', False))
 
-    print(f"NTRIP: connecting to {caster}:{port}/{mountpoint} (v{version})")
+    print(f"NTRIP: connecting to {caster_host}:{port}/{mountpoint}")
 
     try:
-        streaming = client.run(
-            server=caster,
-            port=port,
-            https=int(use_https),
-            mountpoint=mountpoint,
-            datatype="RTCM",
-            version=version,
-            ntripuser=username,
-            ntrippassword=password,
-            ggainterval=-1,
-            ggamode=0,
-            output=rtcm_queue,
-            stopevent=stop_event,
-        )
+        client = gnsshat.NtripClient(caster_host, port, mountpoint, username, password)
+        client.connect()
+    except RuntimeError as e:
+        err_msg = str(e)
+        # Parse specific HTTP error codes from the RuntimeError message
+        if '401' in err_msg or 'Unauthorized' in err_msg:
+            return False, 'Authentication failed (401 Unauthorized)'
+        elif '404' in err_msg or 'Not Found' in err_msg:
+            return False, f'Mountpoint "{mountpoint}" not found (404)'
+        elif 'Connection refused' in err_msg:
+            return False, f'Connection refused to {caster_host}:{port}'
+        elif 'resolve' in err_msg.lower() or 'getaddrinfo' in err_msg.lower():
+            return False, f'Cannot resolve hostname: {caster_host}'
+        return False, f'NTRIP client error: {err_msg}'
     except Exception as e:
-        _reset_ntrip_state()
         return False, f'NTRIP client error: {e}'
 
-    if not streaming:
-        err_msg = 'NTRIP connection failed'
-        try:
-            status = client.status
-            if status:
-                err_msg = (f"NTRIP HTTP {status.get('code', '?')}: "
-                           f"{status.get('description', '')}")
-        except Exception:
-            pass
-        _reset_ntrip_state()
-        return False, err_msg
+    stop_event = threading.Event()
+    ntrip_state['client'] = client
+    ntrip_state['stop_event'] = stop_event
 
     # Start corrections thread
     t = threading.Thread(target=_ntrip_corrections_thread, daemon=True)
@@ -201,7 +242,7 @@ def stop_ntrip():
 
     if ntrip_state['client']:
         try:
-            ntrip_state['client'].stop()
+            ntrip_state['client'].disconnect()
         except Exception as e:
             print(f"NTRIP: error stopping client: {e}")
 
@@ -218,11 +259,84 @@ def stop_ntrip():
 def _reset_ntrip_state():
     """Reset ntrip_state to defaults."""
     ntrip_state['client'] = None
-    ntrip_state['stop_event'] = None
-    ntrip_state['rtcm_queue'] = None
     ntrip_state['corrections_thread'] = None
+    ntrip_state['stop_event'] = None
     ntrip_state['connected'] = False
     ntrip_state['config'] = None
+
+
+def start_caster(config):
+    """Start native NTRIP caster and feed thread.
+
+    config: dict with keys port, mountpoint.
+    Returns (success: bool, error_message: str | None).
+    """
+    from jimmypaputto import gnsshat
+
+    if caster_state['running']:
+        stop_caster()
+
+    hat = gps_state.get('hat')
+    if hat is None:
+        return False, 'GNSS HAT not initialized'
+
+    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
+        return False, 'Caster requires L1/L5 GNSS RTK HAT'
+
+    port = int(config.get('port', 2101))
+    mountpoint = config.get('mountpoint', 'GNSS')
+
+    print(f"Caster: starting on 0.0.0.0:{port}/{mountpoint}")
+
+    try:
+        caster = gnsshat.NtripCaster("0.0.0.0", port, mountpoint)
+        caster.start()
+    except Exception as e:
+        return False, f'Caster start error: {e}'
+
+    stop_event = threading.Event()
+    caster_state['caster'] = caster
+    caster_state['stop_event'] = stop_event
+
+    # Start feed thread
+    t = threading.Thread(target=_caster_feed_thread, daemon=True)
+    t.start()
+    caster_state['feed_thread'] = t
+    caster_state['running'] = True
+    caster_state['config'] = config
+
+    print(f"Caster: running on port {port}, mountpoint '{mountpoint}'")
+    return True, None
+
+
+def stop_caster():
+    """Stop NTRIP caster and feed thread."""
+    if caster_state['stop_event']:
+        caster_state['stop_event'].set()
+
+    if caster_state['caster']:
+        try:
+            caster_state['caster'].stop()
+        except Exception as e:
+            print(f"Caster: error stopping: {e}")
+
+    if caster_state['feed_thread']:
+        caster_state['feed_thread'].join(timeout=5)
+
+    was_running = caster_state['running']
+    _reset_caster_state()
+
+    if was_running:
+        print("Caster: stopped")
+
+
+def _reset_caster_state():
+    """Reset caster_state to defaults."""
+    caster_state['caster'] = None
+    caster_state['feed_thread'] = None
+    caster_state['stop_event'] = None
+    caster_state['running'] = False
+    caster_state['config'] = None
 
 
 def calculate_offset_meters(ref_pos, current_pos):
@@ -1350,6 +1464,145 @@ def api_ntrip_status():
     })
 
 
+@app.route('/api/ntrip/sourcetable', methods=['GET'])
+def api_ntrip_sourcetable():
+    """Fetch NTRIP sourcetable (mountpoint list) from a caster.
+
+    Query params: host, port, user (optional), password (optional).
+    Returns JSON array of {mountpoint, format, details} objects.
+    """
+    import socket as _socket
+
+    host = request.args.get('host', '').strip()
+    port = int(request.args.get('port', 2101))
+    user = request.args.get('user', '').strip()
+    password = request.args.get('password', '').strip()
+
+    if not host:
+        return jsonify({'error': 'Missing host parameter'}), 400
+
+    # Build NTRIP v2.0 sourcetable request
+    req_lines = [
+        'GET / HTTP/1.1',
+        f'Host: {host}',
+        'Ntrip-Version: Ntrip/2.0',
+        'User-Agent: NTRIP GnssHat/1.0',
+    ]
+    if user:
+        import base64
+        creds = base64.b64encode(f'{user}:{password}'.encode()).decode()
+        req_lines.append(f'Authorization: Basic {creds}')
+    req_lines += ['', '']
+    raw_request = '\r\n'.join(req_lines).encode()
+
+    try:
+        sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        sock.settimeout(10)
+        sock.connect((_socket.getaddrinfo(host, port, _socket.AF_INET, _socket.SOCK_STREAM)[0][4][0], port))
+        sock.sendall(raw_request)
+
+        # Read response
+        response = b''
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            response += chunk
+            # Sourcetable ends with ENDSOURCETABLE
+            if b'ENDSOURCETABLE' in response:
+                break
+        sock.close()
+    except _socket.timeout:
+        return jsonify({'error': 'Connection timed out'}), 504
+    except ConnectionRefusedError:
+        return jsonify({'error': f'Connection refused to {host}:{port}'}), 502
+    except OSError as e:
+        return jsonify({'error': f'Connection error: {e}'}), 502
+
+    text = response.decode('latin-1', errors='replace')
+
+    # Check for HTTP errors
+    first_line = text.split('\r\n', 1)[0] if '\r\n' in text else text.split('\n', 1)[0]
+    if '401' in first_line or 'Unauthorized' in first_line:
+        return jsonify({'error': 'Authentication failed (401)'}), 401
+    if '403' in first_line or 'Forbidden' in first_line:
+        return jsonify({'error': 'Access forbidden (403)'}), 403
+
+    # Parse STR records
+    mountpoints = []
+    for line in text.split('\n'):
+        line = line.strip()
+        if line.startswith('STR;'):
+            parts = line.split(';')
+            if len(parts) >= 4:
+                mountpoints.append({
+                    'mountpoint': parts[1],
+                    'format': parts[3] if len(parts) > 3 else '',
+                    'details': parts[2] if len(parts) > 2 else '',
+                })
+
+    return jsonify(mountpoints)
+
+
+# ─── NTRIP Caster API (native mode, RTK HAT base only) ─────────────────────
+
+@app.route('/api/caster/start', methods=['POST'])
+def api_caster_start():
+    """Start NTRIP caster for RTK base mode"""
+    if RUN_MODE != 'native':
+        return jsonify({'error': 'Caster only available in native mode'}), 400
+    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
+        return jsonify({'error': 'Caster requires L1/L5 GNSS RTK HAT'}), 400
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON body'}), 400
+
+    socketio.emit('caster_status',
+                  {'state': 'starting', 'message': 'Starting NTRIP caster...'},
+                  namespace='/')
+
+    ok, err = start_caster(data)
+    if ok:
+        socketio.emit('caster_status',
+                      {'state': 'running', 'message': 'NTRIP caster running', 'client_count': 0},
+                      namespace='/')
+        return jsonify({'success': True})
+    else:
+        socketio.emit('caster_status',
+                      {'state': 'error', 'message': err},
+                      namespace='/')
+        return jsonify({'error': err}), 500
+
+
+@app.route('/api/caster/stop', methods=['POST'])
+def api_caster_stop():
+    """Stop NTRIP caster"""
+    if RUN_MODE != 'native':
+        return jsonify({'error': 'Caster only available in native mode'}), 400
+
+    stop_caster()
+    socketio.emit('caster_status',
+                  {'state': 'stopped', 'message': 'NTRIP caster stopped'},
+                  namespace='/')
+    return jsonify({'success': True})
+
+
+@app.route('/api/caster/status', methods=['GET'])
+def api_caster_status():
+    """Get current NTRIP caster status"""
+    result = {
+        'running': caster_state['running'],
+        'config': caster_state['config'],
+    }
+    if caster_state['running'] and caster_state['caster']:
+        try:
+            result['client_count'] = caster_state['caster'].client_count()
+        except Exception:
+            result['client_count'] = 0
+    return jsonify(result)
+
+
 # ─── Configuration API (native mode only) ───────────────────────────────────
 
 def config_to_json_safe(config):
@@ -1545,11 +1798,16 @@ def api_set_config():
 
     with gps_state['config_lock']:
         try:
-            # 0. Stop NTRIP client if running (HAT will be destroyed)
+            # 0. Stop NTRIP client/caster if running (HAT will be destroyed)
             if ntrip_state['connected']:
                 stop_ntrip()
                 socketio.emit('ntrip_status',
                               {'state': 'disconnected', 'message': 'NTRIP stopped — module configuration changed'},
+                              namespace='/')
+            if caster_state['running']:
+                stop_caster()
+                socketio.emit('caster_status',
+                              {'state': 'stopped', 'message': 'Caster stopped — module configuration changed'},
                               namespace='/')
 
             # 1. Stop reader thread

@@ -771,10 +771,17 @@
                 {% endif %}
 
                 {% if mode == 'native' and hat_name == 'L1/L5 GNSS RTK HAT' %}
-                <!-- NTRIP Client pane -->
+                <!-- NTRIP pane (Client for Rover, Caster for Base) -->
                 <div id="ntrip-pane" class="data-pane" style="display:none;">
                     <div class="config-form">
-                        <fieldset class="cfg-section" id="cfg-ntrip-section">
+
+                        <!-- No RTK message -->
+                        <div id="ntrip-no-rtk" style="display:none;">
+                            <p style="padding:1em;color:#888;">Enable RTK in the Configuration tab to use NTRIP.</p>
+                        </div>
+
+                        <!-- NTRIP Client section (Rover mode) -->
+                        <fieldset class="cfg-section" id="cfg-ntrip-client-section" style="display:none;">
                             <legend>📡 NTRIP Client (RTK Corrections)</legend>
 
                             <div class="cfg-row">
@@ -792,8 +799,12 @@
                             </div>
                             <div class="cfg-row">
                                 <label for="cfg-ntrip-mount">Mountpoint</label>
-                                <input type="text" id="cfg-ntrip-mount" placeholder="NEAREST" class="cfg-input">
+                                <div style="display:flex;gap:0.5em;align-items:center;">
+                                    <input type="text" id="cfg-ntrip-mount" placeholder="NEAREST" class="cfg-input" style="flex:1;">
+                                    <button type="button" id="ntrip-fetch-mounts-btn" class="cfg-btn cfg-btn-sm" title="Fetch mountpoints from caster">🔍</button>
+                                </div>
                             </div>
+                            <div id="ntrip-mountpoint-list" style="display:none;max-height:150px;overflow-y:auto;margin:-0.3em 0 0.5em;padding:0.3em;border:1px solid #555;border-radius:4px;font-size:0.85em;"></div>
                             <div class="cfg-row">
                                 <label for="cfg-ntrip-user">Username</label>
                                 <input type="text" id="cfg-ntrip-user" class="cfg-input">
@@ -802,25 +813,41 @@
                                 <label for="cfg-ntrip-pass">Password</label>
                                 <input type="password" id="cfg-ntrip-pass" class="cfg-input">
                             </div>
-                            <div class="cfg-row">
-                                <label for="cfg-ntrip-version">NTRIP Version</label>
-                                <select id="cfg-ntrip-version" class="cfg-input">
-                                    <option value="2.0" selected>2.0</option>
-                                    <option value="1.0">1.0</option>
-                                </select>
-                            </div>
-                            <div class="cfg-row">
-                                <label>
-                                    <input type="checkbox" id="cfg-ntrip-https" class="cfg-checkbox">
-                                    Use HTTPS
-                                </label>
-                            </div>
 
                             <div class="cfg-actions">
                                 <button type="button" id="ntrip-connect-btn" class="cfg-btn cfg-btn-primary">Connect</button>
                                 <button type="button" id="ntrip-disconnect-btn" class="cfg-btn cfg-btn-secondary" disabled>Disconnect</button>
                             </div>
                         </fieldset>
+
+                        <!-- NTRIP Caster section (Base mode) -->
+                        <fieldset class="cfg-section" id="cfg-ntrip-caster-section" style="display:none;">
+                            <legend>📡 NTRIP Caster (Broadcast Corrections)</legend>
+
+                            <div class="cfg-row">
+                                <label>Status</label>
+                                <span id="caster-status" class="ntrip-status-badge disconnected">Stopped</span>
+                            </div>
+
+                            <div class="cfg-row">
+                                <label for="cfg-caster-port">Port</label>
+                                <input type="number" id="cfg-caster-port" min="1" max="65535" value="2101" class="cfg-input cfg-input-sm">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-caster-mount">Mountpoint</label>
+                                <input type="text" id="cfg-caster-mount" value="GNSS" placeholder="GNSS" class="cfg-input">
+                            </div>
+                            <div class="cfg-row">
+                                <label>Connected Clients</label>
+                                <span id="caster-client-count">0</span>
+                            </div>
+
+                            <div class="cfg-actions">
+                                <button type="button" id="caster-start-btn" class="cfg-btn cfg-btn-primary">Start Caster</button>
+                                <button type="button" id="caster-stop-btn" class="cfg-btn cfg-btn-secondary" disabled>Stop Caster</button>
+                            </div>
+                        </fieldset>
+
                     </div>
                 </div>
                 {% endif %}

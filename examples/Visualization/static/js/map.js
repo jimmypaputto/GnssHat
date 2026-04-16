@@ -467,6 +467,11 @@ function initializeSocket() {
     socket.on('ntrip_status', function(data) {
         updateNtripUI(data.state, data.message || null);
     });
+
+    // Caster status updates (native mode, RTK HAT base only)
+    socket.on('caster_status', function(data) {
+        updateCasterUI(data.state, data.message || null, data.client_count);
+    });
 }
 
 function setupUIHandlers() {
@@ -1450,10 +1455,12 @@ function setupConfigPanel() {
     if (rtkEn) {
         rtkEn.addEventListener('change', () => {
             rtkDetails.style.display = rtkEn.checked ? '' : 'none';
+            updateNtripPane();
         });
 
         rtkMode.addEventListener('change', () => {
             rtkBaseDetails.style.display = rtkMode.value === '0' ? '' : 'none';
+            updateNtripPane();
         });
 
         rtkBaseMode.addEventListener('change', () => {
@@ -1474,6 +1481,23 @@ function setupConfigPanel() {
         ntripConnectBtn.addEventListener('click', ntripConnect);
         ntripDisconnectBtn.addEventListener('click', ntripDisconnect);
     }
+
+    // NTRIP fetch mountpoints button
+    const fetchMountsBtn = document.getElementById('ntrip-fetch-mounts-btn');
+    if (fetchMountsBtn) {
+        fetchMountsBtn.addEventListener('click', ntripFetchMountpoints);
+    }
+
+    // Caster start / stop buttons (native mode, RTK HAT base)
+    const casterStartBtn = document.getElementById('caster-start-btn');
+    const casterStopBtn = document.getElementById('caster-stop-btn');
+    if (casterStartBtn) {
+        casterStartBtn.addEventListener('click', casterStart);
+        casterStopBtn.addEventListener('click', casterStop);
+    }
+
+    // Toggle NTRIP sub-pane based on current RTK mode
+    updateNtripPane();
 
     // Time Base toggles
     const tbEn = document.getElementById('cfg-tb-en');
@@ -1986,6 +2010,7 @@ async function loadConfig(silent) {
         const config = await resp.json();
         populateFormFromConfig(config);
         applyGeofencesToMaps(config);
+        updateNtripPane();
         if (!silent) showConfigStatus('Configuration loaded from device', false);
     } catch (e) {
         if (!silent) showConfigStatus('Load failed: ' + e.message, true);
@@ -2037,7 +2062,34 @@ async function sendConfig() {
 }
 
 
-// ─── NTRIP Client (native mode, RTK HAT) ──────────────────────────────────
+// ─── NTRIP Client / Caster (native mode, RTK HAT) ─────────────────────────
+
+function updateNtripPane() {
+    // Toggle NTRIP sub-pane sections based on RTK enable + mode from config form
+    const noRtk = document.getElementById('ntrip-no-rtk');
+    const clientSection = document.getElementById('cfg-ntrip-client-section');
+    const casterSection = document.getElementById('cfg-ntrip-caster-section');
+    if (!noRtk) return; // not RTK HAT
+
+    const rtkEn = document.getElementById('cfg-rtk-en');
+    const rtkMode = document.getElementById('cfg-rtk-mode');
+
+    if (!rtkEn || !rtkEn.checked) {
+        noRtk.style.display = '';
+        clientSection.style.display = 'none';
+        casterSection.style.display = 'none';
+    } else if (rtkMode && rtkMode.value === '0') {
+        // Base mode → caster
+        noRtk.style.display = 'none';
+        clientSection.style.display = 'none';
+        casterSection.style.display = '';
+    } else {
+        // Rover mode → client
+        noRtk.style.display = 'none';
+        clientSection.style.display = '';
+        casterSection.style.display = 'none';
+    }
+}
 
 function updateNtripUI(status, errorMsg) {
     const badge = document.getElementById('ntrip-status');
@@ -2072,14 +2124,49 @@ function updateNtripUI(status, errorMsg) {
     }
 }
 
+function updateCasterUI(status, errorMsg, clientCount) {
+    const badge = document.getElementById('caster-status');
+    const startBtn = document.getElementById('caster-start-btn');
+    const stopBtn = document.getElementById('caster-stop-btn');
+    const countEl = document.getElementById('caster-client-count');
+    if (!badge) return;
+
+    badge.classList.remove('connected', 'disconnected', 'connecting', 'error');
+
+    if (status === 'running') {
+        badge.textContent = 'Running';
+        badge.classList.add('connected');
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+    } else if (status === 'starting') {
+        badge.textContent = 'Starting...';
+        badge.classList.add('connecting');
+        startBtn.disabled = true;
+        stopBtn.disabled = true;
+    } else if (status === 'error') {
+        badge.textContent = errorMsg ? 'Error: ' + errorMsg : 'Error';
+        badge.classList.add('error');
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+    } else {
+        // stopped (default)
+        badge.textContent = 'Stopped';
+        badge.classList.add('disconnected');
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+    }
+
+    if (clientCount !== undefined && countEl) {
+        countEl.textContent = clientCount;
+    }
+}
+
 async function ntripConnect() {
     const caster = document.getElementById('cfg-ntrip-caster').value.trim();
     const port = parseInt(document.getElementById('cfg-ntrip-port').value) || 2101;
     const mountpoint = document.getElementById('cfg-ntrip-mount').value.trim();
     const user = document.getElementById('cfg-ntrip-user').value.trim();
     const password = document.getElementById('cfg-ntrip-pass').value;
-    const version = document.getElementById('cfg-ntrip-version').value;
-    const https = document.getElementById('cfg-ntrip-https').checked;
 
     if (!caster || !mountpoint) {
         updateNtripUI('error', 'Caster and mountpoint are required');
@@ -2092,7 +2179,7 @@ async function ntripConnect() {
         const resp = await fetch('/api/ntrip/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ caster, port, mountpoint, username: user, password, version, https }),
+            body: JSON.stringify({ caster, port, mountpoint, username: user, password }),
         });
         const data = await resp.json();
         if (!resp.ok) {
@@ -2116,32 +2203,132 @@ async function ntripDisconnect() {
     }
 }
 
-async function restoreNtripStatus() {
-    // On page load, check if NTRIP is already connected (survives page refresh)
-    if (window.APP_MODE !== 'native' || window.HAT_NAME !== 'L1/L5 GNSS RTK HAT') return;
+async function ntripFetchMountpoints() {
+    const host = document.getElementById('cfg-ntrip-caster').value.trim();
+    const port = parseInt(document.getElementById('cfg-ntrip-port').value) || 2101;
+    const user = document.getElementById('cfg-ntrip-user').value.trim();
+    const password = document.getElementById('cfg-ntrip-pass').value;
+    const listEl = document.getElementById('ntrip-mountpoint-list');
+
+    if (!host) {
+        listEl.textContent = 'Enter a caster address first';
+        listEl.style.display = '';
+        return;
+    }
+
+    listEl.textContent = 'Fetching...';
+    listEl.style.display = '';
 
     try {
-        const resp = await fetch('/api/ntrip/status');
-        if (!resp.ok) return;
+        const params = new URLSearchParams({ host, port });
+        if (user) params.set('user', user);
+        if (password) params.set('password', password);
+
+        const resp = await fetch('/api/ntrip/sourcetable?' + params);
         const data = await resp.json();
-        if (data.connected) {
-            updateNtripUI('connected');
-            // Restore form fields from server-side config
-            if (data.config) {
-                const c = data.config;
-                const setVal = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = val; };
-                setVal('cfg-ntrip-caster', c.caster);
-                setVal('cfg-ntrip-port', c.port);
-                setVal('cfg-ntrip-mount', c.mountpoint);
-                setVal('cfg-ntrip-user', c.username);
-                setVal('cfg-ntrip-version', c.version);
-                const httpsEl = document.getElementById('cfg-ntrip-https');
-                if (httpsEl) httpsEl.checked = !!c.https;
+
+        if (!resp.ok) {
+            listEl.textContent = data.error || 'Failed to fetch sourcetable';
+            return;
+        }
+
+        if (!data.length) {
+            listEl.textContent = 'No mountpoints found';
+            return;
+        }
+
+        listEl.innerHTML = '';
+        data.forEach(mp => {
+            const row = document.createElement('div');
+            row.style.cssText = 'padding:3px 6px;cursor:pointer;border-bottom:1px solid #444;';
+            row.textContent = mp.mountpoint + (mp.format ? ' (' + mp.format + ')' : '');
+            if (mp.details) row.title = mp.details;
+            row.addEventListener('click', () => {
+                document.getElementById('cfg-ntrip-mount').value = mp.mountpoint;
+                listEl.style.display = 'none';
+            });
+            row.addEventListener('mouseenter', () => row.style.background = '#444');
+            row.addEventListener('mouseleave', () => row.style.background = '');
+            listEl.appendChild(row);
+        });
+    } catch (e) {
+        listEl.textContent = 'Error: ' + e.message;
+    }
+}
+
+async function casterStart() {
+    const port = parseInt(document.getElementById('cfg-caster-port').value) || 2101;
+    const mountpoint = document.getElementById('cfg-caster-mount').value.trim() || 'GNSS';
+
+    updateCasterUI('starting');
+
+    try {
+        const resp = await fetch('/api/caster/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ port, mountpoint }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            updateCasterUI('error', data.error || 'Start failed');
+        }
+        // Success updates arrive via caster_status WebSocket event
+    } catch (e) {
+        updateCasterUI('error', e.message);
+    }
+}
+
+async function casterStop() {
+    const stopBtn = document.getElementById('caster-stop-btn');
+    if (stopBtn) stopBtn.disabled = true;
+
+    try {
+        await fetch('/api/caster/stop', { method: 'POST' });
+        // UI updates arrive via caster_status WebSocket event
+    } catch (e) {
+        updateCasterUI('error', e.message);
+    }
+}
+
+async function restoreNtripStatus() {
+    // On page load, check if NTRIP client/caster is already running (survives page refresh)
+    if (window.APP_MODE !== 'native' || window.HAT_NAME !== 'L1/L5 GNSS RTK HAT') return;
+
+    // Restore client status
+    try {
+        const resp = await fetch('/api/ntrip/status');
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.connected) {
+                updateNtripUI('connected');
+                if (data.config) {
+                    const c = data.config;
+                    const setVal = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = val; };
+                    setVal('cfg-ntrip-caster', c.caster);
+                    setVal('cfg-ntrip-port', c.port);
+                    setVal('cfg-ntrip-mount', c.mountpoint);
+                    setVal('cfg-ntrip-user', c.username);
+                }
             }
         }
-    } catch (e) {
-        // Silently ignore — not critical
-    }
+    } catch (e) { /* ignore */ }
+
+    // Restore caster status
+    try {
+        const resp = await fetch('/api/caster/status');
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.running) {
+                updateCasterUI('running', null, data.client_count || 0);
+                if (data.config) {
+                    const c = data.config;
+                    const setVal = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = val; };
+                    setVal('cfg-caster-port', c.port);
+                    setVal('cfg-caster-mount', c.mountpoint);
+                }
+            }
+        }
+    } catch (e) { /* ignore */ }
 }
 
 

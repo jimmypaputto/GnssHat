@@ -61,6 +61,8 @@ include_directories(
 )
 
 set(LIB_SOURCES
+    src/ntrip/NtripCaster.cpp
+    src/ntrip/NtripClient.cpp
     src/common/GpioInterruptLine.cpp
     src/common/JPGuard.cpp
     src/common/Utils.cpp
@@ -198,6 +200,14 @@ install(
         src/GnssHat.h
     DESTINATION
         /usr/local/include/jimmypaputto
+)
+
+install(
+    FILES
+        src/ntrip/NtripCaster.hpp
+        src/ntrip/NtripClient.hpp
+    DESTINATION
+        /usr/local/include/jimmypaputto/ntrip
 )
 
 if(BUILD_PYTHON)

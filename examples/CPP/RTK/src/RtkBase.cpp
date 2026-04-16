@@ -1,15 +1,25 @@
 /*
- * Jimmy Paputto 2025
+ * Jimmy Paputto 2026
  */
 
 #include <algorithm>
 #include <chrono>
+#include <csignal>
 #include <cstdio>
+#include <cstring>
 #include <thread>
 
 #include <jimmypaputto/GnssHat.hpp>
+#include <jimmypaputto/ntrip/NtripCaster.hpp>
 
 using namespace JimmyPaputto;
+
+static std::atomic<bool> g_running{true};
+
+static void signalHandler(int)
+{
+    g_running = false;
+}
 
 
 uint16_t getFrameId(const std::vector<uint8_t>& frame)
@@ -117,8 +127,22 @@ void printFrame(const std::vector<uint8_t>& frame, const std::string& time)
     printf("\r\n");
 }
 
-auto main() -> int
+auto main(int argc, char* argv[]) -> int
 {
+    uint16_t port = 2101;
+    std::string mountpoint = "GNSS_HAT";
+
+    for (int i = 1; i < argc; ++i)
+    {
+        if (strcmp(argv[i], "--port") == 0 && i + 1 < argc)
+            port = static_cast<uint16_t>(std::stoi(argv[++i]));
+        else if (strcmp(argv[i], "--mountpoint") == 0 && i + 1 < argc)
+            mountpoint = argv[++i];
+    }
+
+    std::signal(SIGINT,  signalHandler);
+    std::signal(SIGTERM, signalHandler);
+
     auto* ubxHat = IGnssHat::create();
     if (!ubxHat)
     {
@@ -136,7 +160,14 @@ auto main() -> int
     }
     printf("GNSS started successfully. Monitoring navigation data...\r\n");
 
-    while (true)
+    NtripCaster caster("0.0.0.0", port, mountpoint);
+    if (!caster.start())
+    {
+        printf("Failed to start NTRIP caster\r\n");
+        return -1;
+    }
+
+    while (g_running)
     {
         const auto pvt = ubxHat->waitAndGetFreshNavigation().pvt;
         const auto fixStatus = pvt.fixType;
@@ -156,15 +187,23 @@ auto main() -> int
                 time.c_str()
             );
             const auto rtcm3Frames =
-                ubxHat->rtk()->base()->getTinyCorrections();
+                ubxHat->rtk()->base()->getFullCorrections();
 
             std::for_each(
                 rtcm3Frames.cbegin(),
                 rtcm3Frames.cend(),
                 [&time](const auto& f) { printFrame(f, time); }
             );
+
+            caster.feed(rtcm3Frames);
+            caster.updatePosition(pvt.latitude, pvt.longitude);
+
+            if (caster.clientCount() > 0)
+                printf("[%s] Broadcasting to %zu client(s)\r\n",
+                       time.c_str(), caster.clientCount());
         }
     }
 
+    caster.stop();
     return 0;
 }

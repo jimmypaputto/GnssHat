@@ -13,6 +13,8 @@
 # frames that can be forwarded to an RTK rover.
 #
 
+import argparse
+
 from jimmypaputto import gnsshat
 
 
@@ -125,6 +127,13 @@ def print_rtcm3_frame(frame: bytes, time_str: str):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="RTK Base Station with NTRIP Caster")
+    parser.add_argument("--port", type=int, default=2101,
+                        help="NTRIP caster port (default: 2101)")
+    parser.add_argument("--mountpoint", type=str, default="GNSS_HAT",
+                        help="NTRIP mountpoint name (default: GNSS_HAT)")
+    args = parser.parse_args()
+
     hat = gnsshat.GnssHat()
     hat.soft_reset_hot_start()
 
@@ -139,6 +148,9 @@ def main():
     print("GNSS started as RTK Base (Survey-In mode).")
     print("Waiting for corrections...\n")
 
+    caster = gnsshat.NtripCaster("0.0.0.0", args.port, args.mountpoint)
+    caster.start()
+
     try:
         while True:
             nav = hat.wait_and_get_fresh_navigation()
@@ -150,9 +162,18 @@ def main():
             else:
                 print("\nRTK Base ready with TIME_ONLY_FIX")
                 try:
-                    corrections = hat.rtk_get_tiny_corrections()
+                    corrections = hat.rtk_get_full_corrections()
                     for frame in corrections:
                         print_rtcm3_frame(frame, str(nav.pvt.utc_time))
+
+                    caster.feed(corrections)
+                    caster.update_position(
+                        nav.pvt.latitude, nav.pvt.longitude)
+
+                    clients = caster.client_count()
+                    if clients > 0:
+                        print(f"Broadcasting to {clients} client(s)")
+
                 except RuntimeError as e:
                     print(f"RTK corrections not available: {e}")
 
@@ -161,6 +182,8 @@ def main():
     except Exception as e:
         print(f"Error: {e}")
         return -1
+    finally:
+        caster.stop()
 
     print("Program finished")
     return 0

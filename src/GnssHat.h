@@ -522,6 +522,45 @@ const char* jp_gnss_time_mark_time_base_to_string(
 const char* jp_gnss_utc_time_iso8601(
     const jp_gnss_position_velocity_time_t* pvt);
 
+/* ── NTRIP Caster ───────────────────────────────────────────────────── */
+
+typedef struct jp_gnss_ntrip_caster jp_gnss_ntrip_caster_t;
+
+jp_gnss_ntrip_caster_t* jp_gnss_ntrip_caster_create(
+    const char* host, uint16_t port,
+    const char* mountpoint, uint32_t max_clients);
+void jp_gnss_ntrip_caster_destroy(jp_gnss_ntrip_caster_t* caster);
+bool jp_gnss_ntrip_caster_start(jp_gnss_ntrip_caster_t* caster);
+void jp_gnss_ntrip_caster_stop(jp_gnss_ntrip_caster_t* caster);
+void jp_gnss_ntrip_caster_feed(jp_gnss_ntrip_caster_t* caster,
+    const jp_gnss_rtcm3_frame_t* frames, uint32_t count);
+uint32_t jp_gnss_ntrip_caster_client_count(
+    const jp_gnss_ntrip_caster_t* caster);
+void jp_gnss_ntrip_caster_update_position(
+    jp_gnss_ntrip_caster_t* caster, double lat, double lon);
+
+/* ── NTRIP Client ───────────────────────────────────────────────────── */
+
+typedef struct jp_gnss_ntrip_client jp_gnss_ntrip_client_t;
+
+jp_gnss_ntrip_client_t* jp_gnss_ntrip_client_create(
+    const char* host, uint16_t port,
+    const char* mountpoint,
+    const char* username, const char* password);
+void jp_gnss_ntrip_client_destroy(jp_gnss_ntrip_client_t* client);
+bool jp_gnss_ntrip_client_connect(jp_gnss_ntrip_client_t* client);
+void jp_gnss_ntrip_client_disconnect(jp_gnss_ntrip_client_t* client);
+bool jp_gnss_ntrip_client_is_connected(
+    const jp_gnss_ntrip_client_t* client);
+uint32_t jp_gnss_ntrip_client_receive(
+    jp_gnss_ntrip_client_t* client,
+    jp_gnss_rtcm3_frame_t** frames_out);
+void jp_gnss_ntrip_client_free_frames(
+    jp_gnss_rtcm3_frame_t* frames, uint32_t count);
+void jp_gnss_ntrip_client_send_position(
+    jp_gnss_ntrip_client_t* client,
+    double lat, double lon, double alt);
+
 #ifdef __cplusplus
 }
 #endif

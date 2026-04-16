@@ -1167,4 +1167,215 @@ const char* jp_gnss_time_mark_time_base_to_string(
     return result.c_str();
 }
 
+/* ── NTRIP Caster ───────────────────────────────────────────────────── */
+
+struct jp_gnss_ntrip_caster
+{
+    NtripCaster* instance;
+};
+
+jp_gnss_ntrip_caster_t* jp_gnss_ntrip_caster_create(
+    const char* host, uint16_t port,
+    const char* mountpoint, uint32_t max_clients)
+{
+    if (!host || !mountpoint)
+        return nullptr;
+
+    try
+    {
+        auto* wrapper = new jp_gnss_ntrip_caster;
+        wrapper->instance = new NtripCaster(
+            host, port, mountpoint, static_cast<size_t>(max_clients));
+        return wrapper;
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
+}
+
+void jp_gnss_ntrip_caster_destroy(jp_gnss_ntrip_caster_t* caster)
+{
+    if (!caster)
+        return;
+
+    delete caster->instance;
+    delete caster;
+}
+
+bool jp_gnss_ntrip_caster_start(jp_gnss_ntrip_caster_t* caster)
+{
+    if (!caster || !caster->instance)
+        return false;
+
+    return caster->instance->start();
+}
+
+void jp_gnss_ntrip_caster_stop(jp_gnss_ntrip_caster_t* caster)
+{
+    if (!caster || !caster->instance)
+        return;
+
+    caster->instance->stop();
+}
+
+void jp_gnss_ntrip_caster_feed(jp_gnss_ntrip_caster_t* caster,
+    const jp_gnss_rtcm3_frame_t* frames, uint32_t count)
+{
+    if (!caster || !caster->instance || !frames || count == 0)
+        return;
+
+    std::vector<std::vector<uint8_t>> cpp_frames;
+    cpp_frames.reserve(count);
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        cpp_frames.emplace_back(
+            frames[i].data, frames[i].data + frames[i].size);
+    }
+
+    caster->instance->feed(cpp_frames);
+}
+
+uint32_t jp_gnss_ntrip_caster_client_count(
+    const jp_gnss_ntrip_caster_t* caster)
+{
+    if (!caster || !caster->instance)
+        return 0;
+
+    return static_cast<uint32_t>(caster->instance->clientCount());
+}
+
+void jp_gnss_ntrip_caster_update_position(
+    jp_gnss_ntrip_caster_t* caster, double lat, double lon)
+{
+    if (!caster || !caster->instance)
+        return;
+
+    caster->instance->updatePosition(lat, lon);
+}
+
+/* ── NTRIP Client ───────────────────────────────────────────────────── */
+
+struct jp_gnss_ntrip_client
+{
+    NtripClient* instance;
+};
+
+jp_gnss_ntrip_client_t* jp_gnss_ntrip_client_create(
+    const char* host, uint16_t port,
+    const char* mountpoint,
+    const char* username, const char* password)
+{
+    if (!host || !mountpoint)
+        return nullptr;
+
+    try
+    {
+        auto* wrapper = new jp_gnss_ntrip_client;
+        wrapper->instance = new NtripClient(
+            host, port, mountpoint,
+            username ? username : "",
+            password ? password : "");
+        return wrapper;
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
+}
+
+void jp_gnss_ntrip_client_destroy(jp_gnss_ntrip_client_t* client)
+{
+    if (!client)
+        return;
+
+    delete client->instance;
+    delete client;
+}
+
+bool jp_gnss_ntrip_client_connect(jp_gnss_ntrip_client_t* client)
+{
+    if (!client || !client->instance)
+        return false;
+
+    return client->instance->connect();
+}
+
+void jp_gnss_ntrip_client_disconnect(jp_gnss_ntrip_client_t* client)
+{
+    if (!client || !client->instance)
+        return;
+
+    client->instance->disconnect();
+}
+
+bool jp_gnss_ntrip_client_is_connected(
+    const jp_gnss_ntrip_client_t* client)
+{
+    if (!client || !client->instance)
+        return false;
+
+    return client->instance->isConnected();
+}
+
+uint32_t jp_gnss_ntrip_client_receive(
+    jp_gnss_ntrip_client_t* client,
+    jp_gnss_rtcm3_frame_t** frames_out)
+{
+    if (!client || !client->instance || !frames_out)
+    {
+        if (frames_out) *frames_out = nullptr;
+        return 0;
+    }
+
+    auto cpp_frames = client->instance->receiveFrames();
+    if (cpp_frames.empty())
+    {
+        *frames_out = nullptr;
+        return 0;
+    }
+
+    uint32_t count = static_cast<uint32_t>(cpp_frames.size());
+    auto* frames = static_cast<jp_gnss_rtcm3_frame_t*>(
+        calloc(count, sizeof(jp_gnss_rtcm3_frame_t)));
+    if (!frames)
+    {
+        *frames_out = nullptr;
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        frames[i].size = static_cast<uint32_t>(cpp_frames[i].size());
+        frames[i].data = static_cast<uint8_t*>(malloc(frames[i].size));
+        if (frames[i].data)
+            memcpy(frames[i].data, cpp_frames[i].data(), frames[i].size);
+    }
+
+    *frames_out = frames;
+    return count;
+}
+
+void jp_gnss_ntrip_client_free_frames(
+    jp_gnss_rtcm3_frame_t* frames, uint32_t count)
+{
+    if (!frames)
+        return;
+
+    for (uint32_t i = 0; i < count; ++i)
+        free(frames[i].data);
+    free(frames);
+}
+
+void jp_gnss_ntrip_client_send_position(
+    jp_gnss_ntrip_client_t* client,
+    double lat, double lon, double alt)
+{
+    if (!client || !client->instance)
+        return;
+
+    client->instance->sendPosition(lat, lon, alt);
+}
+
 }  // extern "C"

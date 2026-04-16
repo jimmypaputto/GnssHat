@@ -94,9 +94,7 @@ RTK Rover example with NTRIP client demonstrating:
 - Applying RTCM3 corrections to the GNSS receiver for centimeter-level accuracy
 - Real-time monitoring of RTK fix quality
 - Batched correction application with per-frame RTCM3 message identification
-- Uses `pygnssutils` (GNSSNTRIPClient) for NTRIP communication
-
-**Requires:** `pip install pygnssutils` (or `pip install -r requirements.txt`)
+- Uses native `gnsshat.NtripClient` for NTRIP communication
 
 Edit the configuration constants at the top of the script to set your NTRIP caster credentials (caster_ip, port, mountpoint, username, password).
 

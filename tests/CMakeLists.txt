@@ -55,6 +55,8 @@ set(LIB_SOURCES
     ${SRC_DIR}/ublox/UbxCallbacks.cpp
     ${SRC_DIR}/ublox/UbxFactory.cpp
     ${SRC_DIR}/ublox/UbxParser.cpp
+    ${SRC_DIR}/ntrip/NtripCaster.cpp
+    ${SRC_DIR}/ntrip/NtripClient.cpp
 )
 
 add_executable(GnssHatTests
@@ -64,6 +66,7 @@ add_executable(GnssHatTests
     TestUbxMessages.cpp
     TestRtcm3.cpp
     TestUbxClassMsgId.cpp
+    TestNtrip.cpp
     ${LIB_SOURCES}
 )
 

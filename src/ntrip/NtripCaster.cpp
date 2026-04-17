@@ -6,7 +6,6 @@
 
 #include <arpa/inet.h>
 #include <cerrno>
-#include <cstdio>
 #include <cstring>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -14,6 +13,8 @@
 
 #include <algorithm>
 #include <sstream>
+
+#include "common/Utils.hpp"
 
 namespace JimmyPaputto
 {
@@ -33,8 +34,8 @@ namespace JimmyPaputto
         serverFd_ = ::socket(AF_INET, SOCK_STREAM, 0);
         if (serverFd_ < 0)
         {
-            printf("[NtripCaster] Failed to create socket: %s\r\n",
-                   strerror(errno));
+            log(ENtripLogLevel::Error, "[NtripCaster] Failed to create socket: %s",
+                strerror(errno));
             return false;
         }
 
@@ -52,8 +53,8 @@ namespace JimmyPaputto
         if (::bind(serverFd_, reinterpret_cast<sockaddr *>(&addr),
                    sizeof(addr)) < 0)
         {
-            printf("[NtripCaster] Failed to bind %s:%u: %s\r\n",
-                   host_.c_str(), port_, strerror(errno));
+            log(ENtripLogLevel::Error, "[NtripCaster] Failed to bind %s:%u: %s",
+                host_.c_str(), port_, strerror(errno));
             ::close(serverFd_);
             serverFd_ = -1;
             return false;
@@ -61,18 +62,19 @@ namespace JimmyPaputto
 
         if (::listen(serverFd_, 5) < 0)
         {
-            printf("[NtripCaster] Failed to listen: %s\r\n", strerror(errno));
+            log(ENtripLogLevel::Error, "[NtripCaster] Failed to listen: %s", strerror(errno));
             ::close(serverFd_);
             serverFd_ = -1;
             return false;
         }
 
         running_ = true;
+        statsStart();
         acceptThread_ = std::jthread([this](std::stop_token st)
                                      { acceptLoop(st); });
 
-        printf("[NtripCaster] Listening on %s:%u/%s (max %zu clients)\r\n",
-               host_.c_str(), port_, mountpoint_.c_str(), maxClients_);
+        log(ENtripLogLevel::Info, "[NtripCaster] Listening on %s:%u/%s (max %zu clients)",
+            host_.c_str(), port_, mountpoint_.c_str(), maxClients_);
         return true;
     }
 
@@ -103,11 +105,15 @@ namespace JimmyPaputto
             ::close(fd);
         }
         clients_.clear();
-        printf("[NtripCaster] Stopped.\r\n");
+        statsReset();
+        log(ENtripLogLevel::Info, "[NtripCaster] Stopped.");
     }
 
     void NtripCaster::feed(const std::vector<std::vector<uint8_t>> &frames)
     {
+        // Track statistics
+        statsRecordTxFrames(frames);
+
         // Concatenate all frames into a single buffer
         size_t totalSize = 0;
         for (const auto &f : frames)
@@ -136,9 +142,9 @@ namespace JimmyPaputto
                 std::remove(clients_.begin(), clients_.end(), fd),
                 clients_.end());
             ::close(fd);
-            printf("[NtripCaster] Client fd=%d disconnected during feed "
-                   "(total: %zu)\r\n",
-                   fd, clients_.size());
+            log(ENtripLogLevel::Debug, "[NtripCaster] Client fd=%d disconnected during feed "
+                "(total: %zu)",
+                fd, clients_.size());
         }
     }
 
@@ -153,6 +159,14 @@ namespace JimmyPaputto
         std::lock_guard lock(positionMutex_);
         latitude_ = lat;
         longitude_ = lon;
+    }
+
+    void NtripCaster::setCredentials(std::string username,
+                                     std::string password)
+    {
+        std::lock_guard lock(authMutex_);
+        authUsername_ = std::move(username);
+        authPassword_ = std::move(password);
     }
 
     // ---------------------------------------------------------------------------
@@ -171,8 +185,8 @@ namespace JimmyPaputto
             if (clientFd < 0)
             {
                 if (running_)
-                    printf("[NtripCaster] accept() error: %s\r\n",
-                           strerror(errno));
+                    log(ENtripLogLevel::Error, "[NtripCaster] accept() error: %s",
+                        strerror(errno));
                 break;
             }
 
@@ -243,6 +257,42 @@ namespace JimmyPaputto
             return;
         }
 
+        // Check authentication (if credentials are set)
+        {
+            std::lock_guard lock(authMutex_);
+            if (!authUsername_.empty())
+            {
+                // Look for "Authorization: Basic <b64>" header
+                const char *authHdr = strcasestr(reqBuf, "Authorization: Basic ");
+                std::string decoded;
+                if (authHdr)
+                {
+                    authHdr += 21; // skip "Authorization: Basic "
+                    const char *eol = strstr(authHdr, "\r\n");
+                    std::string b64(authHdr,
+                                    eol ? static_cast<size_t>(eol - authHdr)
+                                        : strlen(authHdr));
+                    decoded = base64Decode(b64);
+                }
+
+                std::string expected = authUsername_ + ":" + authPassword_;
+                if (decoded != expected)
+                {
+                    const char *resp =
+                        "HTTP/1.1 401 Unauthorized\r\n"
+                        "WWW-Authenticate: Basic realm=\"NTRIP Caster\"\r\n"
+                        "Content-Length: 0\r\n"
+                        "\r\n";
+                    sendAll(clientFd, resp, strlen(resp));
+                    ::close(clientFd);
+                    log(ENtripLogLevel::Warning,
+                        "[NtripCaster] Rejected %s — auth failed",
+                        clientAddr.c_str());
+                    return;
+                }
+            }
+        }
+
         // Check max clients
         {
             std::lock_guard lock(clientsMutex_);
@@ -251,8 +301,8 @@ namespace JimmyPaputto
                 sendResponse(clientFd, "503 Service Unavailable",
                              "Too many clients connected.\r\n");
                 ::close(clientFd);
-                printf("[NtripCaster] Rejected %s — max clients reached (%zu)\r\n",
-                       clientAddr.c_str(), maxClients_);
+                log(ENtripLogLevel::Warning, "[NtripCaster] Rejected %s — max clients reached (%zu)",
+                    clientAddr.c_str(), maxClients_);
                 return;
             }
         }
@@ -289,8 +339,8 @@ namespace JimmyPaputto
     {
         std::lock_guard lock(clientsMutex_);
         clients_.push_back(fd);
-        printf("[NtripCaster] Client %s connected (total: %zu)\r\n",
-               addr.c_str(), clients_.size());
+        log(ENtripLogLevel::Info, "[NtripCaster] Client %s connected (total: %zu)",
+            addr.c_str(), clients_.size());
     }
 
     void NtripCaster::removeClient(int fd, const std::string &addr)
@@ -299,8 +349,8 @@ namespace JimmyPaputto
         clients_.erase(
             std::remove(clients_.begin(), clients_.end(), fd),
             clients_.end());
-        printf("[NtripCaster] Client %s disconnected (total: %zu)\r\n",
-               addr.c_str(), clients_.size());
+        log(ENtripLogLevel::Info, "[NtripCaster] Client %s disconnected (total: %zu)",
+            addr.c_str(), clients_.size());
     }
 
     void NtripCaster::sendSourcetable(int fd)

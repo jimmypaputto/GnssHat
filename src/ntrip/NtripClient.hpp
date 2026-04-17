@@ -10,6 +10,7 @@
 #define NTRIP_CLIENT_HPP_
 
 #include <atomic>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
@@ -17,10 +18,13 @@
 #include <thread>
 #include <vector>
 
+#include "NtripLog.hpp"
+#include "NtripStats.hpp"
+
 namespace JimmyPaputto
 {
 
-    class NtripClient
+    class NtripClient : public NtripLoggable, public NtripStatsTracker
     {
     public:
         NtripClient(std::string host, uint16_t port,
@@ -42,7 +46,16 @@ namespace JimmyPaputto
         /// Send GGA position to the caster (for VRS / nearest base).
         void sendPosition(double lat, double lon, double alt);
 
+        /// Enable/disable auto-reconnect with exponential backoff.
+        void setAutoReconnect(bool enable,
+                              uint32_t initialDelayMs = 1000,
+                              uint32_t maxDelayMs = 30000);
+
+        /// Number of reconnect attempts since last connect().
+        uint32_t reconnectCount() const;
+
     private:
+        bool connectInternal();
         void receiveLoop(std::stop_token stoken);
         void extractFrames(const uint8_t *data, size_t len);
 
@@ -59,6 +72,14 @@ namespace JimmyPaputto
         mutable std::mutex framesMutex_;
         std::vector<std::vector<uint8_t>> pendingFrames_;
         std::vector<uint8_t> parseBuffer_;
+
+        // Auto-reconnect state
+        std::atomic<bool> autoReconnect_{false};
+        uint32_t reconnectInitialMs_ = 1000;
+        uint32_t reconnectMaxMs_ = 30000;
+        std::atomic<uint32_t> reconnectCount_{0};
+        std::mutex reconnectMutex_;
+        std::condition_variable reconnectCv_;
     };
 
 }

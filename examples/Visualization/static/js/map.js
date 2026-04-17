@@ -472,6 +472,80 @@ function initializeSocket() {
     socket.on('caster_status', function(data) {
         updateCasterUI(data.state, data.message || null, data.client_count);
     });
+
+    // NTRIP log messages (client and caster)
+    socket.on('ntrip_log', function(data) {
+        var panelId = data.source === 'caster' ? 'ntrip-caster-log' : 'ntrip-client-log';
+        var panel = document.getElementById(panelId);
+        if (!panel) return;
+        var line = document.createElement('div');
+        line.className = 'log-' + (data.level || 'info');
+        line.textContent = data.message || '';
+        panel.appendChild(line);
+        // Keep max 200 lines
+        while (panel.childNodes.length > 200) panel.removeChild(panel.firstChild);
+        panel.scrollTop = panel.scrollHeight;
+    });
+
+    // Stats polling (every 2s)
+    setInterval(function() {
+        pollNtripStats('/api/ntrip/stats', 'ntrip-client-stats', 'nc-stat');
+        pollNtripStats('/api/caster/stats', 'ntrip-caster-stats', 'cs-stat');
+    }, 2000);
+}
+
+function formatUptime(ms) {
+    var s = Math.floor(ms / 1000);
+    var m = Math.floor(s / 60); s %= 60;
+    var h = Math.floor(m / 60); m %= 60;
+    if (h > 0) return h + 'h ' + m + 'm ' + s + 's';
+    if (m > 0) return m + 'm ' + s + 's';
+    return s + 's';
+}
+
+function formatBytes(b) {
+    if (b >= 1048576) return (b / 1048576).toFixed(1) + ' MB';
+    if (b >= 1024) return (b / 1024).toFixed(1) + ' KB';
+    return b + ' B';
+}
+
+function pollNtripStats(url, containerId, prefix) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    fetch(url).then(function(r) { return r.json(); }).then(function(s) {
+        if (!s || (!s.frames_tx && !s.frames_rx && !s.uptime_ms)) {
+            container.style.display = 'none';
+            return;
+        }
+        container.style.display = '';
+        var el;
+        el = document.getElementById(prefix + '-uptime');
+        if (el) el.textContent = formatUptime(s.uptime_ms || 0);
+        el = document.getElementById(prefix + '-bytes-rx');
+        if (el) el.textContent = formatBytes(s.bytes_rx || 0);
+        el = document.getElementById(prefix + '-bytes-tx');
+        if (el) el.textContent = formatBytes(s.bytes_tx || 0);
+        el = document.getElementById(prefix + '-frames-rx');
+        if (el) el.textContent = (s.frames_rx || 0).toLocaleString();
+        el = document.getElementById(prefix + '-frames-tx');
+        if (el) el.textContent = (s.frames_tx || 0).toLocaleString();
+        el = document.getElementById(prefix + '-last-frame');
+        if (el) {
+            var age = s.last_frame_age_ms || 0;
+            el.textContent = age < 1000 ? age + ' ms ago' : (age / 1000).toFixed(1) + ' s ago';
+            el.style.color = age < 5000 ? '#88cc88' : age < 30000 ? '#ffaa00' : '#ff4444';
+        }
+        el = document.getElementById(prefix + '-avg-interval');
+        if (el) el.textContent = (s.avg_inter_frame_ms || 0).toFixed(0) + ' ms';
+        el = document.getElementById(prefix + '-msg-types');
+        if (el && s.message_types) {
+            var parts = [];
+            Object.keys(s.message_types).sort(function(a,b){return a-b;}).forEach(function(k) {
+                parts.push(k + '×' + s.message_types[k]);
+            });
+            el.textContent = parts.join(', ') || '—';
+        }
+    }).catch(function() {});
 }
 
 function setupUIHandlers() {
@@ -2167,6 +2241,7 @@ async function ntripConnect() {
     const mountpoint = document.getElementById('cfg-ntrip-mount').value.trim();
     const user = document.getElementById('cfg-ntrip-user').value.trim();
     const password = document.getElementById('cfg-ntrip-pass').value;
+    const autoReconnect = document.getElementById('cfg-ntrip-auto-reconnect').checked;
 
     if (!caster || !mountpoint) {
         updateNtripUI('error', 'Caster and mountpoint are required');
@@ -2179,7 +2254,7 @@ async function ntripConnect() {
         const resp = await fetch('/api/ntrip/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ caster, port, mountpoint, username: user, password }),
+            body: JSON.stringify({ caster, port, mountpoint, username: user, password, auto_reconnect: autoReconnect }),
         });
         const data = await resp.json();
         if (!resp.ok) {
@@ -2259,6 +2334,8 @@ async function ntripFetchMountpoints() {
 async function casterStart() {
     const port = parseInt(document.getElementById('cfg-caster-port').value) || 2101;
     const mountpoint = document.getElementById('cfg-caster-mount').value.trim() || 'GNSS';
+    const username = (document.getElementById('cfg-caster-user') || {}).value || '';
+    const password = (document.getElementById('cfg-caster-pass') || {}).value || '';
 
     updateCasterUI('starting');
 
@@ -2266,7 +2343,7 @@ async function casterStart() {
         const resp = await fetch('/api/caster/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ port, mountpoint }),
+            body: JSON.stringify({ port, mountpoint, username, password }),
         });
         const data = await resp.json();
         if (!resp.ok) {

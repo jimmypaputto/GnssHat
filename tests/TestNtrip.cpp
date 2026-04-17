@@ -11,8 +11,10 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+#include "common/Utils.hpp"
 #include "ntrip/NtripCaster.hpp"
 #include "ntrip/NtripClient.hpp"
+#include "ublox/Rtcm3Parser.hpp"
 
 using namespace JimmyPaputto;
 
@@ -37,11 +39,6 @@ private:
 };
 
 // ── RTCM3 mock helpers ──────────────────────────────────────────────────────
-
-namespace JimmyPaputto
-{
-    uint32_t crc24q(const uint8_t* data, size_t length);
-}
 
 namespace
 {
@@ -109,15 +106,24 @@ namespace
     }
 
     /// Send an NTRIP v2.0 GET request for a mountpoint and return the fd.
-    int ntripHandshake(uint16_t port, const std::string& mountpoint)
+    int ntripHandshake(uint16_t port, const std::string& mountpoint,
+                       const std::string& username = {},
+                       const std::string& password = {})
     {
         int fd = rawConnect(port);
         if (fd < 0) return -1;
 
         std::string req = "GET /" + mountpoint + " HTTP/1.1\r\n"
                         "Ntrip-Version: Ntrip/2.0\r\n"
-                        "User-Agent: TestClient\r\n"
-                        "\r\n";
+                        "User-Agent: TestClient\r\n";
+
+        if (!username.empty())
+        {
+            std::string b64 = base64Encode(username + ":" + password);
+            req += "Authorization: Basic " + b64 + "\r\n";
+        }
+
+        req += "\r\n";
         send(fd, req.c_str(), req.size(), 0);
 
         // Read response line
@@ -498,4 +504,403 @@ TEST_F(NtripClientCasterTest, MultipleClientsReceiveAll)
     client1.disconnect();
     client2.disconnect();
     caster.stop();
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  NtripLoggable Tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+#include "ntrip/NtripLog.hpp"
+#include <mutex>
+
+class NtripLogTest : public ::testing::Test {};
+
+TEST_F(NtripLogTest, CasterLogCallbackReceivesMessages)
+{
+    const uint16_t port = testPort(20);
+
+    std::mutex mu;
+    std::vector<std::pair<ENtripLogLevel, std::string>> logs;
+
+    NtripCaster caster("127.0.0.1", port, "LOG");
+    caster.setLogLevel(ENtripLogLevel::Debug);
+    caster.setLogCallback([&](ENtripLogLevel level, const std::string& msg) {
+        std::lock_guard<std::mutex> lk(mu);
+        logs.emplace_back(level, msg);
+    });
+
+    ASSERT_TRUE(caster.start());
+    caster.stop();
+
+    std::lock_guard<std::mutex> lk(mu);
+    EXPECT_GE(logs.size(), 2u);  // at least "Listening" + "Stopped"
+
+    // Check that we got an Info-level "Listening" message
+    bool foundListening = false;
+    for (const auto& [lvl, msg] : logs) {
+        if (lvl == ENtripLogLevel::Info && msg.find("Listening") != std::string::npos) {
+            foundListening = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundListening);
+}
+
+TEST_F(NtripLogTest, CasterLogLevelFiltering)
+{
+    const uint16_t port = testPort(21);
+
+    std::mutex mu;
+    std::vector<std::pair<ENtripLogLevel, std::string>> logs;
+
+    NtripCaster caster("127.0.0.1", port, "LOG");
+    caster.setLogLevel(ENtripLogLevel::Error);  // Only errors
+    caster.setLogCallback([&](ENtripLogLevel level, const std::string& msg) {
+        std::lock_guard<std::mutex> lk(mu);
+        logs.emplace_back(level, msg);
+    });
+
+    ASSERT_TRUE(caster.start());
+    caster.stop();
+
+    std::lock_guard<std::mutex> lk(mu);
+    // Info-level "Listening" / "Stopped" should be filtered out
+    for (const auto& [lvl, msg] : logs) {
+        EXPECT_LE(static_cast<int>(lvl), static_cast<int>(ENtripLogLevel::Error));
+    }
+}
+
+TEST_F(NtripLogTest, DefaultNoCallback)
+{
+    // With no callback set, start/stop should not crash
+    const uint16_t port = testPort(22);
+    NtripCaster caster("127.0.0.1", port, "LOG");
+    ASSERT_TRUE(caster.start());
+    caster.stop();
+}
+
+TEST_F(NtripLogTest, ClientLogCallbackOnConnectionFailure)
+{
+    std::mutex mu;
+    std::vector<std::pair<ENtripLogLevel, std::string>> logs;
+
+    NtripClient client("127.0.0.1", testPort(23), "GNSS");
+    client.setLogLevel(ENtripLogLevel::Debug);
+    client.setLogCallback([&](ENtripLogLevel level, const std::string& msg) {
+        std::lock_guard<std::mutex> lk(mu);
+        logs.emplace_back(level, msg);
+    });
+
+    // Connecting to a port with no server should fail and produce error logs
+    EXPECT_FALSE(client.connect());
+
+    std::lock_guard<std::mutex> lk(mu);
+    EXPECT_FALSE(logs.empty());
+
+    bool foundError = false;
+    for (const auto& [lvl, msg] : logs) {
+        if (lvl == ENtripLogLevel::Error) {
+            foundError = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundError);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  NtripStats Tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+#include "ntrip/NtripStats.hpp"
+
+class NtripStatsTest : public NtripTestBase {};
+
+TEST_F(NtripStatsTest, CasterStatsAfterFeed)
+{
+    const uint16_t port = testPort(30);
+    NtripCaster caster("127.0.0.1", port, "GNSS");
+    ASSERT_TRUE(caster.start());
+
+    int fd = ntripHandshake(port, "GNSS");
+    ASSERT_GE(fd, 0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    auto corrections = buildMockCorrections();
+    caster.feed(corrections);
+
+    auto stats = caster.getStats();
+
+    EXPECT_EQ(stats.framesTx, corrections.size());
+    EXPECT_GT(stats.bytesTx, 0u);
+    EXPECT_GT(stats.uptimeMs, 0u);
+    EXPECT_FALSE(stats.messageTypeCounts.empty());
+
+    // Verify known message types (1005, 1077, 1087, 1097, 1127)
+    EXPECT_EQ(stats.messageTypeCounts.count(1005), 1u);
+    EXPECT_EQ(stats.messageTypeCounts.count(1077), 1u);
+
+    close(fd);
+    caster.stop();
+}
+
+TEST_F(NtripStatsTest, CasterUptimeIncreases)
+{
+    const uint16_t port = testPort(31);
+    NtripCaster caster("127.0.0.1", port, "GNSS");
+    ASSERT_TRUE(caster.start());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    auto s1 = caster.getStats();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    auto s2 = caster.getStats();
+
+    EXPECT_GT(s2.uptimeMs, s1.uptimeMs);
+
+    caster.stop();
+}
+
+TEST_F(NtripStatsTest, ClientStatsAfterReceive)
+{
+    const uint16_t port = testPort(32);
+    NtripCaster caster("127.0.0.1", port, "GNSS");
+    ASSERT_TRUE(caster.start());
+
+    NtripClient client("127.0.0.1", port, "GNSS");
+    ASSERT_TRUE(client.connect());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    auto corrections = buildMockCorrections();
+    caster.feed(corrections);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    client.receiveFrames();
+
+    auto stats = client.getStats();
+
+    EXPECT_EQ(stats.framesRx, corrections.size());
+    EXPECT_GT(stats.bytesRx, 0u);
+    EXPECT_GT(stats.uptimeMs, 0u);
+    EXPECT_FALSE(stats.messageTypeCounts.empty());
+    EXPECT_EQ(stats.messageTypeCounts.count(1005), 1u);
+
+    client.disconnect();
+    caster.stop();
+}
+
+TEST_F(NtripStatsTest, InterFrameTiming)
+{
+    const uint16_t port = testPort(33);
+    NtripCaster caster("127.0.0.1", port, "GNSS");
+    ASSERT_TRUE(caster.start());
+
+    NtripClient client("127.0.0.1", port, "GNSS");
+    ASSERT_TRUE(client.connect());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Two separate feeds with a gap
+    caster.feed(buildMockCorrections());
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    caster.feed(buildMockCorrections());
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    client.receiveFrames();
+
+    auto stats = client.getStats();
+
+    EXPECT_EQ(stats.framesRx, 10u);
+    EXPECT_GT(stats.avgInterFrameMs, 0.0);
+    EXPECT_GE(stats.maxInterFrameMs, stats.avgInterFrameMs);
+
+    client.disconnect();
+    caster.stop();
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  NtripCaster Auth Tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+class NtripAuthTest : public NtripTestBase {};
+
+TEST_F(NtripAuthTest, NoAuthByDefault)
+{
+    const uint16_t port = testPort(40);
+    NtripCaster caster("127.0.0.1", port, "GNSS");
+    ASSERT_TRUE(caster.start());
+
+    // No credentials set → any client should connect
+    int fd = ntripHandshake(port, "GNSS");
+    ASSERT_GE(fd, 0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT_EQ(caster.clientCount(), 1u);
+
+    close(fd);
+    caster.stop();
+}
+
+TEST_F(NtripAuthTest, AuthAcceptsValid)
+{
+    const uint16_t port = testPort(41);
+    NtripCaster caster("127.0.0.1", port, "GNSS");
+    caster.setCredentials("admin", "secret");
+    ASSERT_TRUE(caster.start());
+
+    int fd = ntripHandshake(port, "GNSS", "admin", "secret");
+    ASSERT_GE(fd, 0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT_EQ(caster.clientCount(), 1u);
+
+    close(fd);
+    caster.stop();
+}
+
+TEST_F(NtripAuthTest, AuthRejectsWrong)
+{
+    const uint16_t port = testPort(42);
+    NtripCaster caster("127.0.0.1", port, "GNSS");
+    caster.setCredentials("admin", "secret");
+    ASSERT_TRUE(caster.start());
+
+    int fd = ntripHandshake(port, "GNSS", "admin", "wrong");
+    EXPECT_LT(fd, 0);
+    EXPECT_EQ(caster.clientCount(), 0u);
+
+    caster.stop();
+}
+
+TEST_F(NtripAuthTest, AuthRejectsMissing)
+{
+    const uint16_t port = testPort(43);
+    NtripCaster caster("127.0.0.1", port, "GNSS");
+    caster.setCredentials("admin", "secret");
+    ASSERT_TRUE(caster.start());
+
+    // No auth header → should be rejected
+    int fd = ntripHandshake(port, "GNSS");
+    EXPECT_LT(fd, 0);
+    EXPECT_EQ(caster.clientCount(), 0u);
+
+    caster.stop();
+}
+
+TEST_F(NtripAuthTest, ClientAuthenticates)
+{
+    const uint16_t port = testPort(44);
+    NtripCaster caster("127.0.0.1", port, "GNSS");
+    caster.setCredentials("user", "pass");
+    ASSERT_TRUE(caster.start());
+
+    NtripClient client("127.0.0.1", port, "GNSS", "user", "pass");
+    ASSERT_TRUE(client.connect());
+    EXPECT_TRUE(client.isConnected());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT_EQ(caster.clientCount(), 1u);
+
+    client.disconnect();
+    caster.stop();
+}
+
+TEST_F(NtripAuthTest, ClientAuthFailsWrongPassword)
+{
+    const uint16_t port = testPort(45);
+    NtripCaster caster("127.0.0.1", port, "GNSS");
+    caster.setCredentials("user", "pass");
+    ASSERT_TRUE(caster.start());
+
+    NtripClient client("127.0.0.1", port, "GNSS", "user", "badpass");
+    EXPECT_FALSE(client.connect());
+    EXPECT_FALSE(client.isConnected());
+
+    caster.stop();
+}
+
+// ── Auto-Reconnect Tests ─────────────────────────────────────────────
+
+class NtripReconnectTest : public NtripTestBase {};
+
+TEST_F(NtripReconnectTest, NoReconnectByDefault)
+{
+    const uint16_t port = testPort(50);
+    NtripCaster caster("127.0.0.1", port, "GNSS");
+    ASSERT_TRUE(caster.start());
+
+    NtripClient client("127.0.0.1", port, "GNSS");
+    ASSERT_TRUE(client.connect());
+    EXPECT_EQ(client.reconnectCount(), 0u);
+
+    // Stop caster — client should NOT reconnect
+    caster.stop();
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    EXPECT_FALSE(client.isConnected());
+    EXPECT_EQ(client.reconnectCount(), 0u);
+
+    client.disconnect();
+}
+
+TEST_F(NtripReconnectTest, ReconnectsAfterCasterRestart)
+{
+    const uint16_t port = testPort(51);
+    NtripCaster caster("127.0.0.1", port, "GNSS");
+    ASSERT_TRUE(caster.start());
+
+    NtripClient client("127.0.0.1", port, "GNSS");
+    client.setAutoReconnect(true, 100, 500);
+    ASSERT_TRUE(client.connect());
+
+    // Kill the caster
+    caster.stop();
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    EXPECT_FALSE(client.isConnected());
+
+    // Restart caster — client should reconnect
+    ASSERT_TRUE(caster.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(800));
+    EXPECT_TRUE(client.isConnected());
+    EXPECT_GT(client.reconnectCount(), 0u);
+
+    client.disconnect();
+    caster.stop();
+}
+
+TEST_F(NtripReconnectTest, StopsOnDisconnect)
+{
+    const uint16_t port = testPort(52);
+    NtripCaster caster("127.0.0.1", port, "GNSS");
+    ASSERT_TRUE(caster.start());
+
+    NtripClient client("127.0.0.1", port, "GNSS");
+    client.setAutoReconnect(true, 100, 500);
+    ASSERT_TRUE(client.connect());
+
+    // Kill caster to trigger reconnect loop
+    caster.stop();
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
+    // Explicit disconnect should stop reconnection attempts
+    client.disconnect();
+    uint32_t countAfterDisconnect = client.reconnectCount();
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    EXPECT_EQ(client.reconnectCount(), countAfterDisconnect);
+}
+
+TEST_F(NtripReconnectTest, ExponentialBackoff)
+{
+    const uint16_t port = testPort(53);
+    NtripCaster caster("127.0.0.1", port, "GNSS");
+    ASSERT_TRUE(caster.start());
+
+    NtripClient client("127.0.0.1", port, "GNSS");
+    client.setAutoReconnect(true, 50, 200);
+    ASSERT_TRUE(client.connect());
+
+    // Kill caster — no restart, so all reconnects fail
+    caster.stop();
+
+    // Wait for several reconnect attempts with backoff
+    std::this_thread::sleep_for(std::chrono::milliseconds(800));
+    uint32_t count = client.reconnectCount();
+    EXPECT_GE(count, 2u);
+
+    client.disconnect();
 }

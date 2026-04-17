@@ -17,10 +17,13 @@
 #include <thread>
 #include <vector>
 
+#include "NtripLog.hpp"
+#include "NtripStats.hpp"
+
 namespace JimmyPaputto
 {
 
-    class NtripCaster
+    class NtripCaster : public NtripLoggable, public NtripStatsTracker
     {
     public:
         NtripCaster(std::string host, uint16_t port,
@@ -37,6 +40,9 @@ namespace JimmyPaputto
 
         size_t clientCount() const;
         void updatePosition(double lat, double lon);
+
+        /// Set credentials for Basic auth.  Empty = accept all (default).
+        void setCredentials(std::string username, std::string password);
 
     private:
         void acceptLoop(std::stop_token stoken);
@@ -63,6 +69,10 @@ namespace JimmyPaputto
         std::mutex positionMutex_;
         double latitude_ = 0.0;
         double longitude_ = 0.0;
+
+        std::mutex authMutex_;
+        std::string authUsername_;
+        std::string authPassword_;
     };
 
 }

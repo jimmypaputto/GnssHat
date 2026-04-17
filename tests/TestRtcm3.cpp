@@ -8,11 +8,6 @@
 
 using namespace JimmyPaputto;
 
-namespace JimmyPaputto
-{
-uint32_t crc24q(const uint8_t* data, size_t length);
-}
-
 namespace
 {
 

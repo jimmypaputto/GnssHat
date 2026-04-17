@@ -80,6 +80,22 @@ caster_state = {
 }
 
 
+# Log level names matching ENtripLogLevel / jp_ntrip_log_level_t
+_LOG_LEVEL_NAMES = {0: 'error', 1: 'warning', 2: 'info', 3: 'debug'}
+
+
+def _make_ntrip_log_callback(source):
+    """Return a logging callback that emits ntrip_log events over Socket.IO.
+    source: 'client' or 'caster'."""
+    def _cb(level, message):
+        socketio.emit('ntrip_log', {
+            'source': source,
+            'level': _LOG_LEVEL_NAMES.get(level, 'info'),
+            'message': message,
+        }, namespace='/')
+    return _cb
+
+
 def _ntrip_corrections_thread():
     """Background thread: receives RTCM3 frames from the native NtripClient
     and applies them to the GNSS receiver (same pattern as
@@ -224,6 +240,14 @@ def start_ntrip(config):
     ntrip_state['client'] = client
     ntrip_state['stop_event'] = stop_event
 
+    # Wire up log callback to emit Socket.IO events
+    client.set_log_level(2)  # Info
+    client.set_log_callback(_make_ntrip_log_callback('client'))
+
+    # Auto-reconnect
+    if config.get('auto_reconnect', False):
+        client.set_auto_reconnect(True, 1000, 30000)
+
     # Start corrections thread
     t = threading.Thread(target=_ntrip_corrections_thread, daemon=True)
     t.start()
@@ -285,11 +309,15 @@ def start_caster(config):
 
     port = int(config.get('port', 2101))
     mountpoint = config.get('mountpoint', 'GNSS')
+    username = config.get('username', '').strip()
+    password = config.get('password', '').strip()
 
     print(f"Caster: starting on 0.0.0.0:{port}/{mountpoint}")
 
     try:
         caster = gnsshat.NtripCaster("0.0.0.0", port, mountpoint)
+        if username:
+            caster.set_credentials(username, password)
         caster.start()
     except Exception as e:
         return False, f'Caster start error: {e}'
@@ -297,6 +325,10 @@ def start_caster(config):
     stop_event = threading.Event()
     caster_state['caster'] = caster
     caster_state['stop_event'] = stop_event
+
+    # Wire up log callback to emit Socket.IO events
+    caster.set_log_level(2)  # Info
+    caster.set_log_callback(_make_ntrip_log_callback('caster'))
 
     # Start feed thread
     t = threading.Thread(target=_caster_feed_thread, daemon=True)
@@ -1464,6 +1496,17 @@ def api_ntrip_status():
     })
 
 
+@app.route('/api/ntrip/stats', methods=['GET'])
+def api_ntrip_stats():
+    """Get NTRIP client connection statistics."""
+    if not ntrip_state['connected'] or not ntrip_state['client']:
+        return jsonify({})
+    try:
+        return jsonify(ntrip_state['client'].get_stats())
+    except Exception:
+        return jsonify({})
+
+
 @app.route('/api/ntrip/sourcetable', methods=['GET'])
 def api_ntrip_sourcetable():
     """Fetch NTRIP sourcetable (mountpoint list) from a caster.
@@ -1601,6 +1644,17 @@ def api_caster_status():
         except Exception:
             result['client_count'] = 0
     return jsonify(result)
+
+
+@app.route('/api/caster/stats', methods=['GET'])
+def api_caster_stats():
+    """Get NTRIP caster connection statistics."""
+    if not caster_state['running'] or not caster_state['caster']:
+        return jsonify({})
+    try:
+        return jsonify(caster_state['caster'].get_stats())
+    except Exception:
+        return jsonify({})
 
 
 # ─── Configuration API (native mode only) ───────────────────────────────────

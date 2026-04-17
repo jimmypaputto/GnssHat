@@ -1255,6 +1255,50 @@ void jp_gnss_ntrip_caster_update_position(
     caster->instance->updatePosition(lat, lon);
 }
 
+void jp_gnss_ntrip_caster_set_credentials(
+    jp_gnss_ntrip_caster_t* caster,
+    const char* username, const char* password)
+{
+    if (!caster || !caster->instance)
+        return;
+
+    caster->instance->setCredentials(
+        username ? username : "",
+        password ? password : "");
+}
+
+void jp_gnss_ntrip_caster_set_log_callback(
+    jp_gnss_ntrip_caster_t* caster,
+    jp_ntrip_log_callback_t callback, void* user_data)
+{
+    if (!caster || !caster->instance)
+        return;
+
+    if (callback)
+    {
+        caster->instance->setLogCallback(
+            [callback, user_data](ENtripLogLevel level,
+                                  const std::string& msg)
+            {
+                callback(static_cast<jp_ntrip_log_level_t>(level),
+                         msg.c_str(), user_data);
+            });
+    }
+    else
+    {
+        caster->instance->setLogCallback(nullptr);
+    }
+}
+
+void jp_gnss_ntrip_caster_set_log_level(
+    jp_gnss_ntrip_caster_t* caster, jp_ntrip_log_level_t level)
+{
+    if (!caster || !caster->instance)
+        return;
+
+    caster->instance->setLogLevel(static_cast<ENtripLogLevel>(level));
+}
+
 /* ── NTRIP Client ───────────────────────────────────────────────────── */
 
 struct jp_gnss_ntrip_client
@@ -1376,6 +1420,97 @@ void jp_gnss_ntrip_client_send_position(
         return;
 
     client->instance->sendPosition(lat, lon, alt);
+}
+
+void jp_gnss_ntrip_client_set_log_callback(
+    jp_gnss_ntrip_client_t* client,
+    jp_ntrip_log_callback_t callback, void* user_data)
+{
+    if (!client || !client->instance)
+        return;
+
+    if (callback)
+    {
+        client->instance->setLogCallback(
+            [callback, user_data](ENtripLogLevel level,
+                                  const std::string& msg)
+            {
+                callback(static_cast<jp_ntrip_log_level_t>(level),
+                         msg.c_str(), user_data);
+            });
+    }
+    else
+    {
+        client->instance->setLogCallback(nullptr);
+    }
+}
+
+void jp_gnss_ntrip_client_set_log_level(
+    jp_gnss_ntrip_client_t* client, jp_ntrip_log_level_t level)
+{
+    if (!client || !client->instance)
+        return;
+
+    client->instance->setLogLevel(static_cast<ENtripLogLevel>(level));
+}
+
+// ── Stats helpers ──────────────────────────────────────────────────────
+
+static void fillStats(const NtripStats& src, jp_ntrip_stats_t* dst)
+{
+    dst->bytes_tx = src.bytesTx;
+    dst->bytes_rx = src.bytesRx;
+    dst->frames_tx = src.framesTx;
+    dst->frames_rx = src.framesRx;
+    dst->uptime_ms = src.uptimeMs;
+    dst->last_frame_age_ms = src.lastFrameAgeMs;
+    dst->avg_inter_frame_ms = src.avgInterFrameMs;
+    dst->max_inter_frame_ms = src.maxInterFrameMs;
+
+    dst->num_msg_types = 0;
+    for (const auto& [id, count] : src.messageTypeCounts)
+    {
+        if (dst->num_msg_types >= JP_NTRIP_STATS_MAX_MSG_TYPES)
+            break;
+        dst->msg_type_ids[dst->num_msg_types] = id;
+        dst->msg_type_counts[dst->num_msg_types] = count;
+        dst->num_msg_types++;
+    }
+}
+
+void jp_gnss_ntrip_caster_get_stats(
+    const jp_gnss_ntrip_caster_t* caster, jp_ntrip_stats_t* stats)
+{
+    if (!caster || !caster->instance || !stats)
+        return;
+    memset(stats, 0, sizeof(*stats));
+    fillStats(caster->instance->getStats(), stats);
+}
+
+void jp_gnss_ntrip_client_get_stats(
+    const jp_gnss_ntrip_client_t* client, jp_ntrip_stats_t* stats)
+{
+    if (!client || !client->instance || !stats)
+        return;
+    memset(stats, 0, sizeof(*stats));
+    fillStats(client->instance->getStats(), stats);
+}
+
+void jp_gnss_ntrip_client_set_auto_reconnect(
+    jp_gnss_ntrip_client_t* client,
+    int enable, uint32_t initial_delay_ms, uint32_t max_delay_ms)
+{
+    if (!client || !client->instance)
+        return;
+    client->instance->setAutoReconnect(enable != 0, initial_delay_ms, max_delay_ms);
+}
+
+uint32_t jp_gnss_ntrip_client_reconnect_count(
+    const jp_gnss_ntrip_client_t* client)
+{
+    if (!client || !client->instance)
+        return 0;
+    return client->instance->reconnectCount();
 }
 
 }  // extern "C"

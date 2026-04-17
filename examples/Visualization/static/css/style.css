@@ -1140,6 +1140,30 @@ header h1 {
     background: rgba(255, 68, 68, 0.1);
 }
 
+.ntrip-log-panel {
+    max-height: 150px;
+    overflow-y: auto;
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 0.4em;
+    font-family: monospace;
+    font-size: 0.8em;
+    line-height: 1.4;
+    flex: 1;
+}
+
+.ntrip-log-panel .log-error   { color: #ff4444; }
+.ntrip-log-panel .log-warning { color: #ffaa00; }
+.ntrip-log-panel .log-info    { color: #88cc88; }
+.ntrip-log-panel .log-debug   { color: #888; }
+
+.ntrip-stats-grid {
+    margin-top: 0.5em;
+    padding: 0.4em 0;
+    font-size: 0.9em;
+}
+
 .data-content {
     width: 100%;
 }

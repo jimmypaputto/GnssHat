@@ -813,10 +813,28 @@
                                 <label for="cfg-ntrip-pass">Password</label>
                                 <input type="password" id="cfg-ntrip-pass" class="cfg-input">
                             </div>
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-auto-reconnect">Auto-Reconnect</label>
+                                <input type="checkbox" id="cfg-ntrip-auto-reconnect">
+                            </div>
 
                             <div class="cfg-actions">
                                 <button type="button" id="ntrip-connect-btn" class="cfg-btn cfg-btn-primary">Connect</button>
                                 <button type="button" id="ntrip-disconnect-btn" class="cfg-btn cfg-btn-secondary" disabled>Disconnect</button>
+                            </div>
+
+                            <div id="ntrip-client-stats" class="ntrip-stats-grid" style="display:none;">
+                                <div class="cfg-row"><label>Uptime</label><span id="nc-stat-uptime">—</span></div>
+                                <div class="cfg-row"><label>Bytes Rx</label><span id="nc-stat-bytes-rx">—</span></div>
+                                <div class="cfg-row"><label>Frames Rx</label><span id="nc-stat-frames-rx">—</span></div>
+                                <div class="cfg-row"><label>Last Frame</label><span id="nc-stat-last-frame">—</span></div>
+                                <div class="cfg-row"><label>Avg Interval</label><span id="nc-stat-avg-interval">—</span></div>
+                                <div class="cfg-row"><label>Message Types</label><span id="nc-stat-msg-types">—</span></div>
+                            </div>
+
+                            <div class="cfg-row" style="margin-top:0.5em;">
+                                <label>Log</label>
+                                <div id="ntrip-client-log" class="ntrip-log-panel"></div>
                             </div>
                         </fieldset>
 
@@ -838,6 +856,14 @@
                                 <input type="text" id="cfg-caster-mount" value="GNSS" placeholder="GNSS" class="cfg-input">
                             </div>
                             <div class="cfg-row">
+                                <label for="cfg-caster-user">Username</label>
+                                <input type="text" id="cfg-caster-user" class="cfg-input" placeholder="(optional)">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-caster-pass">Password</label>
+                                <input type="password" id="cfg-caster-pass" class="cfg-input" placeholder="(optional)">
+                            </div>
+                            <div class="cfg-row">
                                 <label>Connected Clients</label>
                                 <span id="caster-client-count">0</span>
                             </div>
@@ -845,6 +871,20 @@
                             <div class="cfg-actions">
                                 <button type="button" id="caster-start-btn" class="cfg-btn cfg-btn-primary">Start Caster</button>
                                 <button type="button" id="caster-stop-btn" class="cfg-btn cfg-btn-secondary" disabled>Stop Caster</button>
+                            </div>
+
+                            <div id="ntrip-caster-stats" class="ntrip-stats-grid" style="display:none;">
+                                <div class="cfg-row"><label>Uptime</label><span id="cs-stat-uptime">—</span></div>
+                                <div class="cfg-row"><label>Bytes Tx</label><span id="cs-stat-bytes-tx">—</span></div>
+                                <div class="cfg-row"><label>Frames Tx</label><span id="cs-stat-frames-tx">—</span></div>
+                                <div class="cfg-row"><label>Last Frame</label><span id="cs-stat-last-frame">—</span></div>
+                                <div class="cfg-row"><label>Avg Interval</label><span id="cs-stat-avg-interval">—</span></div>
+                                <div class="cfg-row"><label>Message Types</label><span id="cs-stat-msg-types">—</span></div>
+                            </div>
+
+                            <div class="cfg-row" style="margin-top:0.5em;">
+                                <label>Log</label>
+                                <div id="ntrip-caster-log" class="ntrip-log-panel"></div>
                             </div>
                         </fieldset>
 

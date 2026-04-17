@@ -16,6 +16,9 @@
 namespace JimmyPaputto
 {
 
+/// CRC-24Q checksum used by RTCM 3.x framing (table-driven).
+uint32_t crc24q(const uint8_t* data, size_t length);
+
 class Rtcm3Parser final
 {
 public:

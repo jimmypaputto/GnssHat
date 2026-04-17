@@ -1134,6 +1134,13 @@ header h1 {
     animation: pulse 1.5s infinite;
 }
 
+.ntrip-status-badge.reconnecting {
+    color: var(--accent-yellow);
+    border-color: var(--accent-yellow);
+    background: rgba(255, 170, 0, 0.1);
+    animation: pulse 1.5s infinite;
+}
+
 .ntrip-status-badge.error {
     color: var(--accent-red);
     border-color: var(--accent-red);

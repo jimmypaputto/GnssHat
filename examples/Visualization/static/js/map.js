@@ -2172,7 +2172,7 @@ function updateNtripUI(status, errorMsg) {
     if (!badge) return;
 
     // Remove all state classes
-    badge.classList.remove('connected', 'disconnected', 'connecting', 'error');
+    badge.classList.remove('connected', 'disconnected', 'connecting', 'error', 'reconnecting');
 
     if (status === 'connected') {
         badge.textContent = 'Connected';
@@ -2184,6 +2184,11 @@ function updateNtripUI(status, errorMsg) {
         badge.classList.add('connecting');
         connectBtn.disabled = true;
         disconnectBtn.disabled = true;
+    } else if (status === 'reconnecting') {
+        badge.textContent = 'Reconnecting...';
+        badge.classList.add('reconnecting');
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
     } else if (status === 'error') {
         badge.textContent = errorMsg ? 'Error: ' + errorMsg : 'Error';
         badge.classList.add('error');

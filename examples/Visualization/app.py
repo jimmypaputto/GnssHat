@@ -103,14 +103,35 @@ def _ntrip_corrections_thread():
 
     stop_event = ntrip_state['stop_event']
     client = ntrip_state['client']
+    was_connected = True
 
     while not stop_event.is_set():
         if not client.is_connected():
+            if was_connected:
+                was_connected = False
+                ntrip_state['connected'] = False
+                socketio.emit('ntrip_status',
+                              {'state': 'reconnecting',
+                               'message': 'Connection lost, auto-reconnecting...'},
+                              namespace='/')
+            # Wait briefly before re-checking (C++ reconnect runs in its own thread)
+            stop_event.wait(0.5)
+            if client.is_connected():
+                was_connected = True
+                ntrip_state['connected'] = True
+                socketio.emit('ntrip_status',
+                              {'state': 'connected',
+                               'message': 'Reconnected to NTRIP caster'},
+                              namespace='/')
+            continue
+
+        if not was_connected:
+            was_connected = True
+            ntrip_state['connected'] = True
             socketio.emit('ntrip_status',
-                          {'state': 'error', 'message': 'NTRIP connection lost'},
+                          {'state': 'connected',
+                           'message': 'Reconnected to NTRIP caster'},
                           namespace='/')
-            ntrip_state['connected'] = False
-            break
 
         try:
             frames = client.receive()
@@ -271,7 +292,7 @@ def stop_ntrip():
             print(f"NTRIP: error stopping client: {e}")
 
     if ntrip_state['corrections_thread']:
-        ntrip_state['corrections_thread'].join(timeout=5)
+        ntrip_state['corrections_thread'].join(timeout=3)
 
     was_connected = ntrip_state['connected']
     _reset_ntrip_state()
@@ -1480,10 +1501,20 @@ def api_ntrip_stop():
     if RUN_MODE != 'native':
         return jsonify({'error': 'NTRIP client only available in native mode'}), 400
 
-    stop_ntrip()
+    # Emit status immediately so the UI updates before the blocking disconnect
     socketio.emit('ntrip_status',
-                  {'state': 'disconnected', 'message': 'NTRIP disconnected'},
+                  {'state': 'disconnected', 'message': 'NTRIP disconnecting...'},
                   namespace='/')
+
+    # Run the actual disconnect in a background thread so the HTTP response
+    # returns promptly and the Flask/Socket.IO event loop stays responsive.
+    def _do_stop():
+        stop_ntrip()
+        socketio.emit('ntrip_status',
+                      {'state': 'disconnected', 'message': 'NTRIP disconnected'},
+                      namespace='/')
+
+    threading.Thread(target=_do_stop, daemon=True).start()
     return jsonify({'success': True})
 
 

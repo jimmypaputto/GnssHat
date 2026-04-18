@@ -55,7 +55,7 @@ namespace JimmyPaputto
         uint32_t reconnectCount() const;
 
     private:
-        bool connectInternal();
+        bool connectInternal(std::stop_token stoken = {});
         void receiveLoop(std::stop_token stoken);
         void extractFrames(const uint8_t *data, size_t len);
 

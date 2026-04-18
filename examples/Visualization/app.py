@@ -83,68 +83,48 @@ caster_state = {
 # Log level names matching ENtripLogLevel / jp_ntrip_log_level_t
 _LOG_LEVEL_NAMES = {0: 'error', 1: 'warning', 2: 'info', 3: 'debug'}
 
+import queue
+_ntrip_log_queue = queue.SimpleQueue()   # thread-safe, non-blocking put()
+
 
 def _make_ntrip_log_callback(source):
-    """Return a logging callback that emits ntrip_log events over Socket.IO.
-    source: 'client' or 'caster'."""
+    """Return a logging callback that queues log entries.
+    Called from C++ threads — must be lightweight and never touch socketio."""
     def _cb(level, message):
-        socketio.emit('ntrip_log', {
+        _ntrip_log_queue.put({
             'source': source,
             'level': _LOG_LEVEL_NAMES.get(level, 'info'),
             'message': message,
-        }, namespace='/')
+        })
     return _cb
 
 
 def _ntrip_corrections_thread():
-    """Background thread: receives RTCM3 frames from the native NtripClient
-    and applies them to the GNSS receiver (same pattern as
-    examples/Python/rtk_rover.py)."""
+    """Background thread: receives RTCM3 frames and applies them to the
+    GNSS receiver.  No socketio calls — status is polled via REST."""
 
     stop_event = ntrip_state['stop_event']
     client = ntrip_state['client']
-    was_connected = True
+    config = ntrip_state.get('config') or {}
+    auto_reconnect = config.get('auto_reconnect', False)
 
     while not stop_event.is_set():
         if not client.is_connected():
-            if was_connected:
-                was_connected = False
+            if not auto_reconnect:
                 ntrip_state['connected'] = False
-                socketio.emit('ntrip_status',
-                              {'state': 'reconnecting',
-                               'message': 'Connection lost, auto-reconnecting...'},
-                              namespace='/')
-            # Wait briefly before re-checking (C++ reconnect runs in its own thread)
+                break
             stop_event.wait(0.5)
-            if client.is_connected():
-                was_connected = True
-                ntrip_state['connected'] = True
-                socketio.emit('ntrip_status',
-                              {'state': 'connected',
-                               'message': 'Reconnected to NTRIP caster'},
-                              namespace='/')
             continue
-
-        if not was_connected:
-            was_connected = True
-            ntrip_state['connected'] = True
-            socketio.emit('ntrip_status',
-                          {'state': 'connected',
-                           'message': 'Reconnected to NTRIP caster'},
-                          namespace='/')
 
         try:
             frames = client.receive()
         except Exception as e:
             print(f"NTRIP receive error: {e}")
-            socketio.emit('ntrip_status',
-                          {'state': 'error', 'message': f'Receive error: {e}'},
-                          namespace='/')
-            ntrip_state['connected'] = False
-            break
+            stop_event.wait(0.2)
+            continue
 
         if not frames:
-            time.sleep(0.1)
+            stop_event.wait(0.05)
             continue
 
         hat = gps_state.get('hat')
@@ -155,9 +135,6 @@ def _ntrip_corrections_thread():
             hat.rtk_apply_corrections(frames)
         except Exception as e:
             print(f"Error applying RTCM3 corrections: {e}")
-            socketio.emit('ntrip_status',
-                          {'state': 'error', 'message': f'Correction error: {e}'},
-                          namespace='/')
 
 
 def _caster_feed_thread():
@@ -216,7 +193,8 @@ def _caster_feed_thread():
 def start_ntrip(config):
     """Start native NTRIP client and corrections thread.
 
-    config: dict with keys caster, port, mountpoint, username, password.
+    config: dict with keys caster, port, mountpoint, username, password,
+            auto_reconnect, reconnect_initial_delay, reconnect_max_delay.
     Returns (success: bool, error_message: str | None).
     """
     from jimmypaputto import gnsshat
@@ -241,10 +219,20 @@ def start_ntrip(config):
 
     try:
         client = gnsshat.NtripClient(caster_host, port, mountpoint, username, password)
+
+        # Wire up log callback (queues entries, never touches socketio)
+        client.set_log_level(2)  # Info
+        client.set_log_callback(_make_ntrip_log_callback('client'))
+
+        # Auto-reconnect
+        if config.get('auto_reconnect', False):
+            initial_delay = int(config.get('reconnect_initial_delay', 1000))
+            max_delay = int(config.get('reconnect_max_delay', 30000))
+            client.set_auto_reconnect(True, initial_delay, max_delay)
+
         client.connect()
     except RuntimeError as e:
         err_msg = str(e)
-        # Parse specific HTTP error codes from the RuntimeError message
         if '401' in err_msg or 'Unauthorized' in err_msg:
             return False, 'Authentication failed (401 Unauthorized)'
         elif '404' in err_msg or 'Not Found' in err_msg:
@@ -260,21 +248,12 @@ def start_ntrip(config):
     stop_event = threading.Event()
     ntrip_state['client'] = client
     ntrip_state['stop_event'] = stop_event
+    ntrip_state['connected'] = True
+    ntrip_state['config'] = config
 
-    # Wire up log callback to emit Socket.IO events
-    client.set_log_level(2)  # Info
-    client.set_log_callback(_make_ntrip_log_callback('client'))
-
-    # Auto-reconnect
-    if config.get('auto_reconnect', False):
-        client.set_auto_reconnect(True, 1000, 30000)
-
-    # Start corrections thread
     t = threading.Thread(target=_ntrip_corrections_thread, daemon=True)
     t.start()
     ntrip_state['corrections_thread'] = t
-    ntrip_state['connected'] = True
-    ntrip_state['config'] = config
 
     print("NTRIP: connected, streaming RTCM3 corrections")
     return True, None
@@ -285,14 +264,14 @@ def stop_ntrip():
     if ntrip_state['stop_event']:
         ntrip_state['stop_event'].set()
 
+    if ntrip_state['corrections_thread']:
+        ntrip_state['corrections_thread'].join(timeout=3)
+
     if ntrip_state['client']:
         try:
             ntrip_state['client'].disconnect()
         except Exception as e:
             print(f"NTRIP: error stopping client: {e}")
-
-    if ntrip_state['corrections_thread']:
-        ntrip_state['corrections_thread'].join(timeout=3)
 
     was_connected = ntrip_state['connected']
     _reset_ntrip_state()
@@ -1463,7 +1442,7 @@ def handle_reset_reference():
 
 @app.route('/api/ntrip/start', methods=['POST'])
 def api_ntrip_start():
-    """Start NTRIP client with given connection parameters"""
+    """Start NTRIP client with given connection parameters."""
     if RUN_MODE != 'native':
         return jsonify({'error': 'NTRIP client only available in native mode'}), 400
     if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
@@ -1473,58 +1452,68 @@ def api_ntrip_start():
     if not data:
         return jsonify({'error': 'No JSON body'}), 400
 
-    required = ['caster', 'port', 'mountpoint']
-    for field in required:
+    for field in ['caster', 'port', 'mountpoint']:
         if not data.get(field):
             return jsonify({'error': f'Missing required field: {field}'}), 400
 
-    socketio.emit('ntrip_status',
-                  {'state': 'connecting', 'message': f"Connecting to {data['caster']}:{data['port']}/{data['mountpoint']}..."},
-                  namespace='/')
-
     ok, err = start_ntrip(data)
     if ok:
-        socketio.emit('ntrip_status',
-                      {'state': 'connected', 'message': 'NTRIP connected, streaming RTCM3 corrections'},
-                      namespace='/')
         return jsonify({'success': True})
     else:
-        socketio.emit('ntrip_status',
-                      {'state': 'error', 'message': err},
-                      namespace='/')
         return jsonify({'error': err}), 500
 
 
 @app.route('/api/ntrip/stop', methods=['POST'])
 def api_ntrip_stop():
-    """Stop NTRIP client"""
+    """Stop NTRIP client."""
     if RUN_MODE != 'native':
         return jsonify({'error': 'NTRIP client only available in native mode'}), 400
 
-    # Emit status immediately so the UI updates before the blocking disconnect
-    socketio.emit('ntrip_status',
-                  {'state': 'disconnected', 'message': 'NTRIP disconnecting...'},
-                  namespace='/')
-
-    # Run the actual disconnect in a background thread so the HTTP response
-    # returns promptly and the Flask/Socket.IO event loop stays responsive.
-    def _do_stop():
-        stop_ntrip()
-        socketio.emit('ntrip_status',
-                      {'state': 'disconnected', 'message': 'NTRIP disconnected'},
-                      namespace='/')
-
-    threading.Thread(target=_do_stop, daemon=True).start()
+    stop_ntrip()
     return jsonify({'success': True})
 
 
 @app.route('/api/ntrip/status', methods=['GET'])
 def api_ntrip_status():
-    """Get current NTRIP client status"""
+    """Get current NTRIP client status — polled by the UI."""
+    client = ntrip_state['client']
+    if client is None:
+        return jsonify({
+            'state': 'disconnected',
+            'connected': False,
+            'config': ntrip_state['config'],
+        })
+
+    connected = client.is_connected()
+    config = ntrip_state.get('config') or {}
+    auto_reconnect = config.get('auto_reconnect', False)
+
+    if connected:
+        state = 'connected'
+    elif ntrip_state['connected'] and auto_reconnect:
+        state = 'reconnecting'
+    elif ntrip_state['connected']:
+        state = 'error'
+    else:
+        state = 'disconnected'
+
     return jsonify({
-        'connected': ntrip_state['connected'],
-        'config': ntrip_state['config'],
+        'state': state,
+        'connected': connected,
+        'config': config,
     })
+
+
+@app.route('/api/ntrip/logs', methods=['GET'])
+def api_ntrip_logs():
+    """Return and clear queued NTRIP log entries (client + caster)."""
+    entries = []
+    while True:
+        try:
+            entries.append(_ntrip_log_queue.get_nowait())
+        except queue.Empty:
+            break
+    return jsonify(entries)
 
 
 @app.route('/api/ntrip/stats', methods=['GET'])
@@ -1886,9 +1875,6 @@ def api_set_config():
             # 0. Stop NTRIP client/caster if running (HAT will be destroyed)
             if ntrip_state['connected']:
                 stop_ntrip()
-                socketio.emit('ntrip_status',
-                              {'state': 'disconnected', 'message': 'NTRIP stopped — module configuration changed'},
-                              namespace='/')
             if caster_state['running']:
                 stop_caster()
                 socketio.emit('caster_status',

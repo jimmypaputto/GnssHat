@@ -463,35 +463,45 @@ function initializeSocket() {
         location.reload();
     });
 
-    // NTRIP status updates (native mode, RTK HAT only)
-    socket.on('ntrip_status', function(data) {
-        updateNtripUI(data.state, data.message || null);
-    });
-
     // Caster status updates (native mode, RTK HAT base only)
     socket.on('caster_status', function(data) {
         updateCasterUI(data.state, data.message || null, data.client_count);
     });
 
-    // NTRIP log messages (client and caster)
-    socket.on('ntrip_log', function(data) {
-        var panelId = data.source === 'caster' ? 'ntrip-caster-log' : 'ntrip-client-log';
-        var panel = document.getElementById(panelId);
-        if (!panel) return;
-        var line = document.createElement('div');
-        line.className = 'log-' + (data.level || 'info');
-        line.textContent = data.message || '';
-        panel.appendChild(line);
-        // Keep max 200 lines
-        while (panel.childNodes.length > 200) panel.removeChild(panel.firstChild);
-        panel.scrollTop = panel.scrollHeight;
-    });
+    // Unified NTRIP polling (status + logs + stats every 1.5s)
+    setInterval(pollNtrip, 1500);
+}
 
-    // Stats polling (every 2s)
-    setInterval(function() {
-        pollNtripStats('/api/ntrip/stats', 'ntrip-client-stats', 'nc-stat');
-        pollNtripStats('/api/caster/stats', 'ntrip-caster-stats', 'cs-stat');
-    }, 2000);
+var _ntripPolling = false;
+function pollNtrip() {
+    if (_ntripPolling) return;
+    _ntripPolling = true;
+
+    // Poll status
+    fetch('/api/ntrip/status').then(function(r) { return r.json(); }).then(function(data) {
+        updateNtripUI(data.state);
+    }).catch(function() {});
+
+    // Poll logs
+    fetch('/api/ntrip/logs').then(function(r) { return r.json(); }).then(function(entries) {
+        entries.forEach(function(data) {
+            var panelId = data.source === 'caster' ? 'ntrip-caster-log' : 'ntrip-client-log';
+            var panel = document.getElementById(panelId);
+            if (!panel) return;
+            var line = document.createElement('div');
+            line.className = 'log-' + (data.level || 'info');
+            line.textContent = data.message || '';
+            panel.appendChild(line);
+            while (panel.childNodes.length > 200) panel.removeChild(panel.firstChild);
+            panel.scrollTop = panel.scrollHeight;
+        });
+    }).catch(function() {});
+
+    // Poll stats
+    pollNtripStats('/api/ntrip/stats', 'ntrip-client-stats', 'nc-stat');
+    pollNtripStats('/api/caster/stats', 'ntrip-caster-stats', 'cs-stat');
+
+    _ntripPolling = false;
 }
 
 function formatUptime(ms) {
@@ -1556,6 +1566,15 @@ function setupConfigPanel() {
         ntripDisconnectBtn.addEventListener('click', ntripDisconnect);
     }
 
+    // Auto-reconnect checkbox toggles collapsible params
+    const autoReconnectCb = document.getElementById('cfg-ntrip-auto-reconnect');
+    const reconnectParams = document.getElementById('ntrip-reconnect-params');
+    if (autoReconnectCb && reconnectParams) {
+        autoReconnectCb.addEventListener('change', () => {
+            reconnectParams.style.display = autoReconnectCb.checked ? '' : 'none';
+        });
+    }
+
     // NTRIP fetch mountpoints button
     const fetchMountsBtn = document.getElementById('ntrip-fetch-mounts-btn');
     if (fetchMountsBtn) {
@@ -2171,7 +2190,6 @@ function updateNtripUI(status, errorMsg) {
     const disconnectBtn = document.getElementById('ntrip-disconnect-btn');
     if (!badge) return;
 
-    // Remove all state classes
     badge.classList.remove('connected', 'disconnected', 'connecting', 'error', 'reconnecting');
 
     if (status === 'connected') {
@@ -2190,12 +2208,11 @@ function updateNtripUI(status, errorMsg) {
         connectBtn.disabled = true;
         disconnectBtn.disabled = false;
     } else if (status === 'error') {
-        badge.textContent = errorMsg ? 'Error: ' + errorMsg : 'Error';
+        badge.textContent = errorMsg ? 'Error: ' + errorMsg : 'Connection Lost';
         badge.classList.add('error');
         connectBtn.disabled = false;
         disconnectBtn.disabled = true;
     } else {
-        // disconnected (default)
         badge.textContent = 'Disconnected';
         badge.classList.add('disconnected');
         connectBtn.disabled = false;
@@ -2228,7 +2245,6 @@ function updateCasterUI(status, errorMsg, clientCount) {
         startBtn.disabled = false;
         stopBtn.disabled = true;
     } else {
-        // stopped (default)
         badge.textContent = 'Stopped';
         badge.classList.add('disconnected');
         startBtn.disabled = false;
@@ -2247,6 +2263,8 @@ async function ntripConnect() {
     const user = document.getElementById('cfg-ntrip-user').value.trim();
     const password = document.getElementById('cfg-ntrip-pass').value;
     const autoReconnect = document.getElementById('cfg-ntrip-auto-reconnect').checked;
+    const initialDelay = parseInt(document.getElementById('cfg-ntrip-reconnect-initial').value) || 1000;
+    const maxDelay = parseInt(document.getElementById('cfg-ntrip-reconnect-max').value) || 30000;
 
     if (!caster || !mountpoint) {
         updateNtripUI('error', 'Caster and mountpoint are required');
@@ -2259,13 +2277,20 @@ async function ntripConnect() {
         const resp = await fetch('/api/ntrip/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ caster, port, mountpoint, username: user, password, auto_reconnect: autoReconnect }),
+            body: JSON.stringify({
+                caster, port, mountpoint,
+                username: user, password,
+                auto_reconnect: autoReconnect,
+                reconnect_initial_delay: initialDelay,
+                reconnect_max_delay: maxDelay,
+            }),
         });
         const data = await resp.json();
-        if (!resp.ok) {
+        if (resp.ok) {
+            updateNtripUI('connected');
+        } else {
             updateNtripUI('error', data.error || 'Connection failed');
         }
-        // Success updates arrive via ntrip_status WebSocket event
     } catch (e) {
         updateNtripUI('error', e.message);
     }
@@ -2277,7 +2302,7 @@ async function ntripDisconnect() {
 
     try {
         await fetch('/api/ntrip/stop', { method: 'POST' });
-        // UI updates arrive via ntrip_status WebSocket event
+        updateNtripUI('disconnected');
     } catch (e) {
         updateNtripUI('error', e.message);
     }

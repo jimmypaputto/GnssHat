@@ -8,8 +8,10 @@
 #include <cerrno>
 #include <cmath>
 #include <cstring>
+#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -56,7 +58,7 @@ namespace JimmyPaputto
         return true;
     }
 
-    bool NtripClient::connectInternal()
+    bool NtripClient::connectInternal(std::stop_token stoken)
     {
         // Resolve hostname
         struct addrinfo hints{};
@@ -70,6 +72,12 @@ namespace JimmyPaputto
         {
             log(ENtripLogLevel::Error, "[NtripClient] Failed to resolve %s: %s",
                 host_.c_str(), gai_strerror(rc));
+            return false;
+        }
+
+        if (stoken.stop_requested())
+        {
+            ::freeaddrinfo(res);
             return false;
         }
 
@@ -87,7 +95,12 @@ namespace JimmyPaputto
         tv.tv_sec = 10;
         ::setsockopt(sockFd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-        if (::connect(sockFd_, res->ai_addr, res->ai_addrlen) < 0)
+        // Non-blocking connect with 5s timeout so disconnect() can interrupt it
+        int flags = ::fcntl(sockFd_, F_GETFL, 0);
+        ::fcntl(sockFd_, F_SETFL, flags | O_NONBLOCK);
+
+        int crc = ::connect(sockFd_, res->ai_addr, res->ai_addrlen);
+        if (crc < 0 && errno != EINPROGRESS)
         {
             log(ENtripLogLevel::Error, "[NtripClient] Failed to connect to %s:%u: %s",
                 host_.c_str(), port_, strerror(errno));
@@ -96,6 +109,54 @@ namespace JimmyPaputto
             ::freeaddrinfo(res);
             return false;
         }
+
+        if (crc < 0) // EINPROGRESS — wait for completion
+        {
+            struct pollfd pfd{};
+            pfd.fd = sockFd_;
+            pfd.events = POLLOUT;
+
+            // Poll in 500ms slices so disconnect() can interrupt via stop_token
+            int pr = 0;
+            for (int elapsed = 0; elapsed < 5000; elapsed += 500)
+            {
+                pr = ::poll(&pfd, 1, 500);
+                if (pr != 0 || stoken.stop_requested())
+                    break;
+            }
+
+            if (stoken.stop_requested())
+            {
+                ::close(sockFd_);
+                sockFd_ = -1;
+                ::freeaddrinfo(res);
+                return false;
+            }
+            if (pr <= 0)
+            {
+                log(ENtripLogLevel::Error, "[NtripClient] Connect to %s:%u timed out",
+                    host_.c_str(), port_);
+                ::close(sockFd_);
+                sockFd_ = -1;
+                ::freeaddrinfo(res);
+                return false;
+            }
+            int sockerr = 0;
+            socklen_t errlen = sizeof(sockerr);
+            ::getsockopt(sockFd_, SOL_SOCKET, SO_ERROR, &sockerr, &errlen);
+            if (sockerr != 0)
+            {
+                log(ENtripLogLevel::Error, "[NtripClient] Failed to connect to %s:%u: %s",
+                    host_.c_str(), port_, strerror(sockerr));
+                ::close(sockFd_);
+                sockFd_ = -1;
+                ::freeaddrinfo(res);
+                return false;
+            }
+        }
+
+        // Restore blocking mode for recv/send
+        ::fcntl(sockFd_, F_SETFL, flags);
         ::freeaddrinfo(res);
 
         // Build NTRIP v2.0 GET request
@@ -205,12 +266,11 @@ namespace JimmyPaputto
         if (!connected_.exchange(false))
         {
             // Wake any sleeping reconnect loop so it exits
+            if (recvThread_.joinable())
+                recvThread_.request_stop();
             reconnectCv_.notify_all();
             if (recvThread_.joinable())
-            {
-                recvThread_.request_stop();
                 recvThread_.join();
-            }
             return;
         }
 
@@ -355,7 +415,7 @@ namespace JimmyPaputto
                     sockFd_ = -1;
                 }
 
-                if (connectInternal())
+                if (connectInternal(stoken))
                 {
                     log(ENtripLogLevel::Info, "[NtripClient] Reconnected after %u attempts",
                         reconnectCount_.load());

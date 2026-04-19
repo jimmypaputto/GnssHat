@@ -1576,6 +1576,22 @@ function setupConfigPanel() {
         });
     }
 
+    // TLS checkbox toggles for client, caster, server
+    function wireToggle(checkboxId, panelId) {
+        const cb = document.getElementById(checkboxId);
+        const panel = document.getElementById(panelId);
+        if (cb && panel) {
+            panel.style.display = cb.checked ? '' : 'none';
+            cb.addEventListener('change', () => {
+                panel.style.display = cb.checked ? '' : 'none';
+            });
+        }
+    }
+    wireToggle('cfg-ntrip-use-tls', 'ntrip-tls-params');
+    wireToggle('cfg-caster-use-tls', 'caster-tls-params');
+    wireToggle('cfg-server-use-tls', 'server-tls-params');
+    wireToggle('cfg-server-auto-reconnect', 'server-reconnect-params');
+
     // NTRIP fetch mountpoints button
     const fetchMountsBtn = document.getElementById('ntrip-fetch-mounts-btn');
     if (fetchMountsBtn) {
@@ -2535,7 +2551,7 @@ async function restoreNtripStatus() {
                     setVal('cfg-ntrip-mount', c.mountpoint);
                     setVal('cfg-ntrip-user', c.username);
                     var tlsEl = document.getElementById('cfg-ntrip-use-tls');
-                    if (tlsEl && c.use_tls !== undefined) tlsEl.checked = !!c.use_tls;
+                    if (tlsEl && c.use_tls !== undefined) { tlsEl.checked = !!c.use_tls; tlsEl.dispatchEvent(new Event('change')); }
                     var vpEl = document.getElementById('cfg-ntrip-verify-cert');
                     if (vpEl && c.verify_peer !== undefined) vpEl.checked = !!c.verify_peer;
                 }
@@ -2579,9 +2595,9 @@ async function restoreNtripStatus() {
                     setVal('cfg-server-reconnect-initial', c.reconnect_initial_delay);
                     setVal('cfg-server-reconnect-max', c.reconnect_max_delay);
                     var arEl = document.getElementById('cfg-server-auto-reconnect');
-                    if (arEl && c.auto_reconnect !== undefined) arEl.checked = !!c.auto_reconnect;
+                    if (arEl && c.auto_reconnect !== undefined) { arEl.checked = !!c.auto_reconnect; arEl.dispatchEvent(new Event('change')); }
                     var stlsEl = document.getElementById('cfg-server-use-tls');
-                    if (stlsEl && c.use_tls !== undefined) stlsEl.checked = !!c.use_tls;
+                    if (stlsEl && c.use_tls !== undefined) { stlsEl.checked = !!c.use_tls; stlsEl.dispatchEvent(new Event('change')); }
                     var svpEl = document.getElementById('cfg-server-verify-cert');
                     if (svpEl && c.verify_peer !== undefined) svpEl.checked = !!c.verify_peer;
                 }

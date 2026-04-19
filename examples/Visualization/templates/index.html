@@ -819,30 +819,35 @@
                                 <label for="cfg-ntrip-auto-reconnect">Auto-Reconnect</label>
                                 <input type="checkbox" id="cfg-ntrip-auto-reconnect">
                             </div>
-                            <div id="ntrip-reconnect-params" class="ntrip-collapsible" style="display:none;">
-                                <div class="cfg-row">
-                                    <label for="cfg-ntrip-reconnect-initial">Initial Delay (ms)</label>
-                                    <input type="number" id="cfg-ntrip-reconnect-initial" min="100" max="60000" value="1000" class="cfg-input cfg-input-sm">
-                                </div>
-                                <div class="cfg-row">
-                                    <label for="cfg-ntrip-reconnect-max">Max Delay (ms)</label>
-                                    <input type="number" id="cfg-ntrip-reconnect-max" min="1000" max="300000" value="30000" class="cfg-input cfg-input-sm">
-                                </div>
-                            </div>
-
-                            <details class="cfg-collapse" id="cfg-ntrip-tls-settings">
-                                <summary>TLS Settings</summary>
+                            <details class="cfg-collapse" id="ntrip-reconnect-params" style="display:none;">
+                                <summary>Reconnect Settings</summary>
                                 <div class="cfg-collapse-body">
                                     <div class="cfg-row">
-                                        <label for="cfg-ntrip-use-tls">Use TLS</label>
-                                        <input type="checkbox" id="cfg-ntrip-use-tls">
+                                        <label for="cfg-ntrip-reconnect-initial">Initial Delay (ms)</label>
+                                        <input type="number" id="cfg-ntrip-reconnect-initial" min="100" max="60000" value="1000" class="cfg-input cfg-input-sm">
                                     </div>
+                                    <div class="cfg-row">
+                                        <label for="cfg-ntrip-reconnect-max">Max Delay (ms)</label>
+                                        <input type="number" id="cfg-ntrip-reconnect-max" min="1000" max="300000" value="30000" class="cfg-input cfg-input-sm">
+                                    </div>
+                                </div>
+                            </details>
+
+                            {% if tls_available %}
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-use-tls">Use TLS</label>
+                                <input type="checkbox" id="cfg-ntrip-use-tls">
+                            </div>
+                            <details class="cfg-collapse" id="ntrip-tls-params" style="display:none;">
+                                <summary>TLS Settings</summary>
+                                <div class="cfg-collapse-body">
                                     <div class="cfg-row">
                                         <label for="cfg-ntrip-verify-cert">Verify Certificate</label>
                                         <input type="checkbox" id="cfg-ntrip-verify-cert" checked>
                                     </div>
                                 </div>
                             </details>
+                            {% endif %}
 
                             <div class="cfg-actions">
                                 <button type="button" id="ntrip-connect-btn" class="cfg-btn cfg-btn-primary">Connect</button>
@@ -897,13 +902,14 @@
                                 </div>
                             </div>
 
-                            <details class="cfg-collapse" id="cfg-caster-tls-settings">
+                            {% if tls_available %}
+                            <div class="cfg-row">
+                                <label for="cfg-caster-use-tls">Use TLS</label>
+                                <input type="checkbox" id="cfg-caster-use-tls">
+                            </div>
+                            <details class="cfg-collapse" id="caster-tls-params" style="display:none;">
                                 <summary>TLS Settings</summary>
                                 <div class="cfg-collapse-body">
-                                    <div class="cfg-row">
-                                        <label for="cfg-caster-use-tls">Use TLS</label>
-                                        <input type="checkbox" id="cfg-caster-use-tls">
-                                    </div>
                                     <div class="cfg-row">
                                         <label for="cfg-caster-tls-cert">Certificate File</label>
                                         <input type="text" id="cfg-caster-tls-cert" class="cfg-input" placeholder="/path/to/cert.pem">
@@ -914,6 +920,7 @@
                                     </div>
                                 </div>
                             </details>
+                            {% endif %}
 
                             <div class="cfg-row">
                                 <label>Connected Clients</label>
@@ -973,8 +980,7 @@
                                 <label for="cfg-server-auto-reconnect">Auto-Reconnect</label>
                                 <input type="checkbox" id="cfg-server-auto-reconnect" checked>
                             </div>
-
-                            <details class="cfg-collapse" id="cfg-server-timeouts">
+                            <details class="cfg-collapse" id="server-reconnect-params" style="display:none;">
                                 <summary>Reconnect Settings</summary>
                                 <div class="cfg-collapse-body">
                                     <div class="cfg-row">
@@ -988,19 +994,21 @@
                                 </div>
                             </details>
 
-                            <details class="cfg-collapse" id="cfg-server-tls-settings">
+                            {% if tls_available %}
+                            <div class="cfg-row">
+                                <label for="cfg-server-use-tls">Use TLS</label>
+                                <input type="checkbox" id="cfg-server-use-tls">
+                            </div>
+                            <details class="cfg-collapse" id="server-tls-params" style="display:none;">
                                 <summary>TLS Settings</summary>
                                 <div class="cfg-collapse-body">
-                                    <div class="cfg-row">
-                                        <label for="cfg-server-use-tls">Use TLS</label>
-                                        <input type="checkbox" id="cfg-server-use-tls">
-                                    </div>
                                     <div class="cfg-row">
                                         <label for="cfg-server-verify-cert">Verify Certificate</label>
                                         <input type="checkbox" id="cfg-server-verify-cert" checked>
                                     </div>
                                 </div>
                             </details>
+                            {% endif %}
 
                             <div class="cfg-actions">
                                 <button type="button" id="server-start-btn" class="cfg-btn cfg-btn-primary">Start Server</button>

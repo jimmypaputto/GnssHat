@@ -1570,7 +1570,15 @@ def serve_res(filename):
 @app.route('/')
 def index():
     """Serve main page"""
-    return render_template('index.html', mode=RUN_MODE, hat_name=gps_state.get('hat_name'))
+    tls_available = False
+    try:
+        from jimmypaputto import gnsshat
+        tls_available = gnsshat.NtripCaster.is_tls_available()
+    except Exception:
+        pass
+    return render_template('index.html', mode=RUN_MODE,
+                           hat_name=gps_state.get('hat_name'),
+                           tls_available=tls_available)
 
 
 @app.route('/api/status')

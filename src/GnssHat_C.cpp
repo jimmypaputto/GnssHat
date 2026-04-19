@@ -1513,4 +1513,276 @@ uint32_t jp_gnss_ntrip_client_reconnect_count(
     return client->instance->reconnectCount();
 }
 
+/* ── NTRIP Client Auto-GGA ─────────────────────────────────────────── */
+
+void jp_gnss_ntrip_client_update_position(
+    jp_gnss_ntrip_client_t* client,
+    double lat, double lon, double alt)
+{
+    if (!client || !client->instance)
+        return;
+    client->instance->updatePosition(lat, lon, alt);
+}
+
+void jp_gnss_ntrip_client_set_auto_gga(
+    jp_gnss_ntrip_client_t* client, uint32_t interval_ms)
+{
+    if (!client || !client->instance)
+        return;
+    client->instance->setAutoGGA(interval_ms);
+}
+
+/* ── NTRIP TLS (client) ────────────────────────────────────────────── */
+
+void jp_gnss_ntrip_client_set_tls(
+    jp_gnss_ntrip_client_t* client, int enable, int verify_peer)
+{
+    if (!client || !client->instance) return;
+    client->instance->setUseTls(enable != 0, verify_peer != 0);
+}
+
+/* ── NTRIP Server ───────────────────────────────────────────────────── */
+
+struct jp_gnss_ntrip_server
+{
+    NtripServer* instance;
+};
+
+jp_gnss_ntrip_server_t* jp_gnss_ntrip_server_create(
+    const char* host, uint16_t port,
+    const char* mountpoint, const char* username, const char* password)
+{
+    if (!host || !mountpoint)
+        return nullptr;
+
+    try
+    {
+        auto* wrapper = new jp_gnss_ntrip_server;
+        wrapper->instance = new NtripServer(
+            host, port, mountpoint,
+            username ? username : "",
+            password ? password : "");
+        return wrapper;
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
+}
+
+void jp_gnss_ntrip_server_destroy(jp_gnss_ntrip_server_t* server)
+{
+    if (!server)
+        return;
+
+    delete server->instance;
+    delete server;
+}
+
+bool jp_gnss_ntrip_server_connect(jp_gnss_ntrip_server_t* server)
+{
+    if (!server || !server->instance)
+        return false;
+
+    return server->instance->connect();
+}
+
+void jp_gnss_ntrip_server_disconnect(jp_gnss_ntrip_server_t* server)
+{
+    if (!server || !server->instance)
+        return;
+
+    server->instance->disconnect();
+}
+
+bool jp_gnss_ntrip_server_is_connected(
+    const jp_gnss_ntrip_server_t* server)
+{
+    if (!server || !server->instance)
+        return false;
+
+    return server->instance->isConnected();
+}
+
+void jp_gnss_ntrip_server_feed(jp_gnss_ntrip_server_t* server,
+    const jp_gnss_rtcm3_frame_t* frames, uint32_t count)
+{
+    if (!server || !server->instance || !frames || count == 0)
+        return;
+
+    std::vector<std::vector<uint8_t>> cpp_frames;
+    cpp_frames.reserve(count);
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        cpp_frames.emplace_back(
+            frames[i].data, frames[i].data + frames[i].size);
+    }
+
+    server->instance->feed(cpp_frames);
+}
+
+void jp_gnss_ntrip_server_set_auto_reconnect(
+    jp_gnss_ntrip_server_t* server,
+    int enable, uint32_t initial_delay_ms, uint32_t max_delay_ms)
+{
+    if (!server || !server->instance)
+        return;
+    server->instance->setAutoReconnect(enable != 0, initial_delay_ms, max_delay_ms);
+}
+
+uint32_t jp_gnss_ntrip_server_reconnect_count(
+    const jp_gnss_ntrip_server_t* server)
+{
+    if (!server || !server->instance)
+        return 0;
+    return server->instance->reconnectCount();
+}
+
+void jp_gnss_ntrip_server_set_log_callback(
+    jp_gnss_ntrip_server_t* server,
+    jp_ntrip_log_callback_t callback, void* user_data)
+{
+    if (!server || !server->instance)
+        return;
+
+    if (callback)
+    {
+        server->instance->setLogCallback(
+            [callback, user_data](ENtripLogLevel level,
+                                  const std::string& msg)
+            {
+                callback(static_cast<jp_ntrip_log_level_t>(level),
+                         msg.c_str(), user_data);
+            });
+    }
+    else
+    {
+        server->instance->setLogCallback(nullptr);
+    }
+}
+
+void jp_gnss_ntrip_server_set_log_level(
+    jp_gnss_ntrip_server_t* server, jp_ntrip_log_level_t level)
+{
+    if (!server || !server->instance)
+        return;
+
+    server->instance->setLogLevel(static_cast<ENtripLogLevel>(level));
+}
+
+void jp_gnss_ntrip_server_get_stats(
+    const jp_gnss_ntrip_server_t* server, jp_ntrip_stats_t* stats)
+{
+    if (!server || !server->instance || !stats)
+        return;
+    memset(stats, 0, sizeof(*stats));
+    fillStats(server->instance->getStats(), stats);
+}
+
+/* ── NTRIP TLS (server + availability) ─────────────────────────────── */
+
+void jp_gnss_ntrip_server_set_tls(
+    jp_gnss_ntrip_server_t* server, int enable, int verify_peer)
+{
+    if (!server || !server->instance) return;
+    server->instance->setUseTls(enable != 0, verify_peer != 0);
+}
+
+bool jp_gnss_ntrip_is_tls_available(void)
+{
+    return NtripClient::isTlsAvailable();
+}
+
+bool jp_gnss_ntrip_caster_set_tls(
+    jp_gnss_ntrip_caster_t* caster,
+    const char* cert_file, const char* key_file)
+{
+    if (!caster || !caster->instance || !cert_file || !key_file)
+        return false;
+    return caster->instance->setTls(cert_file, key_file);
+}
+
+/* ── NTRIP Sourcetable Fetch ────────────────────────────────────────── */
+
+static char* strdup_safe(const std::string& s)
+{
+    char* p = static_cast<char*>(malloc(s.size() + 1));
+    if (p)
+    {
+        memcpy(p, s.c_str(), s.size() + 1);
+    }
+    return p;
+}
+
+uint32_t jp_gnss_ntrip_fetch_sourcetable(
+    const char* host, uint16_t port,
+    const char* username, const char* password,
+    uint32_t timeout_ms,
+    jp_ntrip_sourcetable_entry_t** entries_out,
+    int use_tls, int tls_verify_peer)
+{
+    if (!host || !entries_out)
+    {
+        if (entries_out) *entries_out = nullptr;
+        return 0;
+    }
+
+    auto cpp_entries = NtripClient::fetchSourcetable(
+        host, port,
+        username ? username : "",
+        password ? password : "",
+        timeout_ms,
+        use_tls != 0,
+        tls_verify_peer != 0);
+
+    if (cpp_entries.empty())
+    {
+        *entries_out = nullptr;
+        return 0;
+    }
+
+    uint32_t count = static_cast<uint32_t>(cpp_entries.size());
+    auto* entries = static_cast<jp_ntrip_sourcetable_entry_t*>(
+        calloc(count, sizeof(jp_ntrip_sourcetable_entry_t)));
+    if (!entries)
+    {
+        *entries_out = nullptr;
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        entries[i].mountpoint = strdup_safe(cpp_entries[i].mountpoint);
+        entries[i].identifier = strdup_safe(cpp_entries[i].identifier);
+        entries[i].format = strdup_safe(cpp_entries[i].format);
+        entries[i].format_details = strdup_safe(cpp_entries[i].formatDetails);
+        entries[i].carrier = strdup_safe(cpp_entries[i].carrier);
+        entries[i].nav_system = strdup_safe(cpp_entries[i].navSystem);
+        entries[i].latitude = cpp_entries[i].latitude;
+        entries[i].longitude = cpp_entries[i].longitude;
+    }
+
+    *entries_out = entries;
+    return count;
+}
+
+void jp_gnss_ntrip_free_sourcetable(
+    jp_ntrip_sourcetable_entry_t* entries, uint32_t count)
+{
+    if (!entries)
+        return;
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        free(entries[i].mountpoint);
+        free(entries[i].identifier);
+        free(entries[i].format);
+        free(entries[i].format_details);
+        free(entries[i].carrier);
+        free(entries[i].nav_system);
+    }
+    free(entries);
+}
+
 }  // extern "C"

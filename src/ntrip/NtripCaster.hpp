@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -19,6 +20,7 @@
 
 #include "NtripLog.hpp"
 #include "NtripStats.hpp"
+#include "NtripTls.hpp"
 
 namespace JimmyPaputto
 {
@@ -44,6 +46,13 @@ namespace JimmyPaputto
         /// Set credentials for Basic auth.  Empty = accept all (default).
         void setCredentials(std::string username, std::string password);
 
+        /// Enable server-side TLS.  Must be called before start().
+        /// certFile and keyFile are paths to PEM files.
+        bool setTls(const std::string &certFile, const std::string &keyFile);
+
+        /// Check if TLS support was compiled in.
+        static bool isTlsAvailable();
+
     private:
         void acceptLoop(std::stop_token stoken);
         void handleClient(int clientFd, std::string clientAddr);
@@ -53,6 +62,9 @@ namespace JimmyPaputto
         void sendSourcetable(int fd);
         void sendResponse(int fd, const char *status, const char *body);
         bool sendAll(int fd, const void *data, size_t len);
+
+        ssize_t netRecv(int fd, void *buf, size_t len);
+        void closeClientTls(int fd);
 
         std::string host_;
         uint16_t port_;
@@ -65,6 +77,7 @@ namespace JimmyPaputto
 
         mutable std::mutex clientsMutex_;
         std::vector<int> clients_;
+        std::vector<int> sources_;   // POST (source/server push) fds
 
         std::mutex positionMutex_;
         double latitude_ = 0.0;
@@ -73,6 +86,21 @@ namespace JimmyPaputto
         std::mutex authMutex_;
         std::string authUsername_;
         std::string authPassword_;
+
+        struct HandlerThread {
+            std::thread thread;
+            std::atomic<bool> finished{false};
+        };
+        std::mutex threadsMutex_;
+        std::vector<std::unique_ptr<HandlerThread>> clientThreads_;
+
+        // Server-side TLS
+        NtripTlsServerContext tlsCtx_;
+        mutable std::mutex tlsMapMutex_;
+        std::vector<std::pair<int, void *>> tlsHandles_; // fd → SSL*
+        void *getTlsHandle(int fd) const;
+        void setTlsHandle(int fd, void *handle);
+        void removeTlsHandle(int fd);
     };
 
 }

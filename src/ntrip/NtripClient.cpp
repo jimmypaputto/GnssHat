@@ -40,7 +40,22 @@ namespace JimmyPaputto
 
     NtripClient::~NtripClient()
     {
+        autoGgaIntervalMs_ = 0;
+        ggaCv_.notify_all();
+        if (autoGgaThread_.joinable())
+            autoGgaThread_.request_stop();
         disconnect();
+    }
+
+    void NtripClient::setUseTls(bool enable, bool verifyPeer)
+    {
+        useTls_ = enable;
+        tlsVerifyPeer_ = verifyPeer;
+    }
+
+    bool NtripClient::isTlsAvailable()
+    {
+        return NtripTlsSocket::isAvailable();
     }
 
     bool NtripClient::connect()
@@ -159,6 +174,23 @@ namespace JimmyPaputto
         ::fcntl(sockFd_, F_SETFL, flags);
         ::freeaddrinfo(res);
 
+        // TLS handshake (if enabled)
+        if (useTls_)
+        {
+            tls_.close();
+            if (!tls_.wrap(sockFd_, host_, tlsVerifyPeer_))
+            {
+                log(ENtripLogLevel::Error,
+                    "[NtripClient] TLS handshake failed to %s:%u",
+                    host_.c_str(), port_);
+                ::close(sockFd_);
+                sockFd_ = -1;
+                return false;
+            }
+            log(ENtripLogLevel::Info, "[NtripClient] TLS established to %s:%u",
+                host_.c_str(), port_);
+        }
+
         // Build NTRIP v2.0 GET request
         std::ostringstream req;
         req << "GET /" << mountpoint_ << " HTTP/1.1\r\n";
@@ -176,11 +208,12 @@ namespace JimmyPaputto
         req << "\r\n";
 
         std::string reqStr = req.str();
-        ssize_t sent = ::send(sockFd_, reqStr.data(), reqStr.size(), MSG_NOSIGNAL);
+        ssize_t sent = netSend(reqStr.data(), reqStr.size());
         if (sent < 0 || static_cast<size_t>(sent) != reqStr.size())
         {
             log(ENtripLogLevel::Error, "[NtripClient] Failed to send request: %s",
                 strerror(errno));
+            tls_.close();
             ::close(sockFd_);
             sockFd_ = -1;
             return false;
@@ -193,11 +226,12 @@ namespace JimmyPaputto
 
         while (hdrLen < sizeof(hdrBuf) - 1)
         {
-            ssize_t n = ::recv(sockFd_, hdrBuf + hdrLen,
-                               sizeof(hdrBuf) - 1 - hdrLen, 0);
+            ssize_t n = netRecv(hdrBuf + hdrLen,
+                               sizeof(hdrBuf) - 1 - hdrLen);
             if (n <= 0)
             {
                 log(ENtripLogLevel::Error, "[NtripClient] Connection closed during header read");
+                tls_.close();
                 ::close(sockFd_);
                 sockFd_ = -1;
                 return false;
@@ -215,6 +249,7 @@ namespace JimmyPaputto
         if (!headerComplete)
         {
             log(ENtripLogLevel::Error, "[NtripClient] Incomplete response header");
+            tls_.close();
             ::close(sockFd_);
             sockFd_ = -1;
             return false;
@@ -236,6 +271,7 @@ namespace JimmyPaputto
 
             log(ENtripLogLevel::Error, "[NtripClient] Caster rejected connection: %s",
                 firstLine.c_str());
+            tls_.close();
             ::close(sockFd_);
             sockFd_ = -1;
             return false;
@@ -278,6 +314,8 @@ namespace JimmyPaputto
             recvThread_.request_stop();
 
         reconnectCv_.notify_all();
+
+        tls_.close();
 
         if (sockFd_ >= 0)
         {
@@ -354,7 +392,218 @@ namespace JimmyPaputto
         char sentence[300];
         snprintf(sentence, sizeof(sentence), "%s*%02X\r\n", gga, cksum);
 
-        ::send(sockFd_, sentence, strlen(sentence), MSG_NOSIGNAL);
+        netSend(sentence, strlen(sentence));
+    }
+
+    void NtripClient::updatePosition(double lat, double lon, double alt)
+    {
+        std::lock_guard lock(ggaMutex_);
+        ggaLat_ = lat;
+        ggaLon_ = lon;
+        ggaAlt_ = alt;
+    }
+
+    void NtripClient::setAutoGGA(uint32_t intervalMs)
+    {
+        autoGgaIntervalMs_ = intervalMs;
+
+        if (intervalMs == 0)
+        {
+            // Stop auto-GGA thread
+            ggaCv_.notify_all();
+            if (autoGgaThread_.joinable())
+            {
+                autoGgaThread_.request_stop();
+                autoGgaThread_.join();
+            }
+            return;
+        }
+
+        // Start or restart auto-GGA thread
+        if (autoGgaThread_.joinable())
+        {
+            autoGgaThread_.request_stop();
+            ggaCv_.notify_all();
+            autoGgaThread_.join();
+        }
+        autoGgaThread_ = std::jthread([this](std::stop_token st)
+                                      { autoGgaLoop(st); });
+    }
+
+    std::vector<NtripSourcetableEntry> NtripClient::fetchSourcetable(
+        const std::string &host, uint16_t port,
+        const std::string &username,
+        const std::string &password,
+        uint32_t timeoutMs,
+        bool useTls,
+        bool tlsVerifyPeer)
+    {
+        std::vector<NtripSourcetableEntry> entries;
+
+        // Resolve hostname
+        struct addrinfo hints{};
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+
+        std::string portStr = std::to_string(port);
+        struct addrinfo *res = nullptr;
+        int rc = ::getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res);
+        if (rc != 0 || !res)
+            return entries;
+
+        int fd = ::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+        if (fd < 0)
+        {
+            ::freeaddrinfo(res);
+            return entries;
+        }
+
+        // Set timeout
+        struct timeval tv{};
+        tv.tv_sec = static_cast<long>(timeoutMs / 1000);
+        tv.tv_usec = static_cast<long>((timeoutMs % 1000) * 1000);
+        ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+        // Non-blocking connect with timeout
+        int flags = ::fcntl(fd, F_GETFL, 0);
+        ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+        int crc = ::connect(fd, res->ai_addr, res->ai_addrlen);
+        if (crc < 0 && errno != EINPROGRESS)
+        {
+            ::close(fd);
+            ::freeaddrinfo(res);
+            return entries;
+        }
+
+        if (crc < 0)
+        {
+            struct pollfd pfd{};
+            pfd.fd = fd;
+            pfd.events = POLLOUT;
+            int pr = ::poll(&pfd, 1, static_cast<int>(timeoutMs));
+            if (pr <= 0)
+            {
+                ::close(fd);
+                ::freeaddrinfo(res);
+                return entries;
+            }
+            int sockerr = 0;
+            socklen_t errlen = sizeof(sockerr);
+            ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &sockerr, &errlen);
+            if (sockerr != 0)
+            {
+                ::close(fd);
+                ::freeaddrinfo(res);
+                return entries;
+            }
+        }
+
+        ::fcntl(fd, F_SETFL, flags);
+        ::freeaddrinfo(res);
+
+        // TLS handshake (if enabled)
+        NtripTlsSocket tls;
+        if (useTls)
+        {
+            if (!tls.wrap(fd, host, tlsVerifyPeer))
+            {
+                ::close(fd);
+                return entries;
+            }
+        }
+
+        auto localSend = [&](const void *buf, size_t len) -> ssize_t {
+            if (tls.isActive())
+                return tls.write(buf, len);
+            return ::send(fd, buf, len, MSG_NOSIGNAL);
+        };
+
+        auto localRecv = [&](void *buf, size_t len) -> ssize_t {
+            if (tls.isActive())
+                return tls.read(buf, len);
+            return ::recv(fd, buf, len, 0);
+        };
+
+        // Build sourcetable request
+        std::ostringstream req;
+        req << "GET / HTTP/1.1\r\n";
+        req << "Host: " << host << ":" << port << "\r\n";
+        req << "Ntrip-Version: Ntrip/2.0\r\n";
+        req << "User-Agent: GnssHat/1.0\r\n";
+
+        if (!username.empty())
+        {
+            std::string cred = username + ":" + password;
+            req << "Authorization: Basic " << base64Encode(cred) << "\r\n";
+        }
+
+        req << "Accept: */*\r\n";
+        req << "\r\n";
+
+        std::string reqStr = req.str();
+        ssize_t sent = localSend(reqStr.data(), reqStr.size());
+        if (sent < 0 || static_cast<size_t>(sent) != reqStr.size())
+        {
+            tls.close();
+            ::close(fd);
+            return entries;
+        }
+
+        // Read full response
+        std::string response;
+        char buf[4096];
+        while (true)
+        {
+            ssize_t n = localRecv(buf, sizeof(buf));
+            if (n <= 0)
+                break;
+            response.append(buf, static_cast<size_t>(n));
+            if (response.find("ENDSOURCETABLE") != std::string::npos)
+                break;
+        }
+        tls.close();
+        ::close(fd);
+
+        // Parse STR records
+        std::istringstream iss(response);
+        std::string line;
+        while (std::getline(iss, line))
+        {
+            // Strip \r
+            if (!line.empty() && line.back() == '\r')
+                line.pop_back();
+
+            if (line.substr(0, 4) != "STR;")
+                continue;
+
+            // Split by ';'
+            std::vector<std::string> parts;
+            std::istringstream ls(line);
+            std::string part;
+            while (std::getline(ls, part, ';'))
+                parts.push_back(part);
+
+            if (parts.size() < 4)
+                continue;
+
+            NtripSourcetableEntry e;
+            e.mountpoint = parts[1];
+            e.identifier = parts[2];
+            e.format = parts[3];
+            if (parts.size() > 4) e.formatDetails = parts[4];
+            if (parts.size() > 5) e.carrier = parts[5];
+            if (parts.size() > 6) e.navSystem = parts[6];
+            if (parts.size() > 9)
+            {
+                try { e.latitude = std::stod(parts[8]); } catch (...) {}
+                try { e.longitude = std::stod(parts[9]); } catch (...) {}
+            }
+            entries.push_back(std::move(e));
+        }
+
+        return entries;
     }
 
     // -----------------------------------------------------------------------
@@ -368,7 +617,7 @@ namespace JimmyPaputto
     receive_loop_start:
         while (!stoken.stop_requested() && connected_)
         {
-            ssize_t n = ::recv(sockFd_, buf, sizeof(buf), 0);
+            ssize_t n = netRecv(buf, sizeof(buf));
             if (n <= 0)
             {
                 if (n == 0)
@@ -409,6 +658,7 @@ namespace JimmyPaputto
                     break;
 
                 // Close old socket
+                tls_.close();
                 if (sockFd_ >= 0)
                 {
                     ::close(sockFd_);
@@ -489,6 +739,50 @@ namespace JimmyPaputto
                 parseBuffer_.begin(),
                 parseBuffer_.begin() + static_cast<ptrdiff_t>(frameLen));
         }
+    }
+
+    void NtripClient::autoGgaLoop(std::stop_token stoken)
+    {
+        while (!stoken.stop_requested())
+        {
+            uint32_t intervalMs = autoGgaIntervalMs_.load();
+            if (intervalMs == 0)
+                return;
+
+            {
+                std::unique_lock lk(ggaMutex_);
+                ggaCv_.wait_for(lk, std::chrono::milliseconds(intervalMs),
+                                [&] { return stoken.stop_requested() || autoGgaIntervalMs_ == 0; });
+            }
+
+            if (stoken.stop_requested() || autoGgaIntervalMs_ == 0)
+                return;
+
+            double lat, lon, alt;
+            {
+                std::lock_guard lk(ggaMutex_);
+                lat = ggaLat_;
+                lon = ggaLon_;
+                alt = ggaAlt_;
+            }
+
+            if (connected_ && (lat != 0.0 || lon != 0.0))
+                sendPosition(lat, lon, alt);
+        }
+    }
+
+    ssize_t NtripClient::netSend(const void *buf, size_t len)
+    {
+        if (tls_.isActive())
+            return tls_.write(buf, len);
+        return ::send(sockFd_, buf, len, MSG_NOSIGNAL);
+    }
+
+    ssize_t NtripClient::netRecv(void *buf, size_t len)
+    {
+        if (tls_.isActive())
+            return tls_.read(buf, len);
+        return ::recv(sockFd_, buf, len, 0);
     }
 
 }

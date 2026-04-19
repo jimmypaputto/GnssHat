@@ -97,6 +97,46 @@ namespace JimmyPaputto
             recordFrameTimestamp();
         }
 
+        /// Record raw RTCM3 stream bytes, scanning for 0xD3 preambles to
+        /// extract message types and count frames.
+        void statsRecordTxRaw(const uint8_t* data, size_t len)
+        {
+            bytesTx_.fetch_add(len, std::memory_order_relaxed);
+
+            size_t frames = 0;
+            {
+                std::lock_guard<std::mutex> lk(statsMutex_);
+                for (size_t i = 0; i + 5 <= len; )
+                {
+                    if (data[i] == 0xD3)
+                    {
+                        uint16_t payloadLen =
+                            (static_cast<uint16_t>(data[i + 1] & 0x03) << 8) |
+                            static_cast<uint16_t>(data[i + 2]);
+                        size_t frameLen = 3 + payloadLen + 3; // header + payload + CRC
+
+                        uint16_t msgType =
+                            (static_cast<uint16_t>(data[i + 3]) << 4) |
+                            (static_cast<uint16_t>(data[i + 4]) >> 4);
+                        messageTypeCounts_[msgType]++;
+                        ++frames;
+
+                        if (i + frameLen <= len)
+                            i += frameLen;
+                        else
+                            break;
+                    }
+                    else
+                    {
+                        ++i;
+                    }
+                }
+            }
+            framesTx_.fetch_add(frames, std::memory_order_relaxed);
+            if (frames > 0)
+                recordFrameTimestamp();
+        }
+
         void statsRecordRx(size_t bytes)
         {
             bytesRx_.fetch_add(bytes, std::memory_order_relaxed);

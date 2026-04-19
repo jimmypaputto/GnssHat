@@ -6,6 +6,7 @@ project(GnssHat VERSION 1.0.0)
 
 option(BUILD_PYTHON "Build Python bindings" OFF)
 option(BUILD_EXAMPLES "Build C and C++ examples" OFF)
+option(NTRIP_SSL_SUPPORT "Enable TLS/SSL for NTRIP connections (requires OpenSSL)" OFF)
 
 set(LIBGPIOD_VERSION 2)
 add_compile_definitions(LIBGPIOD_VERSION=${LIBGPIOD_VERSION})
@@ -63,6 +64,7 @@ include_directories(
 set(LIB_SOURCES
     src/ntrip/NtripCaster.cpp
     src/ntrip/NtripClient.cpp
+    src/ntrip/NtripServer.cpp
     src/common/GpioInterruptLine.cpp
     src/common/JPGuard.cpp
     src/common/Utils.cpp
@@ -96,6 +98,13 @@ set_target_properties(GnssHat PROPERTIES
 )
 
 target_link_libraries(GnssHat gpiod pthread util)
+
+if(NTRIP_SSL_SUPPORT)
+    find_package(OpenSSL REQUIRED)
+    target_compile_definitions(GnssHat PRIVATE GNSSHAT_HAS_SSL)
+    target_link_libraries(GnssHat OpenSSL::SSL OpenSSL::Crypto)
+    message(STATUS "NTRIP SSL/TLS support enabled")
+endif()
 
 if(BUILD_EXAMPLES)
     file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include)
@@ -206,6 +215,8 @@ install(
     FILES
         src/ntrip/NtripCaster.hpp
         src/ntrip/NtripClient.hpp
+        src/ntrip/NtripServer.hpp
+        src/ntrip/NtripTls.hpp
     DESTINATION
         /usr/local/include/jimmypaputto/ntrip
 )

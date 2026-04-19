@@ -875,6 +875,50 @@ header h1 {
     padding: 0 6px;
 }
 
+/* ─── Collapsible details/summary ──────────────────────── */
+.cfg-collapse {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin: 8px 0;
+    background: color-mix(in srgb, var(--bg-card) 60%, transparent);
+}
+
+.cfg-collapse summary {
+    cursor: pointer;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+
+.cfg-collapse summary:hover {
+    background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
+}
+
+.cfg-collapse summary::before {
+    content: '\25B6';
+    font-size: 9px;
+    transition: transform 0.2s;
+    display: inline-block;
+    color: var(--accent-cyan);
+}
+
+.cfg-collapse[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.cfg-collapse .cfg-collapse-body {
+    padding: 4px 10px 10px;
+    border-top: 1px solid var(--border-color);
+}
+
 .cfg-row {
     display: flex;
     align-items: center;

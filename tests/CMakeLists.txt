@@ -57,6 +57,7 @@ set(LIB_SOURCES
     ${SRC_DIR}/ublox/UbxParser.cpp
     ${SRC_DIR}/ntrip/NtripCaster.cpp
     ${SRC_DIR}/ntrip/NtripClient.cpp
+    ${SRC_DIR}/ntrip/NtripServer.cpp
 )
 
 add_executable(GnssHatTests

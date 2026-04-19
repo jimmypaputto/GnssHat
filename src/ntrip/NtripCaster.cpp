@@ -97,14 +97,37 @@ namespace JimmyPaputto
         if (acceptThread_.joinable())
             acceptThread_.join();
 
-        // Close all client connections
-        std::lock_guard lock(clientsMutex_);
-        for (int fd : clients_)
+        // Shutdown (but don't close) client/source sockets to unblock
+        // handler threads — they close their own fds on exit.
         {
-            ::shutdown(fd, SHUT_RDWR);
-            ::close(fd);
+            std::lock_guard lock(clientsMutex_);
+            for (int fd : clients_)
+                ::shutdown(fd, SHUT_RDWR);
+            for (int fd : sources_)
+                ::shutdown(fd, SHUT_RDWR);
         }
-        clients_.clear();
+
+        // Wait for all handler threads to finish
+        {
+            std::lock_guard tlock(threadsMutex_);
+            for (auto &ht : clientThreads_)
+            {
+                if (ht->thread.joinable())
+                    ht->thread.join();
+            }
+            clientThreads_.clear();
+        }
+
+        // Clear remaining tracking vectors
+        {
+            std::lock_guard lock(clientsMutex_);
+            clients_.clear();
+            sources_.clear();
+        }
+
+        // Destroy TLS context
+        tlsCtx_.destroy();
+
         statsReset();
         log(ENtripLogLevel::Info, "[NtripCaster] Stopped.");
     }
@@ -141,7 +164,8 @@ namespace JimmyPaputto
             clients_.erase(
                 std::remove(clients_.begin(), clients_.end(), fd),
                 clients_.end());
-            ::close(fd);
+            closeClientTls(fd);
+            ::shutdown(fd, SHUT_RDWR);
             log(ENtripLogLevel::Debug, "[NtripCaster] Client fd=%d disconnected during feed "
                 "(total: %zu)",
                 fd, clients_.size());
@@ -169,6 +193,17 @@ namespace JimmyPaputto
         authPassword_ = std::move(password);
     }
 
+    bool NtripCaster::setTls(const std::string &certFile,
+                             const std::string &keyFile)
+    {
+        return tlsCtx_.init(certFile, keyFile);
+    }
+
+    bool NtripCaster::isTlsAvailable()
+    {
+        return NtripTlsSocket::isAvailable();
+    }
+
     // ---------------------------------------------------------------------------
     // Private
     // ---------------------------------------------------------------------------
@@ -194,19 +229,59 @@ namespace JimmyPaputto
             ::inet_ntop(AF_INET, &clientAddr.sin_addr, addrStr, sizeof(addrStr));
             std::string addr = std::string(addrStr) + ":" + std::to_string(ntohs(clientAddr.sin_port));
 
-            // Spawn a detached thread per client
-            std::thread([this, clientFd, addr = std::move(addr)]()
-                        { handleClient(clientFd, addr); })
-                .detach();
+            // Clean up finished handler threads
+            {
+                std::lock_guard tlock(threadsMutex_);
+                auto it = clientThreads_.begin();
+                while (it != clientThreads_.end())
+                {
+                    if ((*it)->finished.load(std::memory_order_acquire))
+                    {
+                        (*it)->thread.join();
+                        it = clientThreads_.erase(it);
+                    }
+                    else
+                        ++it;
+                }
+            }
+
+            // Spawn tracked handler thread
+            auto ht = std::make_unique<HandlerThread>();
+            auto *htPtr = ht.get();
+            ht->thread = std::thread([this, clientFd, addr = std::move(addr), htPtr]()
+                                     {
+                                         handleClient(clientFd, addr);
+                                         htPtr->finished.store(true, std::memory_order_release);
+                                     });
+            {
+                std::lock_guard tlock(threadsMutex_);
+                clientThreads_.push_back(std::move(ht));
+            }
         }
     }
 
     void NtripCaster::handleClient(int clientFd, std::string clientAddr)
     {
+        // TLS handshake (if enabled)
+        if (tlsCtx_.isActive())
+        {
+            void *handle = tlsCtx_.accept(clientFd);
+            if (!handle)
+            {
+                log(ENtripLogLevel::Warning,
+                    "[NtripCaster] TLS handshake failed for %s",
+                    clientAddr.c_str());
+                ::close(clientFd);
+                return;
+            }
+            setTlsHandle(clientFd, handle);
+        }
+
         char reqBuf[4096]{};
-        ssize_t n = ::recv(clientFd, reqBuf, sizeof(reqBuf) - 1, 0);
+        ssize_t n = netRecv(clientFd, reqBuf, sizeof(reqBuf) - 1);
         if (n <= 0)
         {
+            closeClientTls(clientFd);
             ::close(clientFd);
             return;
         }
@@ -227,10 +302,11 @@ namespace JimmyPaputto
         std::string method, path, version;
         iss >> method >> path >> version;
 
-        if (method != "GET")
+        if (method != "GET" && method != "POST")
         {
             sendResponse(clientFd, "405 Method Not Allowed",
-                         "Only GET is supported.\r\n");
+                         "Only GET and POST are supported.\r\n");
+            closeClientTls(clientFd);
             ::close(clientFd);
             return;
         }
@@ -240,10 +316,11 @@ namespace JimmyPaputto
         while (!mount.empty() && mount.front() == '/')
             mount.erase(mount.begin());
 
-        // Empty path → sourcetable
-        if (mount.empty())
+        // GET with empty path → sourcetable
+        if (method == "GET" && mount.empty())
         {
             sendSourcetable(clientFd);
+            closeClientTls(clientFd);
             ::close(clientFd);
             return;
         }
@@ -253,6 +330,7 @@ namespace JimmyPaputto
         {
             std::string body = "Mountpoint '" + mount + "' not found.\r\n";
             sendResponse(clientFd, "404 Not Found", body.c_str());
+            closeClientTls(clientFd);
             ::close(clientFd);
             return;
         }
@@ -284,6 +362,7 @@ namespace JimmyPaputto
                         "Content-Length: 0\r\n"
                         "\r\n";
                     sendAll(clientFd, resp, strlen(resp));
+                    closeClientTls(clientFd);
                     ::close(clientFd);
                     log(ENtripLogLevel::Warning,
                         "[NtripCaster] Rejected %s — auth failed",
@@ -300,6 +379,7 @@ namespace JimmyPaputto
             {
                 sendResponse(clientFd, "503 Service Unavailable",
                              "Too many clients connected.\r\n");
+                closeClientTls(clientFd);
                 ::close(clientFd);
                 log(ENtripLogLevel::Warning, "[NtripCaster] Rejected %s — max clients reached (%zu)",
                     clientAddr.c_str(), maxClients_);
@@ -316,6 +396,57 @@ namespace JimmyPaputto
 
         if (!sendAll(clientFd, icy, strlen(icy)))
         {
+            closeClientTls(clientFd);
+            ::close(clientFd);
+            return;
+        }
+
+        if (method == "POST")
+        {
+            // Source/server push: read RTCM3 data and broadcast to clients
+            {
+                std::lock_guard lock(clientsMutex_);
+                sources_.push_back(clientFd);
+            }
+            log(ENtripLogLevel::Info, "[NtripCaster] Source %s connected (POST)",
+                clientAddr.c_str());
+
+            uint8_t readBuf[8192];
+            while (running_)
+            {
+                ssize_t r = netRecv(clientFd, readBuf, sizeof(readBuf));
+                if (r <= 0)
+                    break;
+
+                // Track relay statistics and extract RTCM3 message types
+                statsRecordTxRaw(readBuf, static_cast<size_t>(r));
+
+                // Broadcast raw data to all GET clients
+                std::lock_guard lock(clientsMutex_);
+                std::vector<int> dead;
+                for (int fd : clients_)
+                {
+                    if (!sendAll(fd, readBuf, static_cast<size_t>(r)))
+                        dead.push_back(fd);
+                }
+                for (int fd : dead)
+                {
+                    clients_.erase(
+                        std::remove(clients_.begin(), clients_.end(), fd),
+                        clients_.end());
+                    ::shutdown(fd, SHUT_RDWR);
+                }
+            }
+
+            {
+                std::lock_guard lock(clientsMutex_);
+                sources_.erase(
+                    std::remove(sources_.begin(), sources_.end(), clientFd),
+                    sources_.end());
+            }
+            log(ENtripLogLevel::Info, "[NtripCaster] Source %s disconnected",
+                clientAddr.c_str());
+            closeClientTls(clientFd);
             ::close(clientFd);
             return;
         }
@@ -326,12 +457,13 @@ namespace JimmyPaputto
         char discardBuf[1024];
         while (running_)
         {
-            ssize_t r = ::recv(clientFd, discardBuf, sizeof(discardBuf), 0);
+            ssize_t r = netRecv(clientFd, discardBuf, sizeof(discardBuf));
             if (r <= 0)
                 break;
         }
 
         removeClient(clientFd, clientAddr);
+        closeClientTls(clientFd);
         ::close(clientFd);
     }
 
@@ -404,9 +536,15 @@ namespace JimmyPaputto
         const uint8_t *ptr = static_cast<const uint8_t *>(data);
         size_t remaining = len;
 
+        void *handle = getTlsHandle(fd);
+
         while (remaining > 0)
         {
-            ssize_t sent = ::send(fd, ptr, remaining, MSG_NOSIGNAL);
+            ssize_t sent;
+            if (handle)
+                sent = NtripTlsServerContext::write(handle, ptr, remaining);
+            else
+                sent = ::send(fd, ptr, remaining, MSG_NOSIGNAL);
             if (sent < 0)
                 return false;
             ptr += sent;
@@ -414,4 +552,61 @@ namespace JimmyPaputto
         }
         return true;
     }
+
+    ssize_t NtripCaster::netRecv(int fd, void *buf, size_t len)
+    {
+        void *handle = getTlsHandle(fd);
+        if (handle)
+            return NtripTlsServerContext::read(handle, buf, len);
+        return ::recv(fd, buf, len, 0);
+    }
+
+    void NtripCaster::closeClientTls(int fd)
+    {
+        void *handle = nullptr;
+        {
+            std::lock_guard lock(tlsMapMutex_);
+            for (auto it = tlsHandles_.begin(); it != tlsHandles_.end(); ++it)
+            {
+                if (it->first == fd)
+                {
+                    handle = it->second;
+                    tlsHandles_.erase(it);
+                    break;
+                }
+            }
+        }
+        NtripTlsServerContext::closeSsl(handle);
+    }
+
+    void *NtripCaster::getTlsHandle(int fd) const
+    {
+        std::lock_guard lock(tlsMapMutex_);
+        for (const auto &p : tlsHandles_)
+        {
+            if (p.first == fd)
+                return p.second;
+        }
+        return nullptr;
+    }
+
+    void NtripCaster::setTlsHandle(int fd, void *handle)
+    {
+        std::lock_guard lock(tlsMapMutex_);
+        tlsHandles_.push_back({fd, handle});
+    }
+
+    void NtripCaster::removeTlsHandle(int fd)
+    {
+        std::lock_guard lock(tlsMapMutex_);
+        for (auto it = tlsHandles_.begin(); it != tlsHandles_.end(); ++it)
+        {
+            if (it->first == fd)
+            {
+                tlsHandles_.erase(it);
+                return;
+            }
+        }
+    }
+
 }

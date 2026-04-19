@@ -485,7 +485,7 @@ function pollNtrip() {
     // Poll logs
     fetch('/api/ntrip/logs').then(function(r) { return r.json(); }).then(function(entries) {
         entries.forEach(function(data) {
-            var panelId = data.source === 'caster' ? 'ntrip-caster-log' : 'ntrip-client-log';
+            var panelId = data.source === 'server' ? 'ntrip-server-log' : data.source === 'caster' ? 'ntrip-caster-log' : 'ntrip-client-log';
             var panel = document.getElementById(panelId);
             if (!panel) return;
             var line = document.createElement('div');
@@ -500,6 +500,7 @@ function pollNtrip() {
     // Poll stats
     pollNtripStats('/api/ntrip/stats', 'ntrip-client-stats', 'nc-stat');
     pollNtripStats('/api/caster/stats', 'ntrip-caster-stats', 'cs-stat');
+    pollNtripStats('/api/ntrip-server/stats', 'ntrip-server-stats', 'sv-stat');
 
     _ntripPolling = false;
 }
@@ -1589,6 +1590,14 @@ function setupConfigPanel() {
         casterStopBtn.addEventListener('click', casterStop);
     }
 
+    // NtripServer start / stop buttons (native mode, RTK HAT base)
+    const serverStartBtn = document.getElementById('server-start-btn');
+    const serverStopBtn = document.getElementById('server-stop-btn');
+    if (serverStartBtn) {
+        serverStartBtn.addEventListener('click', serverStart);
+        serverStopBtn.addEventListener('click', serverStop);
+    }
+
     // Toggle NTRIP sub-pane based on current RTK mode
     updateNtripPane();
 
@@ -2167,20 +2176,25 @@ function updateNtripPane() {
     const rtkEn = document.getElementById('cfg-rtk-en');
     const rtkMode = document.getElementById('cfg-rtk-mode');
 
+    var serverSection2 = document.getElementById('cfg-ntrip-server-section');
     if (!rtkEn || !rtkEn.checked) {
         noRtk.style.display = '';
         clientSection.style.display = 'none';
         casterSection.style.display = 'none';
+        if (serverSection2) serverSection2.style.display = 'none';
     } else if (rtkMode && rtkMode.value === '0') {
-        // Base mode → caster
+        // Base mode → caster + server
         noRtk.style.display = 'none';
         clientSection.style.display = 'none';
         casterSection.style.display = '';
+        var serverSection = document.getElementById('cfg-ntrip-server-section');
+        if (serverSection) serverSection.style.display = '';
     } else {
         // Rover mode → client
         noRtk.style.display = 'none';
         clientSection.style.display = '';
         casterSection.style.display = 'none';
+        if (serverSection2) serverSection2.style.display = 'none';
     }
 }
 
@@ -2265,6 +2279,8 @@ async function ntripConnect() {
     const autoReconnect = document.getElementById('cfg-ntrip-auto-reconnect').checked;
     const initialDelay = parseInt(document.getElementById('cfg-ntrip-reconnect-initial').value) || 1000;
     const maxDelay = parseInt(document.getElementById('cfg-ntrip-reconnect-max').value) || 30000;
+    const useTls = (document.getElementById('cfg-ntrip-use-tls') || {}).checked || false;
+    const verifyCert = (document.getElementById('cfg-ntrip-verify-cert') || {}).checked !== false;
 
     if (!caster || !mountpoint) {
         updateNtripUI('error', 'Caster and mountpoint are required');
@@ -2283,6 +2299,8 @@ async function ntripConnect() {
                 auto_reconnect: autoReconnect,
                 reconnect_initial_delay: initialDelay,
                 reconnect_max_delay: maxDelay,
+                use_tls: useTls,
+                verify_peer: verifyCert,
             }),
         });
         const data = await resp.json();
@@ -2328,6 +2346,10 @@ async function ntripFetchMountpoints() {
         const params = new URLSearchParams({ host, port });
         if (user) params.set('user', user);
         if (password) params.set('password', password);
+        const useTls = (document.getElementById('cfg-ntrip-use-tls') || {}).checked;
+        if (useTls) params.set('use_tls', '1');
+        const verifyCert = (document.getElementById('cfg-ntrip-verify-cert') || {}).checked;
+        if (useTls && !verifyCert) params.set('verify_peer', '0');
 
         const resp = await fetch('/api/ntrip/sourcetable?' + params);
         const data = await resp.json();
@@ -2366,6 +2388,11 @@ async function casterStart() {
     const mountpoint = document.getElementById('cfg-caster-mount').value.trim() || 'GNSS';
     const username = (document.getElementById('cfg-caster-user') || {}).value || '';
     const password = (document.getElementById('cfg-caster-pass') || {}).value || '';
+    const localSourceEl = document.getElementById('cfg-caster-local-source');
+    const local_source = localSourceEl ? localSourceEl.checked : false;
+    const useTls = (document.getElementById('cfg-caster-use-tls') || {}).checked || false;
+    const tlsCert = (document.getElementById('cfg-caster-tls-cert') || {}).value || '';
+    const tlsKey = (document.getElementById('cfg-caster-tls-key') || {}).value || '';
 
     updateCasterUI('starting');
 
@@ -2373,7 +2400,8 @@ async function casterStart() {
         const resp = await fetch('/api/caster/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ port, mountpoint, username, password }),
+            body: JSON.stringify({ port, mountpoint, username, password, local_source,
+                                   use_tls: useTls, tls_cert: tlsCert, tls_key: tlsKey }),
         });
         const data = await resp.json();
         if (!resp.ok) {
@@ -2397,6 +2425,97 @@ async function casterStop() {
     }
 }
 
+function updateServerUI(status, errorMsg) {
+    const badge = document.getElementById('server-status');
+    const startBtn = document.getElementById('server-start-btn');
+    const stopBtn = document.getElementById('server-stop-btn');
+    if (!badge) return;
+
+    badge.classList.remove('connected', 'disconnected', 'connecting', 'error', 'reconnecting');
+
+    if (status === 'connected' || status === 'running') {
+        badge.textContent = 'Connected';
+        badge.classList.add('connected');
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+    } else if (status === 'connecting' || status === 'starting') {
+        badge.textContent = 'Connecting...';
+        badge.classList.add('connecting');
+        startBtn.disabled = true;
+        stopBtn.disabled = true;
+    } else if (status === 'reconnecting') {
+        badge.textContent = 'Reconnecting...';
+        badge.classList.add('reconnecting');
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+    } else if (status === 'error') {
+        badge.textContent = errorMsg ? 'Error: ' + errorMsg : 'Connection Lost';
+        badge.classList.add('error');
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+    } else {
+        badge.textContent = 'Stopped';
+        badge.classList.add('disconnected');
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+    }
+}
+
+async function serverStart() {
+    const host = (document.getElementById('cfg-server-host') || {}).value || '';
+    const port = parseInt(document.getElementById('cfg-server-port').value) || 2101;
+    const mountpoint = document.getElementById('cfg-server-mount').value.trim() || 'GNSS';
+    const username = (document.getElementById('cfg-server-user') || {}).value || '';
+    const password = (document.getElementById('cfg-server-pass') || {}).value || '';
+    const autoReconnect = document.getElementById('cfg-server-auto-reconnect');
+    const reconnectInitial = parseInt((document.getElementById('cfg-server-reconnect-initial') || {}).value) || 1000;
+    const reconnectMax = parseInt((document.getElementById('cfg-server-reconnect-max') || {}).value) || 30000;
+    const useTls = (document.getElementById('cfg-server-use-tls') || {}).checked || false;
+    const verifyCert = (document.getElementById('cfg-server-verify-cert') || {}).checked !== false;
+
+    if (!host) {
+        updateServerUI('error', 'Caster host is required');
+        return;
+    }
+
+    updateServerUI('starting');
+
+    try {
+        const resp = await fetch('/api/ntrip-server/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                host, port, mountpoint, username, password,
+                auto_reconnect: autoReconnect ? autoReconnect.checked : true,
+                reconnect_initial_delay: reconnectInitial,
+                reconnect_max_delay: reconnectMax,
+                use_tls: useTls,
+                verify_peer: verifyCert,
+            }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            updateServerUI('error', data.error || 'Start failed');
+        } else {
+            updateServerUI('connected');
+        }
+    } catch (e) {
+        updateServerUI('error', e.message);
+    }
+}
+
+async function serverStop() {
+    const stopBtn = document.getElementById('server-stop-btn');
+    if (stopBtn) stopBtn.disabled = true;
+
+    try {
+        await fetch('/api/ntrip-server/stop', { method: 'POST' });
+        updateServerUI('disconnected');
+    } catch (e) {
+        updateServerUI('error', e.message);
+    }
+}
+
 async function restoreNtripStatus() {
     // On page load, check if NTRIP client/caster is already running (survives page refresh)
     if (window.APP_MODE !== 'native' || window.HAT_NAME !== 'L1/L5 GNSS RTK HAT') return;
@@ -2415,6 +2534,10 @@ async function restoreNtripStatus() {
                     setVal('cfg-ntrip-port', c.port);
                     setVal('cfg-ntrip-mount', c.mountpoint);
                     setVal('cfg-ntrip-user', c.username);
+                    var tlsEl = document.getElementById('cfg-ntrip-use-tls');
+                    if (tlsEl && c.use_tls !== undefined) tlsEl.checked = !!c.use_tls;
+                    var vpEl = document.getElementById('cfg-ntrip-verify-cert');
+                    if (vpEl && c.verify_peer !== undefined) vpEl.checked = !!c.verify_peer;
                 }
             }
         }
@@ -2432,6 +2555,35 @@ async function restoreNtripStatus() {
                     const setVal = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = val; };
                     setVal('cfg-caster-port', c.port);
                     setVal('cfg-caster-mount', c.mountpoint);
+                    var lsEl = document.getElementById('cfg-caster-local-source');
+                    if (lsEl) lsEl.checked = !!c.local_source;
+                }
+            }
+        }
+    } catch (e) { /* ignore */ }
+
+    // Restore NtripServer status
+    try {
+        const resp = await fetch('/api/ntrip-server/status');
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.connected) {
+                updateServerUI('connected');
+                if (data.config) {
+                    const c = data.config;
+                    const setVal = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = val; };
+                    setVal('cfg-server-host', c.host);
+                    setVal('cfg-server-port', c.port);
+                    setVal('cfg-server-mount', c.mountpoint);
+                    setVal('cfg-server-user', c.username);
+                    setVal('cfg-server-reconnect-initial', c.reconnect_initial_delay);
+                    setVal('cfg-server-reconnect-max', c.reconnect_max_delay);
+                    var arEl = document.getElementById('cfg-server-auto-reconnect');
+                    if (arEl && c.auto_reconnect !== undefined) arEl.checked = !!c.auto_reconnect;
+                    var stlsEl = document.getElementById('cfg-server-use-tls');
+                    if (stlsEl && c.use_tls !== undefined) stlsEl.checked = !!c.use_tls;
+                    var svpEl = document.getElementById('cfg-server-verify-cert');
+                    if (svpEl && c.verify_peer !== undefined) svpEl.checked = !!c.verify_peer;
                 }
             }
         }

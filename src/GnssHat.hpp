@@ -19,6 +19,9 @@
 #include "ublox/RTK.hpp"
 #include "ublox/TimeMark.hpp"
 
+#include "ntrip/NtripCaster.hpp"
+#include "ntrip/NtripClient.hpp"
+#include "ntrip/NtripServer.hpp"
 
 namespace JimmyPaputto
 {

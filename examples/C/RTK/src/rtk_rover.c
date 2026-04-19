@@ -1,16 +1,14 @@
 /*
- * Jimmy Paputto 2025
+ * Jimmy Paputto 2026
  *
  * RTK Rover example (C)
  *
- * Demonstrates configuring the GNSS module as an RTK Rover.
- * The corrections thread shows where RTCM3 data from an NTRIP
- * caster should be applied to the receiver.
+ * Demonstrates configuring the GNSS module as an RTK Rover
+ * with an integrated NTRIP client that receives RTCM3
+ * corrections from a caster and applies them to the receiver.
  *
- * NOTE: A full NTRIP client implementation is available in the
- * Python example (examples/Python/rtk_rover.py) using pygnssutils.
- * A native C++ NTRIP client is under development and will be
- * added here in a future release.
+ * Usage: ./rtk_rover [--host HOST] [--port PORT]
+ *                    [--mountpoint MP] [--user U] [--password P]
  */
 
 #include <pthread.h>
@@ -18,6 +16,8 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <jimmypaputto/GnssHat.h>
@@ -59,43 +59,68 @@ jp_gnss_gnss_config_t create_config()
 }
 
 
+typedef struct
+{
+    jp_gnss_hat_t* gnss;
+    jp_gnss_ntrip_client_t* client;
+} corrections_ctx_t;
+
 /*
  * Correction application thread.
  *
- * In a real setup this thread would:
- *   1. Connect to an NTRIP caster (host, port, mountpoint, credentials)
- *   2. Receive a stream of RTCM3 frames
- *   3. Forward them to the receiver via jp_gnss_rtk_apply_corrections()
- *
- * Below is the skeleton — replace the TODO section with your NTRIP
- * client code or pipe data from an external source.
+ * Receives RTCM3 frames from the NTRIP client and forwards
+ * them to the receiver via jp_gnss_rtk_apply_corrections().
  */
 void* corrections_thread(void* arg)
 {
-    jp_gnss_hat_t* gnss = (jp_gnss_hat_t*)arg;
+    corrections_ctx_t* ctx = (corrections_ctx_t*)arg;
 
     while (atomic_load(&running))
     {
-        /* TODO: Receive RTCM3 frames from your NTRIP caster here.
-         *
-         * Example (pseudocode):
-         *
-         *   jp_gnss_rtcm3_frame_t frames[16];
-         *   uint32_t count = ntrip_client_receive(frames, 16);
-         *   if (count > 0)
-         *       jp_gnss_rtk_apply_corrections(gnss, frames, count);
-         */
+        if (!jp_gnss_ntrip_client_is_connected(ctx->client))
+        {
+            sleep(1);
+            continue;
+        }
 
-        sleep(1);
+        jp_gnss_rtcm3_frame_t* frames = NULL;
+        uint32_t count = jp_gnss_ntrip_client_receive(
+            ctx->client, &frames);
+
+        if (count > 0 && frames)
+        {
+            jp_gnss_rtk_apply_corrections(ctx->gnss, frames, count);
+            jp_gnss_ntrip_client_free_frames(frames, count);
+        }
+        else
+        {
+            usleep(100000); /* 100ms */
+        }
     }
 
     return NULL;
 }
 
 
-int main(void)
+int main(int argc, char* argv[])
 {
     signal(SIGINT, signal_handler);
+
+    /* Defaults */
+    const char* host = "localhost";
+    uint16_t port = 2101;
+    const char* mountpoint = "GNSS_HAT";
+    const char* user = "";
+    const char* password = "";
+
+    for (int i = 1; i < argc - 1; i += 2)
+    {
+        if (strcmp(argv[i], "--host") == 0)       host = argv[i + 1];
+        else if (strcmp(argv[i], "--port") == 0)  port = (uint16_t)atoi(argv[i + 1]);
+        else if (strcmp(argv[i], "--mountpoint") == 0) mountpoint = argv[i + 1];
+        else if (strcmp(argv[i], "--user") == 0)  user = argv[i + 1];
+        else if (strcmp(argv[i], "--password") == 0) password = argv[i + 1];
+    }
 
     jp_gnss_hat_t* gnss = jp_gnss_hat_create();
     if (!gnss)
@@ -116,8 +141,28 @@ int main(void)
 
     printf("GNSS started as RTK Rover\r\n");
 
+    jp_gnss_ntrip_client_t* client = jp_gnss_ntrip_client_create(
+        host, port, mountpoint, user, password);
+    if (!client)
+    {
+        printf("Failed to create NTRIP client\r\n");
+        jp_gnss_hat_destroy(gnss);
+        return -1;
+    }
+
+    if (!jp_gnss_ntrip_client_connect(client))
+    {
+        printf("Failed to connect to NTRIP caster %s:%u/%s\r\n",
+               host, port, mountpoint);
+        jp_gnss_ntrip_client_destroy(client);
+        jp_gnss_hat_destroy(gnss);
+        return -1;
+    }
+
+    corrections_ctx_t ctx = { .gnss = gnss, .client = client };
+
     pthread_t corr_thread;
-    pthread_create(&corr_thread, NULL, corrections_thread, gnss);
+    pthread_create(&corr_thread, NULL, corrections_thread, &ctx);
 
     jp_gnss_navigation_t navigation;
 
@@ -126,14 +171,18 @@ int main(void)
         if (!jp_gnss_hat_wait_and_get_fresh_navigation(gnss, &navigation))
             continue;
 
-        printf("[%s] Fix Quality: %s, Fix Type: %s\r\n",
+        printf("[%s] %s (%s)  %.6f, %.6f  alt=%.1fm  sats=%d\r\n",
             jp_gnss_utc_time_iso8601(&navigation.pvt),
             jp_gnss_fix_quality_to_string(navigation.pvt.fix_quality),
-            jp_gnss_fix_type_to_string(navigation.pvt.fix_type)
+            jp_gnss_fix_type_to_string(navigation.pvt.fix_type),
+            navigation.pvt.latitude, navigation.pvt.longitude,
+            navigation.pvt.altitude, navigation.pvt.visible_satellites
         );
     }
 
     pthread_join(corr_thread, NULL);
+    jp_gnss_ntrip_client_disconnect(client);
+    jp_gnss_ntrip_client_destroy(client);
     jp_gnss_hat_destroy(gnss);
     printf("Application terminated gracefully\n");
 

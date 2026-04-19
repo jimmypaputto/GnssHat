@@ -152,4 +152,7 @@ inline std::string toHex(const std::vector<uint8_t>& v)
     return s.empty() ? std::string("(empty)") : s;
 }
 
+std::string base64Encode(const std::string &input);
+std::string base64Decode(const std::string &input);
+
 #endif  // JIMMY_PAPUTTO_UTILS_HPP_

@@ -1,0 +1,1 @@
+rm -rf build && mkdir build && cd build && cmake .. -DBUILD_EXAMPLES=ON -DBUILD_PYTHON=ON && make -j$(nproc) && sudo make install

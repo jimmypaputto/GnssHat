@@ -70,6 +70,7 @@ add_executable(GnssHatTests
     TestNtrip.cpp
     ${LIB_SOURCES}
 )
+set_target_properties(GnssHatTests PROPERTIES OUTPUT_NAME gnsshat-tests)
 
 target_link_libraries(GnssHatTests GTest::GTest GTest::Main gpiod pthread util)
 

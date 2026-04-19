@@ -95,6 +95,7 @@ add_library(GnssHat SHARED ${LIB_SOURCES})
 set_target_properties(GnssHat PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
+    OUTPUT_NAME gnsshat
 )
 
 target_link_libraries(GnssHat gpiod pthread util)
@@ -112,29 +113,29 @@ if(BUILD_EXAMPLES)
     target_include_directories(GnssHat PUBLIC $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>)
 
     # C examples
-    add_subdirectory(examples/C/Geofencing)
-    add_subdirectory(examples/C/HotStart)
-    add_subdirectory(examples/C/JammingDetector)
-    add_subdirectory(examples/C/PrintNavigation)
-    add_subdirectory(examples/C/PrintSatellites)
-    add_subdirectory(examples/C/RTK)
-    add_subdirectory(examples/C/TimeBase)
-    add_subdirectory(examples/C/TimeMark)
-    add_subdirectory(examples/C/TimepulseInterrupt)
+    add_subdirectory(examples/c/geofencing)
+    add_subdirectory(examples/c/hot-start)
+    add_subdirectory(examples/c/jamming-detector)
+    add_subdirectory(examples/c/print-navigation)
+    add_subdirectory(examples/c/print-satellites)
+    add_subdirectory(examples/c/rtk)
+    add_subdirectory(examples/c/time-base)
+    add_subdirectory(examples/c/time-mark)
+    add_subdirectory(examples/c/timepulse-interrupt)
 
     # C++ examples
-    add_subdirectory(examples/CPP/Geofencing)
-    add_subdirectory(examples/CPP/HotStart)
-    add_subdirectory(examples/CPP/JammingDetector)
-    add_subdirectory(examples/CPP/PrintNavigation)
-    add_subdirectory(examples/CPP/PrintSatellites)
-    add_subdirectory(examples/CPP/RTK)
-    add_subdirectory(examples/CPP/TimeBase)
-    add_subdirectory(examples/CPP/TimeMark)
-    add_subdirectory(examples/CPP/TimepulseInterrupt)
+    add_subdirectory(examples/cpp/geofencing)
+    add_subdirectory(examples/cpp/hot-start)
+    add_subdirectory(examples/cpp/jamming-detector)
+    add_subdirectory(examples/cpp/print-navigation)
+    add_subdirectory(examples/cpp/print-satellites)
+    add_subdirectory(examples/cpp/rtk)
+    add_subdirectory(examples/cpp/time-base)
+    add_subdirectory(examples/cpp/time-mark)
+    add_subdirectory(examples/cpp/timepulse-interrupt)
 
-    # Create BinariesSymlinks directory with symlinks to C++ example binaries
-    set(SYMLINK_DIR ${CMAKE_SOURCE_DIR}/examples/BinariesSymlinks)
+    # Create bin directory with symlinks to C++ example binaries
+    set(SYMLINK_DIR ${CMAKE_SOURCE_DIR}/examples/bin)
     file(MAKE_DIRECTORY ${SYMLINK_DIR})
 
     set(CPP_TARGETS
@@ -152,22 +153,42 @@ if(BUILD_EXAMPLES)
         TimepulseInterrupt
     )
 
+    # Map CMake target names to output binary names for symlinks
+    set(CPP_SYMLINK_NAMES
+        geofencing
+        hot-start
+        jamming-detector
+        print-navigation-advanced
+        print-navigation-basic
+        print-satellites-basic
+        print-satellites-advanced
+        rtk-base
+        rtk-rover
+        time-base
+        time-mark
+        timepulse-interrupt
+    )
+
     set(SYMLINK_COMMANDS)
-    foreach(TARGET_NAME ${CPP_TARGETS})
+    list(LENGTH CPP_TARGETS _len)
+    math(EXPR _last "${_len} - 1")
+    foreach(_i RANGE ${_last})
+        list(GET CPP_TARGETS ${_i} _target)
+        list(GET CPP_SYMLINK_NAMES ${_i} _name)
         list(APPEND SYMLINK_COMMANDS
-            COMMAND ln -snf $<TARGET_FILE:${TARGET_NAME}> ${SYMLINK_DIR}/${TARGET_NAME}
+            COMMAND ln -snf $<TARGET_FILE:${_target}> ${SYMLINK_DIR}/${_name}
         )
     endforeach()
 
     add_custom_target(BinariesSymlinks ALL
         ${SYMLINK_COMMANDS}
         DEPENDS ${CPP_TARGETS}
-        COMMENT "Creating symlinks in examples/BinariesSymlinks/"
+        COMMENT "Creating symlinks in examples/bin/"
     )
 
     set(SYMLINK_FILES)
-    foreach(TARGET_NAME ${CPP_TARGETS})
-        list(APPEND SYMLINK_FILES ${SYMLINK_DIR}/${TARGET_NAME})
+    foreach(_name ${CPP_SYMLINK_NAMES})
+        list(APPEND SYMLINK_FILES ${SYMLINK_DIR}/${_name})
     endforeach()
     set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES ${SYMLINK_FILES})
 endif()

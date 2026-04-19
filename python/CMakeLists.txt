@@ -28,7 +28,7 @@ if(TARGET GnssHat)
     )
 else()
     # Standalone build — find installed library
-    find_library(GNSS_LIBRARY GnssHat PATHS /usr/local/lib REQUIRED)
+    find_library(GNSS_LIBRARY gnsshat PATHS /usr/local/lib REQUIRED)
     find_path(GNSS_INCLUDE_DIR GnssHat.h PATHS /usr/local/include/jimmypaputto REQUIRED)
     message(STATUS "Library: ${GNSS_LIBRARY}")
     target_include_directories(gnsshat PRIVATE

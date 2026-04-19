@@ -2,7 +2,7 @@
  * Jimmy Paputto 2026
  *
  * Thin TLS wrapper for NTRIP connections.
- * Only compiled when GNSSHAT_HAS_SSL is defined (CMake: -DNTRIP_SSL_SUPPORT=ON).
+ * Only compiled when GNSSHAT_HAS_TLS is defined (CMake: -DNTRIP_TLS_SUPPORT=ON).
  * When SSL is not available, all operations are no-ops / return errors.
  */
 
@@ -13,7 +13,7 @@
 #include <cstddef>
 #include <string>
 
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #endif
@@ -34,7 +34,7 @@ namespace JimmyPaputto
         /// Returns true on success.  On failure the fd is NOT closed.
         bool wrap(int fd, const std::string &hostname, bool verifyPeer = true)
         {
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
             ctx_ = SSL_CTX_new(TLS_client_method());
             if (!ctx_)
                 return false;
@@ -80,7 +80,7 @@ namespace JimmyPaputto
 
         ssize_t read(void *buf, size_t len)
         {
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
             if (!ssl_)
                 return -1;
             int n = SSL_read(ssl_, buf, static_cast<int>(len));
@@ -105,7 +105,7 @@ namespace JimmyPaputto
 
         ssize_t write(const void *buf, size_t len)
         {
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
             if (!ssl_)
                 return -1;
             int n = SSL_write(ssl_, buf, static_cast<int>(len));
@@ -119,7 +119,7 @@ namespace JimmyPaputto
 
         void close()
         {
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
             if (ssl_)
             {
                 SSL_shutdown(ssl_);
@@ -137,7 +137,7 @@ namespace JimmyPaputto
 
         bool isActive() const
         {
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
             return ssl_ != nullptr;
 #else
             return false;
@@ -146,7 +146,7 @@ namespace JimmyPaputto
 
         static bool isAvailable()
         {
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
             return true;
 #else
             return false;
@@ -154,7 +154,7 @@ namespace JimmyPaputto
         }
 
     private:
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
         SSL_CTX *ctx_ = nullptr;
         SSL *ssl_ = nullptr;
         int fd_ = -1;
@@ -174,7 +174,7 @@ namespace JimmyPaputto
         /// Initialise with PEM certificate and private key file paths.
         bool init(const std::string &certFile, const std::string &keyFile)
         {
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
             ctx_ = SSL_CTX_new(TLS_server_method());
             if (!ctx_)
                 return false;
@@ -212,7 +212,7 @@ namespace JimmyPaputto
         /// The caller must pass this handle to read/write/closeSsl.
         void *accept(int fd)
         {
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
             if (!ctx_)
                 return nullptr;
             SSL *ssl = SSL_new(ctx_);
@@ -233,7 +233,7 @@ namespace JimmyPaputto
 
         static ssize_t read(void *handle, void *buf, size_t len)
         {
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
             if (!handle)
                 return -1;
             SSL *ssl = static_cast<SSL *>(handle);
@@ -259,7 +259,7 @@ namespace JimmyPaputto
 
         static ssize_t write(void *handle, const void *buf, size_t len)
         {
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
             if (!handle)
                 return -1;
             SSL *ssl = static_cast<SSL *>(handle);
@@ -275,7 +275,7 @@ namespace JimmyPaputto
 
         static void closeSsl(void *handle)
         {
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
             if (handle)
             {
                 SSL *ssl = static_cast<SSL *>(handle);
@@ -289,7 +289,7 @@ namespace JimmyPaputto
 
         bool isActive() const
         {
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
             return ctx_ != nullptr;
 #else
             return false;
@@ -298,7 +298,7 @@ namespace JimmyPaputto
 
         void destroy()
         {
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
             if (ctx_)
             {
                 SSL_CTX_free(ctx_);
@@ -308,7 +308,7 @@ namespace JimmyPaputto
         }
 
     private:
-#ifdef GNSSHAT_HAS_SSL
+#ifdef GNSSHAT_HAS_TLS
         SSL_CTX *ctx_ = nullptr;
 #endif
     };

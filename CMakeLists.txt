@@ -6,7 +6,7 @@ project(GnssHat VERSION 1.0.0)
 
 option(BUILD_PYTHON "Build Python bindings" OFF)
 option(BUILD_EXAMPLES "Build C and C++ examples" OFF)
-option(NTRIP_SSL_SUPPORT "Enable TLS/SSL for NTRIP connections (requires OpenSSL)" OFF)
+option(NTRIP_TLS_SUPPORT "Enable TLS for NTRIP connections (requires OpenSSL)" OFF)
 
 set(LIBGPIOD_VERSION 2)
 add_compile_definitions(LIBGPIOD_VERSION=${LIBGPIOD_VERSION})
@@ -99,11 +99,11 @@ set_target_properties(GnssHat PROPERTIES
 
 target_link_libraries(GnssHat gpiod pthread util)
 
-if(NTRIP_SSL_SUPPORT)
+if(NTRIP_TLS_SUPPORT)
     find_package(OpenSSL REQUIRED)
-    target_compile_definitions(GnssHat PRIVATE GNSSHAT_HAS_SSL)
+    target_compile_definitions(GnssHat PRIVATE GNSSHAT_HAS_TLS)
     target_link_libraries(GnssHat OpenSSL::SSL OpenSSL::Crypto)
-    message(STATUS "NTRIP SSL/TLS support enabled")
+    message(STATUS "NTRIP TLS support enabled")
 endif()
 
 if(BUILD_EXAMPLES)

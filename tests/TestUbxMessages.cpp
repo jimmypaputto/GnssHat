@@ -321,13 +321,13 @@ TEST(MonRf, DeserializesTwoBlocksM9)
     ASSERT_EQ(msg.rfBlocks().size(), 2u);
 
     EXPECT_EQ(msg.rfBlocks()[0].id, 0x00);
-    EXPECT_EQ(msg.rfBlocks()[0].jammingState, EJammingState::Ok_NoSignifantJamming);
+    EXPECT_EQ(msg.rfBlocks()[0].jammingState, EJammingState::Ok_NoSignificantJamming);
     EXPECT_EQ(msg.rfBlocks()[0].antennaStatus, EAntennaStatus::Ok);
     EXPECT_EQ(msg.rfBlocks()[0].antennaPower, EAntennaPower::On);
     EXPECT_EQ(msg.rfBlocks()[0].gnssBand, EGnssBand::L1);
 
     EXPECT_EQ(msg.rfBlocks()[1].id, 0x01);
-    EXPECT_EQ(msg.rfBlocks()[1].jammingState, EJammingState::Warning_InferenceVisibleButFixOk);
+    EXPECT_EQ(msg.rfBlocks()[1].jammingState, EJammingState::Warning_InterferenceVisibleButFixOk);
     EXPECT_EQ(msg.rfBlocks()[1].antennaStatus, EAntennaStatus::Ok);
     EXPECT_EQ(msg.rfBlocks()[1].antennaPower, EAntennaPower::On);
     EXPECT_EQ(msg.rfBlocks()[1].gnssBand, EGnssBand::L2orL5);
@@ -356,13 +356,13 @@ TEST(MonRf, DeserializesTwoBlocksF10T)
     ASSERT_EQ(msg.rfBlocks().size(), 2u);
 
     EXPECT_EQ(msg.rfBlocks()[0].id, 0x00);
-    EXPECT_EQ(msg.rfBlocks()[0].jammingState, EJammingState::Ok_NoSignifantJamming);
+    EXPECT_EQ(msg.rfBlocks()[0].jammingState, EJammingState::Ok_NoSignificantJamming);
     EXPECT_EQ(msg.rfBlocks()[0].antennaStatus, EAntennaStatus::Ok);
     EXPECT_EQ(msg.rfBlocks()[0].antennaPower, EAntennaPower::On);
     EXPECT_EQ(msg.rfBlocks()[0].gnssBand, EGnssBand::L1);
 
     EXPECT_EQ(msg.rfBlocks()[1].id, 0x01);
-    EXPECT_EQ(msg.rfBlocks()[1].jammingState, EJammingState::Warning_InferenceVisibleButFixOk);
+    EXPECT_EQ(msg.rfBlocks()[1].jammingState, EJammingState::Warning_InterferenceVisibleButFixOk);
     EXPECT_EQ(msg.rfBlocks()[1].antennaStatus, EAntennaStatus::Ok);
     EXPECT_EQ(msg.rfBlocks()[1].antennaPower, EAntennaPower::On);
     EXPECT_EQ(msg.rfBlocks()[1].gnssBand, EGnssBand::L5);

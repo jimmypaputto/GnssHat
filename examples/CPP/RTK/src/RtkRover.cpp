@@ -1,24 +1,24 @@
 /*
- * Jimmy Paputto 2025
+ * Jimmy Paputto 2026
  *
  * RTK Rover example (C++)
  *
- * Demonstrates configuring the GNSS module as an RTK Rover.
- * The corrections thread shows where RTCM3 data from an NTRIP
- * caster should be applied to the receiver.
+ * Demonstrates configuring the GNSS module as an RTK Rover
+ * with an integrated NTRIP client that receives RTCM3
+ * corrections from a caster and applies them to the receiver.
  *
- * NOTE: A full NTRIP client implementation is available in the
- * Python example (examples/Python/rtk_rover.py) using pygnssutils.
- * A native C++ NTRIP client is under development and will be
- * added here in a future release.
+ * Usage: ./RtkRover [--host HOST] [--port PORT]
+ *                   [--mountpoint MP] [--user U] [--password P]
  */
 
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <stop_token>
 #include <thread>
 
 #include <jimmypaputto/GnssHat.hpp>
+#include <jimmypaputto/ntrip/NtripClient.hpp>
 
 using namespace JimmyPaputto;
 
@@ -45,15 +45,11 @@ GnssConfig createConfig()
 /*
  * Correction application thread.
  *
- * In a real setup this thread would:
- *   1. Connect to an NTRIP caster (host, port, mountpoint, credentials)
- *   2. Receive a stream of RTCM3 frames
- *   3. Forward them to the receiver via rtk()->rover()->applyCorrections()
- *
- * Below is the skeleton — replace the TODO section with your NTRIP
- * client code or pipe data from an external source.
+ * Receives RTCM3 frames from the NTRIP client and forwards
+ * them to the receiver via rtk()->rover()->applyCorrections().
  */
-void correctionsThread(std::stop_token stoken, IGnssHat* hat)
+void correctionsThread(std::stop_token stoken, IGnssHat* hat,
+                       NtripClient* client)
 {
     auto* rtk = hat->rtk();
     if (!rtk)
@@ -64,22 +60,39 @@ void correctionsThread(std::stop_token stoken, IGnssHat* hat)
 
     while (!stoken.stop_requested())
     {
-        // TODO: Receive RTCM3 frames from your NTRIP caster here.
-        //
-        // Example (pseudocode):
-        //
-        //   auto frames = ntripClient.receiveFrames();
-        //   if (!frames.empty())
-        //       rtk->rover()->applyCorrections(frames);
-        //
+        if (!client->isConnected())
+        {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            continue;
+        }
 
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        auto frames = client->receiveFrames();
+        if (!frames.empty())
+            rtk->rover()->applyCorrections(frames);
+        else
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 
 
-auto main() -> int
+auto main(int argc, char* argv[]) -> int
 {
+    // Defaults
+    std::string host = "localhost";
+    uint16_t port = 2101;
+    std::string mountpoint = "GNSS_HAT";
+    std::string user;
+    std::string password;
+
+    for (int i = 1; i < argc - 1; i += 2)
+    {
+        if (strcmp(argv[i], "--host") == 0)       host = argv[i + 1];
+        else if (strcmp(argv[i], "--port") == 0)  port = static_cast<uint16_t>(atoi(argv[i + 1]));
+        else if (strcmp(argv[i], "--mountpoint") == 0) mountpoint = argv[i + 1];
+        else if (strcmp(argv[i], "--user") == 0)  user = argv[i + 1];
+        else if (strcmp(argv[i], "--password") == 0) password = argv[i + 1];
+    }
+
     auto* ubxHat = IGnssHat::create();
     if (!ubxHat)
     {
@@ -96,21 +109,32 @@ auto main() -> int
     }
     printf("GNSS started as RTK Rover\r\n");
 
-    std::jthread corrThread(correctionsThread, ubxHat);
+    NtripClient client(host, port, mountpoint, user, password);
+    if (!client.connect())
+    {
+        printf("Failed to connect to NTRIP caster %s:%u/%s\r\n",
+               host.c_str(), port, mountpoint.c_str());
+        delete ubxHat;
+        return -1;
+    }
+
+    std::jthread corrThread(correctionsThread, ubxHat, &client);
 
     while (true)
     {
-        const auto pvt = ubxHat->waitAndGetFreshNavigation().pvt;
-        const auto fixQuality = pvt.fixQuality;
-        const auto fixType = pvt.fixType;
-        printf("[%s] Fix Quality: %s, Fix Type: %s\r\n",
+        const auto nav = ubxHat->waitAndGetFreshNavigation();
+        const auto& pvt = nav.pvt;
+        printf("[%s] %s (%s)  %.6f, %.6f  alt=%.1fm  sats=%d\r\n",
             Utils::utcTimeFromGnss_ISO8601(pvt).c_str(),
-            Utils::eFixQuality2string(fixQuality).c_str(),
-            Utils::eFixType2string(fixType).c_str()
+            Utils::eFixQuality2string(pvt.fixQuality).c_str(),
+            Utils::eFixType2string(pvt.fixType).c_str(),
+            pvt.latitude, pvt.longitude,
+            pvt.altitude, pvt.visibleSatellites
         );
     }
 
     corrThread.request_stop();
+    client.disconnect();
     delete ubxHat;
 
     return 0;

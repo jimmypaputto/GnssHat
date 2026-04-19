@@ -522,6 +522,169 @@ const char* jp_gnss_time_mark_time_base_to_string(
 const char* jp_gnss_utc_time_iso8601(
     const jp_gnss_position_velocity_time_t* pvt);
 
+/* ── NTRIP Logging ──────────────────────────────────────────────────── */
+
+typedef enum {
+    JP_NTRIP_LOG_ERROR   = 0,
+    JP_NTRIP_LOG_WARNING = 1,
+    JP_NTRIP_LOG_INFO    = 2,
+    JP_NTRIP_LOG_DEBUG   = 3,
+} jp_ntrip_log_level_t;
+
+typedef void (*jp_ntrip_log_callback_t)(
+    jp_ntrip_log_level_t level, const char* message, void* user_data);
+
+/* ── NTRIP Caster ───────────────────────────────────────────────────── */
+
+typedef struct jp_gnss_ntrip_caster jp_gnss_ntrip_caster_t;
+
+jp_gnss_ntrip_caster_t* jp_gnss_ntrip_caster_create(
+    const char* host, uint16_t port,
+    const char* mountpoint, uint32_t max_clients);
+void jp_gnss_ntrip_caster_destroy(jp_gnss_ntrip_caster_t* caster);
+bool jp_gnss_ntrip_caster_start(jp_gnss_ntrip_caster_t* caster);
+void jp_gnss_ntrip_caster_stop(jp_gnss_ntrip_caster_t* caster);
+void jp_gnss_ntrip_caster_feed(jp_gnss_ntrip_caster_t* caster,
+    const jp_gnss_rtcm3_frame_t* frames, uint32_t count);
+uint32_t jp_gnss_ntrip_caster_client_count(
+    const jp_gnss_ntrip_caster_t* caster);
+void jp_gnss_ntrip_caster_update_position(
+    jp_gnss_ntrip_caster_t* caster, double lat, double lon);
+void jp_gnss_ntrip_caster_set_credentials(
+    jp_gnss_ntrip_caster_t* caster,
+    const char* username, const char* password);
+void jp_gnss_ntrip_caster_set_log_callback(
+    jp_gnss_ntrip_caster_t* caster,
+    jp_ntrip_log_callback_t callback, void* user_data);
+void jp_gnss_ntrip_caster_set_log_level(
+    jp_gnss_ntrip_caster_t* caster, jp_ntrip_log_level_t level);
+
+/* ── NTRIP Client ───────────────────────────────────────────────────── */
+
+typedef struct jp_gnss_ntrip_client jp_gnss_ntrip_client_t;
+
+jp_gnss_ntrip_client_t* jp_gnss_ntrip_client_create(
+    const char* host, uint16_t port,
+    const char* mountpoint,
+    const char* username, const char* password);
+void jp_gnss_ntrip_client_destroy(jp_gnss_ntrip_client_t* client);
+bool jp_gnss_ntrip_client_connect(jp_gnss_ntrip_client_t* client);
+void jp_gnss_ntrip_client_disconnect(jp_gnss_ntrip_client_t* client);
+bool jp_gnss_ntrip_client_is_connected(
+    const jp_gnss_ntrip_client_t* client);
+uint32_t jp_gnss_ntrip_client_receive(
+    jp_gnss_ntrip_client_t* client,
+    jp_gnss_rtcm3_frame_t** frames_out);
+void jp_gnss_ntrip_client_free_frames(
+    jp_gnss_rtcm3_frame_t* frames, uint32_t count);
+void jp_gnss_ntrip_client_send_position(
+    jp_gnss_ntrip_client_t* client,
+    double lat, double lon, double alt);
+void jp_gnss_ntrip_client_set_log_callback(
+    jp_gnss_ntrip_client_t* client,
+    jp_ntrip_log_callback_t callback, void* user_data);
+void jp_gnss_ntrip_client_set_log_level(
+    jp_gnss_ntrip_client_t* client, jp_ntrip_log_level_t level);
+
+/* ── NTRIP Client Auto-GGA ─────────────────────────────────────────── */
+
+void jp_gnss_ntrip_client_update_position(
+    jp_gnss_ntrip_client_t* client,
+    double lat, double lon, double alt);
+void jp_gnss_ntrip_client_set_auto_gga(
+    jp_gnss_ntrip_client_t* client, uint32_t interval_ms);
+
+/* ── NTRIP Server (push to remote caster) ───────────────────────────── */
+
+typedef struct jp_gnss_ntrip_server jp_gnss_ntrip_server_t;
+
+jp_gnss_ntrip_server_t* jp_gnss_ntrip_server_create(
+    const char* host, uint16_t port,
+    const char* mountpoint, const char* username, const char* password);
+void jp_gnss_ntrip_server_destroy(jp_gnss_ntrip_server_t* server);
+bool jp_gnss_ntrip_server_connect(jp_gnss_ntrip_server_t* server);
+void jp_gnss_ntrip_server_disconnect(jp_gnss_ntrip_server_t* server);
+bool jp_gnss_ntrip_server_is_connected(
+    const jp_gnss_ntrip_server_t* server);
+void jp_gnss_ntrip_server_feed(jp_gnss_ntrip_server_t* server,
+    const jp_gnss_rtcm3_frame_t* frames, uint32_t count);
+void jp_gnss_ntrip_server_set_auto_reconnect(
+    jp_gnss_ntrip_server_t* server,
+    int enable, uint32_t initial_delay_ms, uint32_t max_delay_ms);
+uint32_t jp_gnss_ntrip_server_reconnect_count(
+    const jp_gnss_ntrip_server_t* server);
+void jp_gnss_ntrip_server_set_log_callback(
+    jp_gnss_ntrip_server_t* server,
+    jp_ntrip_log_callback_t callback, void* user_data);
+void jp_gnss_ntrip_server_set_log_level(
+    jp_gnss_ntrip_server_t* server, jp_ntrip_log_level_t level);
+
+/* ── NTRIP TLS ─────────────────────────────────────────────────────── */
+
+void jp_gnss_ntrip_client_set_tls(
+    jp_gnss_ntrip_client_t* client, int enable, int verify_peer);
+void jp_gnss_ntrip_server_set_tls(
+    jp_gnss_ntrip_server_t* server, int enable, int verify_peer);
+bool jp_gnss_ntrip_caster_set_tls(
+    jp_gnss_ntrip_caster_t* caster,
+    const char* cert_file, const char* key_file);
+bool jp_gnss_ntrip_is_tls_available(void);
+
+/* ── NTRIP Sourcetable Fetch ────────────────────────────────────────── */
+
+typedef struct {
+    char* mountpoint;
+    char* identifier;
+    char* format;
+    char* format_details;
+    char* carrier;
+    char* nav_system;
+    double latitude;
+    double longitude;
+} jp_ntrip_sourcetable_entry_t;
+
+uint32_t jp_gnss_ntrip_fetch_sourcetable(
+    const char* host, uint16_t port,
+    const char* username, const char* password,
+    uint32_t timeout_ms,
+    jp_ntrip_sourcetable_entry_t** entries_out,
+    int use_tls, int tls_verify_peer);
+void jp_gnss_ntrip_free_sourcetable(
+    jp_ntrip_sourcetable_entry_t* entries, uint32_t count);
+
+/* ── NTRIP Statistics ───────────────────────────────────────────────── */
+
+#define JP_NTRIP_STATS_MAX_MSG_TYPES 32
+
+typedef struct {
+    uint64_t bytes_tx;
+    uint64_t bytes_rx;
+    uint64_t frames_tx;
+    uint64_t frames_rx;
+    uint64_t uptime_ms;
+    uint64_t last_frame_age_ms;
+    double   avg_inter_frame_ms;
+    double   max_inter_frame_ms;
+    uint32_t num_msg_types;
+    uint16_t msg_type_ids[JP_NTRIP_STATS_MAX_MSG_TYPES];
+    uint32_t msg_type_counts[JP_NTRIP_STATS_MAX_MSG_TYPES];
+} jp_ntrip_stats_t;
+
+void jp_gnss_ntrip_caster_get_stats(
+    const jp_gnss_ntrip_caster_t* caster, jp_ntrip_stats_t* stats);
+void jp_gnss_ntrip_client_get_stats(
+    const jp_gnss_ntrip_client_t* client, jp_ntrip_stats_t* stats);
+void jp_gnss_ntrip_server_get_stats(
+    const jp_gnss_ntrip_server_t* server, jp_ntrip_stats_t* stats);
+
+/* ── NTRIP Auto-Reconnect ──────────────────────────────────────────── */
+
+void jp_gnss_ntrip_client_set_auto_reconnect(
+    jp_gnss_ntrip_client_t* client,
+    int enable, uint32_t initial_delay_ms, uint32_t max_delay_ms);
+uint32_t jp_gnss_ntrip_client_reconnect_count(
+    const jp_gnss_ntrip_client_t* client);
+
 #ifdef __cplusplus
 }
 #endif

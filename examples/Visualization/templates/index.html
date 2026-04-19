@@ -771,10 +771,17 @@
                 {% endif %}
 
                 {% if mode == 'native' and hat_name == 'L1/L5 GNSS RTK HAT' %}
-                <!-- NTRIP Client pane -->
+                <!-- NTRIP pane (Client for Rover, Caster for Base) -->
                 <div id="ntrip-pane" class="data-pane" style="display:none;">
                     <div class="config-form">
-                        <fieldset class="cfg-section" id="cfg-ntrip-section">
+
+                        <!-- No RTK message -->
+                        <div id="ntrip-no-rtk" style="display:none;">
+                            <p style="padding:1em;color:#888;">Enable RTK in the Configuration tab to use NTRIP.</p>
+                        </div>
+
+                        <!-- NTRIP Client section (Rover mode) -->
+                        <fieldset class="cfg-section" id="cfg-ntrip-client-section" style="display:none;">
                             <legend>📡 NTRIP Client (RTK Corrections)</legend>
 
                             <div class="cfg-row">
@@ -792,8 +799,12 @@
                             </div>
                             <div class="cfg-row">
                                 <label for="cfg-ntrip-mount">Mountpoint</label>
-                                <input type="text" id="cfg-ntrip-mount" placeholder="NEAREST" class="cfg-input">
+                                <div style="display:flex;gap:0.5em;align-items:center;">
+                                    <input type="text" id="cfg-ntrip-mount" placeholder="NEAREST" class="cfg-input" style="flex:1;">
+                                    <button type="button" id="ntrip-fetch-mounts-btn" class="cfg-btn cfg-btn-sm" title="Fetch mountpoints from caster">🔍</button>
+                                </div>
                             </div>
+                            <div id="ntrip-mountpoint-list" style="display:none;max-height:150px;overflow-y:auto;margin:-0.3em 0 0.5em;padding:0.3em;border:1px solid #555;border-radius:4px;font-size:0.85em;"></div>
                             <div class="cfg-row">
                                 <label for="cfg-ntrip-user">Username</label>
                                 <input type="text" id="cfg-ntrip-user" class="cfg-input">
@@ -802,25 +813,223 @@
                                 <label for="cfg-ntrip-pass">Password</label>
                                 <input type="password" id="cfg-ntrip-pass" class="cfg-input">
                             </div>
+
+                            <!-- Auto-reconnect with collapsible parameters -->
                             <div class="cfg-row">
-                                <label for="cfg-ntrip-version">NTRIP Version</label>
-                                <select id="cfg-ntrip-version" class="cfg-input">
-                                    <option value="2.0" selected>2.0</option>
-                                    <option value="1.0">1.0</option>
-                                </select>
+                                <label for="cfg-ntrip-auto-reconnect">Auto-Reconnect</label>
+                                <input type="checkbox" id="cfg-ntrip-auto-reconnect">
                             </div>
+                            <details class="cfg-collapse" id="ntrip-reconnect-params" style="display:none;">
+                                <summary>Reconnect Settings</summary>
+                                <div class="cfg-collapse-body">
+                                    <div class="cfg-row">
+                                        <label for="cfg-ntrip-reconnect-initial">Initial Delay (ms)</label>
+                                        <input type="number" id="cfg-ntrip-reconnect-initial" min="100" max="60000" value="1000" class="cfg-input cfg-input-sm">
+                                    </div>
+                                    <div class="cfg-row">
+                                        <label for="cfg-ntrip-reconnect-max">Max Delay (ms)</label>
+                                        <input type="number" id="cfg-ntrip-reconnect-max" min="1000" max="300000" value="30000" class="cfg-input cfg-input-sm">
+                                    </div>
+                                </div>
+                            </details>
+
+                            {% if tls_available %}
                             <div class="cfg-row">
-                                <label>
-                                    <input type="checkbox" id="cfg-ntrip-https" class="cfg-checkbox">
-                                    Use HTTPS
-                                </label>
+                                <label for="cfg-ntrip-use-tls">Use TLS</label>
+                                <input type="checkbox" id="cfg-ntrip-use-tls">
                             </div>
+                            <details class="cfg-collapse" id="ntrip-tls-params" style="display:none;">
+                                <summary>TLS Settings</summary>
+                                <div class="cfg-collapse-body">
+                                    <div class="cfg-row">
+                                        <label for="cfg-ntrip-verify-cert">Verify Certificate</label>
+                                        <input type="checkbox" id="cfg-ntrip-verify-cert" checked>
+                                    </div>
+                                </div>
+                            </details>
+                            {% endif %}
 
                             <div class="cfg-actions">
                                 <button type="button" id="ntrip-connect-btn" class="cfg-btn cfg-btn-primary">Connect</button>
                                 <button type="button" id="ntrip-disconnect-btn" class="cfg-btn cfg-btn-secondary" disabled>Disconnect</button>
                             </div>
+
+                            <div id="ntrip-client-stats" class="ntrip-stats-grid" style="display:none;">
+                                <div class="cfg-row"><label>Uptime</label><span id="nc-stat-uptime">—</span></div>
+                                <div class="cfg-row"><label>Bytes Rx</label><span id="nc-stat-bytes-rx">—</span></div>
+                                <div class="cfg-row"><label>Frames Rx</label><span id="nc-stat-frames-rx">—</span></div>
+                                <div class="cfg-row"><label>Last Frame</label><span id="nc-stat-last-frame">—</span></div>
+                                <div class="cfg-row"><label>Avg Interval</label><span id="nc-stat-avg-interval">—</span></div>
+                                <div class="cfg-row"><label>Message Types</label><span id="nc-stat-msg-types">—</span></div>
+                            </div>
+
+                            <div class="cfg-row" style="margin-top:0.5em;">
+                                <label>Log</label>
+                                <div id="ntrip-client-log" class="ntrip-log-panel"></div>
+                            </div>
                         </fieldset>
+
+                        <!-- NTRIP Caster section (Base mode) -->
+                        <fieldset class="cfg-section" id="cfg-ntrip-caster-section" style="display:none;">
+                            <legend>📡 NTRIP Caster (Broadcast Corrections)</legend>
+
+                            <div class="cfg-row">
+                                <label>Status</label>
+                                <span id="caster-status" class="ntrip-status-badge disconnected">Stopped</span>
+                            </div>
+
+                            <div class="cfg-row">
+                                <label for="cfg-caster-port">Port</label>
+                                <input type="number" id="cfg-caster-port" min="1" max="65535" value="2101" class="cfg-input cfg-input-sm">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-caster-mount">Mountpoint</label>
+                                <input type="text" id="cfg-caster-mount" value="GNSS" placeholder="GNSS" class="cfg-input">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-caster-user">Username</label>
+                                <input type="text" id="cfg-caster-user" class="cfg-input" placeholder="(optional)">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-caster-pass">Password</label>
+                                <input type="password" id="cfg-caster-pass" class="cfg-input" placeholder="(optional)">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-caster-local-source">Local HAT Source</label>
+                                <div style="display:flex;align-items:center;gap:0.5em;">
+                                    <input type="checkbox" id="cfg-caster-local-source">
+                                    <small style="color:#999;">Feed corrections directly from HAT (skip NtripServer)</small>
+                                </div>
+                            </div>
+
+                            {% if tls_available %}
+                            <div class="cfg-row">
+                                <label for="cfg-caster-use-tls">Use TLS</label>
+                                <input type="checkbox" id="cfg-caster-use-tls">
+                            </div>
+                            <details class="cfg-collapse" id="caster-tls-params" style="display:none;">
+                                <summary>TLS Settings</summary>
+                                <div class="cfg-collapse-body">
+                                    <div class="cfg-row">
+                                        <label for="cfg-caster-tls-cert">Certificate File</label>
+                                        <input type="text" id="cfg-caster-tls-cert" class="cfg-input" placeholder="/path/to/cert.pem">
+                                    </div>
+                                    <div class="cfg-row">
+                                        <label for="cfg-caster-tls-key">Key File</label>
+                                        <input type="text" id="cfg-caster-tls-key" class="cfg-input" placeholder="/path/to/key.pem">
+                                    </div>
+                                </div>
+                            </details>
+                            {% endif %}
+
+                            <div class="cfg-row">
+                                <label>Connected Clients</label>
+                                <span id="caster-client-count">0</span>
+                            </div>
+
+                            <div class="cfg-actions">
+                                <button type="button" id="caster-start-btn" class="cfg-btn cfg-btn-primary">Start Caster</button>
+                                <button type="button" id="caster-stop-btn" class="cfg-btn cfg-btn-secondary" disabled>Stop Caster</button>
+                            </div>
+
+                            <div id="ntrip-caster-stats" class="ntrip-stats-grid" style="display:none;">
+                                <div class="cfg-row"><label>Uptime</label><span id="cs-stat-uptime">—</span></div>
+                                <div class="cfg-row"><label>Bytes Tx</label><span id="cs-stat-bytes-tx">—</span></div>
+                                <div class="cfg-row"><label>Frames Tx</label><span id="cs-stat-frames-tx">—</span></div>
+                                <div class="cfg-row"><label>Last Frame</label><span id="cs-stat-last-frame">—</span></div>
+                                <div class="cfg-row"><label>Avg Interval</label><span id="cs-stat-avg-interval">—</span></div>
+                                <div class="cfg-row"><label>Message Types</label><span id="cs-stat-msg-types">—</span></div>
+                            </div>
+
+                            <div class="cfg-row" style="margin-top:0.5em;">
+                                <label>Log</label>
+                                <div id="ntrip-caster-log" class="ntrip-log-panel"></div>
+                            </div>
+                        </fieldset>
+
+                        <!-- NTRIP Server section (Base mode – push to remote caster) -->
+                        <fieldset class="cfg-section" id="cfg-ntrip-server-section" style="display:none;">
+                            <legend>🔼 NTRIP Server (Push to Remote Caster)</legend>
+
+                            <div class="cfg-row">
+                                <label>Status</label>
+                                <span id="server-status" class="ntrip-status-badge disconnected">Stopped</span>
+                            </div>
+
+                            <div class="cfg-row">
+                                <label for="cfg-server-host">Caster Host</label>
+                                <input type="text" id="cfg-server-host" class="cfg-input" placeholder="e.g. caster.example.com">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-server-port">Caster Port</label>
+                                <input type="number" id="cfg-server-port" min="1" max="65535" value="2101" class="cfg-input cfg-input-sm">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-server-mount">Mountpoint</label>
+                                <input type="text" id="cfg-server-mount" value="GNSS" placeholder="GNSS" class="cfg-input">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-server-user">Username</label>
+                                <input type="text" id="cfg-server-user" class="cfg-input" placeholder="Caster username">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-server-pass">Password</label>
+                                <input type="password" id="cfg-server-pass" class="cfg-input" placeholder="Caster source password">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-server-auto-reconnect">Auto-Reconnect</label>
+                                <input type="checkbox" id="cfg-server-auto-reconnect" checked>
+                            </div>
+                            <details class="cfg-collapse" id="server-reconnect-params" style="display:none;">
+                                <summary>Reconnect Settings</summary>
+                                <div class="cfg-collapse-body">
+                                    <div class="cfg-row">
+                                        <label for="cfg-server-reconnect-initial">Initial Delay (ms)</label>
+                                        <input type="number" id="cfg-server-reconnect-initial" min="100" max="60000" value="1000" class="cfg-input cfg-input-sm">
+                                    </div>
+                                    <div class="cfg-row">
+                                        <label for="cfg-server-reconnect-max">Max Delay (ms)</label>
+                                        <input type="number" id="cfg-server-reconnect-max" min="1000" max="300000" value="30000" class="cfg-input cfg-input-sm">
+                                    </div>
+                                </div>
+                            </details>
+
+                            {% if tls_available %}
+                            <div class="cfg-row">
+                                <label for="cfg-server-use-tls">Use TLS</label>
+                                <input type="checkbox" id="cfg-server-use-tls">
+                            </div>
+                            <details class="cfg-collapse" id="server-tls-params" style="display:none;">
+                                <summary>TLS Settings</summary>
+                                <div class="cfg-collapse-body">
+                                    <div class="cfg-row">
+                                        <label for="cfg-server-verify-cert">Verify Certificate</label>
+                                        <input type="checkbox" id="cfg-server-verify-cert" checked>
+                                    </div>
+                                </div>
+                            </details>
+                            {% endif %}
+
+                            <div class="cfg-actions">
+                                <button type="button" id="server-start-btn" class="cfg-btn cfg-btn-primary">Start Server</button>
+                                <button type="button" id="server-stop-btn" class="cfg-btn cfg-btn-secondary" disabled>Stop Server</button>
+                            </div>
+
+                            <div id="ntrip-server-stats" class="ntrip-stats-grid" style="display:none;">
+                                <div class="cfg-row"><label>Uptime</label><span id="sv-stat-uptime">—</span></div>
+                                <div class="cfg-row"><label>Bytes Tx</label><span id="sv-stat-bytes-tx">—</span></div>
+                                <div class="cfg-row"><label>Frames Tx</label><span id="sv-stat-frames-tx">—</span></div>
+                                <div class="cfg-row"><label>Last Frame</label><span id="sv-stat-last-frame">—</span></div>
+                                <div class="cfg-row"><label>Avg Interval</label><span id="sv-stat-avg-interval">—</span></div>
+                                <div class="cfg-row"><label>Message Types</label><span id="sv-stat-msg-types">—</span></div>
+                            </div>
+
+                            <div class="cfg-row" style="margin-top:0.5em;">
+                                <label>Log</label>
+                                <div id="ntrip-server-log" class="ntrip-log-panel"></div>
+                            </div>
+                        </fieldset>
+
                     </div>
                 </div>
                 {% endif %}

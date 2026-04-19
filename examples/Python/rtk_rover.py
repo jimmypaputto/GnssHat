@@ -1,47 +1,24 @@
-# Jimmy Paputto 2025
+# Jimmy Paputto 2026
 
 # RTK Rover example with NTRIP Client (Python)
 #
 # Demonstrates configuring the GNSS module as an RTK Rover that
-# receives RTCM3 correction data from an NTRIP caster over the
-# internet and applies it to the receiver for centimeter-level
-# positioning accuracy.
+# receives RTCM3 correction data from an NTRIP caster and applies
+# it to the receiver for centimeter-level positioning accuracy.
 #
-# Uses pygnssutils (GNSSNTRIPClient) for NTRIP communication.
+# Uses the native gnsshat.NtripClient (built into the library).
+#
+# Usage: python rtk_rover.py [--host HOST] [--port PORT]
+#                             [--mountpoint MP] [--user U] [--password P]
 
 
+import argparse
 import signal
 import sys
-from queue import Queue, Empty
+import time
 from threading import Event, Thread
 
 from jimmypaputto import gnsshat
-from pygnssutils import GNSSNTRIPClient
-
-
-# ============================================================
-# NTRIP Caster Configuration — EDIT THESE FOR YOUR SETUP
-# ============================================================
-
-NTRIP_CASTER_IP = "caster.ip"             # NTRIP caster hostname or IP
-NTRIP_PORT = 8086                         # NTRIP caster port
-NTRIP_MOUNTPOINT = "NEAREST"              # Mount point name
-NTRIP_USER = "user"                       # NTRIP account username
-NTRIP_PASSWORD = "password"               # NTRIP account password
-NTRIP_VERSION = "2.0"                     # NTRIP protocol: "1.0" or "2.0"
-NTRIP_HTTPS = False                       # Use HTTPS (TLS) connection
-
-# GGA position reporting — sends your position to the caster
-# so it can select the best base station / generate VRS.
-# Set GGA_INTERVAL = -1 to disable GGA reporting.
-GGA_INTERVAL = -1                         # Seconds between GGA messages (-1 = off)
-GGA_MODE = 0                              # 0 = live from receiver, 1 = fixed reference
-REFERENCE_LAT = 0.0                       # Fixed reference latitude  (if GGA_MODE=1)
-REFERENCE_LON = 0.0                       # Fixed reference longitude (if GGA_MODE=1)
-REFERENCE_ALT = 0.0                       # Fixed reference altitude  (if GGA_MODE=1)
-REFERENCE_SEP = 0.0                       # Fixed reference separation (if GGA_MODE=1)
-
-# ============================================================
 
 
 def create_config() -> dict:
@@ -71,11 +48,16 @@ class NtripRover:
     corrections, and applies them to the GNSS receiver.
     """
 
-    def __init__(self):
+    def __init__(self, host: str, port: int, mountpoint: str,
+                 username: str = "", password: str = ""):
         self._stop_event = Event()
-        self._rtcm_queue: Queue = Queue()
-        self._ntrip_client: GNSSNTRIPClient | None = None
+        self._ntrip_client: gnsshat.NtripClient | None = None
         self._hat: gnsshat.GnssHat | None = None
+        self._host = host
+        self._port = port
+        self._mountpoint = mountpoint
+        self._username = username
+        self._password = password
 
     def start_gnss(self) -> bool:
         """Initialize and start the GNSS receiver in rover mode"""
@@ -90,37 +72,18 @@ class NtripRover:
         return True
 
     def start_ntrip(self) -> bool:
-        """Start the NTRIP client in a background thread."""
+        """Connect the native NTRIP client."""
         print(f"Connecting to NTRIP caster: "
-              f"{NTRIP_CASTER_IP}:{NTRIP_PORT}/{NTRIP_MOUNTPOINT}")
+              f"{self._host}:{self._port}/{self._mountpoint}")
 
-        self._ntrip_client = GNSSNTRIPClient()
+        self._ntrip_client = gnsshat.NtripClient(
+            self._host, self._port, self._mountpoint,
+            self._username, self._password)
 
-        streaming = self._ntrip_client.run(
-            server=NTRIP_CASTER_IP,
-            port=NTRIP_PORT,
-            https=int(NTRIP_HTTPS),
-            mountpoint=NTRIP_MOUNTPOINT,
-            datatype="RTCM",
-            version=NTRIP_VERSION,
-            ntripuser=NTRIP_USER,
-            ntrippassword=NTRIP_PASSWORD,
-            ggainterval=GGA_INTERVAL,
-            ggamode=GGA_MODE,
-            reflat=REFERENCE_LAT,
-            reflon=REFERENCE_LON,
-            refalt=REFERENCE_ALT,
-            refsep=REFERENCE_SEP,
-            output=self._rtcm_queue,
-            stopevent=self._stop_event,
-        )
-
-        if not streaming:
-            print("ERROR: NTRIP connection failed")
-            status = self._ntrip_client.status
-            if status:
-                print(f"  HTTP status: {status.get('code', '?')} "
-                      f"{status.get('description', '')}")
+        try:
+            self._ntrip_client.connect()
+        except RuntimeError as e:
+            print(f"ERROR: NTRIP connection failed: {e}")
             return False
 
         print("NTRIP client connected - streaming RTCM3 corrections.\n")
@@ -128,29 +91,19 @@ class NtripRover:
 
     def _apply_corrections_loop(self):
         """
-        Background thread: reads RTCM3 frames from the queue
-        and applies them to the GNSS receiver in batches.
+        Background thread: polls the NTRIP client for frames
+        and applies them to the GNSS receiver.
         """
         while not self._stop_event.is_set():
-            frames = []
-            try:
-                raw, _parsed = self._rtcm_queue.get(timeout=1.0)
-                frames.append(raw)
-            except Empty:
+            if not self._ntrip_client.is_connected():
+                time.sleep(1.0)
                 continue
 
-            # Drain any additional queued frames into the same batch
-            while not self._rtcm_queue.empty():
-                try:
-                    raw, _parsed = self._rtcm_queue.get_nowait()
-                    frames.append(raw)
-                except Empty:
-                    break
-
-            if not frames:
-                continue
-
-            self._hat.rtk_apply_corrections(frames)
+            frames = self._ntrip_client.receive()
+            if frames:
+                self._hat.rtk_apply_corrections(frames)
+            else:
+                time.sleep(0.1)
 
     def run(self):
         """Main loop — prints navigation status at each epoch"""
@@ -174,16 +127,11 @@ class NtripRover:
                 fix_quality = gnsshat.FixQuality(nav.pvt.fix_quality)
                 fix_type = gnsshat.FixType(nav.pvt.fix_type)
 
-                lat = nav.pvt.latitude
-                lon = nav.pvt.longitude
-                alt = nav.pvt.altitude_msl
-                hacc = nav.pvt.horizontal_accuracy
-                vacc = nav.pvt.vertical_accuracy
-
-                print(f"\033[1m[{gnsshat.utc_time_iso8601(nav.pvt)}]\033[0m "
-                      f"Fix: {fix_quality.name} ({fix_type.name})  "
-                      f"Pos: {lat:.8f}, {lon:.8f}, {alt:.2f} m  "
-                      f"Acc: H={hacc:.3f} m, V={vacc:.3f} m")
+                print(f"[{gnsshat.utc_time_iso8601(nav.pvt)}] "
+                      f"{fix_quality.name} ({fix_type.name})  "
+                      f"{nav.pvt.latitude:.6f}, {nav.pvt.longitude:.6f}  "
+                      f"alt={nav.pvt.altitude_msl:.1f}m  "
+                      f"sats={nav.pvt.visible_satellites}")
 
         except KeyboardInterrupt:
             print("\nStopping RTK Rover...")
@@ -197,14 +145,28 @@ class NtripRover:
         return 0
 
     def stop(self):
-        """Stop NTRIP client and clean up."""
+        """Disconnect NTRIP client and clean up."""
         self._stop_event.set()
         if self._ntrip_client is not None:
-            self._ntrip_client.stop()
+            self._ntrip_client.disconnect()
 
 
 def main():
-    rover = NtripRover()
+    parser = argparse.ArgumentParser(description="RTK Rover with NTRIP Client")
+    parser.add_argument("--host", default="localhost",
+                        help="NTRIP caster hostname or IP")
+    parser.add_argument("--port", type=int, default=2101,
+                        help="NTRIP caster port")
+    parser.add_argument("--mountpoint", default="GNSS_HAT",
+                        help="NTRIP mountpoint name")
+    parser.add_argument("--user", default="",
+                        help="NTRIP username")
+    parser.add_argument("--password", default="",
+                        help="NTRIP password")
+    args = parser.parse_args()
+
+    rover = NtripRover(args.host, args.port, args.mountpoint,
+                       args.user, args.password)
 
     def signal_handler(_sig, _frame):
         rover.stop()

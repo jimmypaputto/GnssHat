@@ -875,6 +875,50 @@ header h1 {
     padding: 0 6px;
 }
 
+/* ─── Collapsible details/summary ──────────────────────── */
+.cfg-collapse {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin: 8px 0;
+    background: color-mix(in srgb, var(--bg-card) 60%, transparent);
+}
+
+.cfg-collapse summary {
+    cursor: pointer;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+
+.cfg-collapse summary:hover {
+    background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
+}
+
+.cfg-collapse summary::before {
+    content: '\25B6';
+    font-size: 9px;
+    transition: transform 0.2s;
+    display: inline-block;
+    color: var(--accent-cyan);
+}
+
+.cfg-collapse[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.cfg-collapse .cfg-collapse-body {
+    padding: 4px 10px 10px;
+    border-top: 1px solid var(--border-color);
+}
+
 .cfg-row {
     display: flex;
     align-items: center;
@@ -1134,10 +1178,49 @@ header h1 {
     animation: pulse 1.5s infinite;
 }
 
+.ntrip-status-badge.reconnecting {
+    color: var(--accent-yellow);
+    border-color: var(--accent-yellow);
+    background: rgba(255, 170, 0, 0.1);
+    animation: pulse 1.5s infinite;
+}
+
 .ntrip-status-badge.error {
     color: var(--accent-red);
     border-color: var(--accent-red);
     background: rgba(255, 68, 68, 0.1);
+}
+
+.ntrip-log-panel {
+    max-height: 150px;
+    overflow-y: auto;
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 0.4em;
+    font-family: monospace;
+    font-size: 0.8em;
+    line-height: 1.4;
+    flex: 1;
+}
+
+.ntrip-log-panel .log-error   { color: #ff4444; }
+.ntrip-log-panel .log-warning { color: #ffaa00; }
+.ntrip-log-panel .log-info    { color: #88cc88; }
+.ntrip-log-panel .log-debug   { color: #888; }
+
+.ntrip-collapsible {
+    margin: -0.2em 0 0.4em 0;
+    padding: 0.4em 0.6em;
+    border-left: 2px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 0 4px 4px 0;
+}
+
+.ntrip-stats-grid {
+    margin-top: 0.5em;
+    padding: 0.4em 0;
+    font-size: 0.9em;
 }
 
 .data-content {

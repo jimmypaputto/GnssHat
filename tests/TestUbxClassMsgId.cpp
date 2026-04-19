@@ -33,7 +33,7 @@ TEST(UbxClassMsgId, TranslateBytesToEnum)
     EXPECT_EQ(map.translate({ 0x01, 0x04 }), EUbxMsg::UBX_NAV_DOP);
     EXPECT_EQ(map.translate({ 0x01, 0x35 }), EUbxMsg::UBX_NAV_SAT);
     EXPECT_EQ(map.translate({ 0x0A, 0x38 }), EUbxMsg::UBX_MON_RF);
-    EXPECT_EQ(map.translate({ 0x0A, 0x39 }), EUbxMsg::UBX_MON_SPAN);
+    EXPECT_EQ(map.translate({ 0x0A, 0x31 }), EUbxMsg::UBX_MON_SPAN);
     EXPECT_EQ(map.translate({ 0x06, 0x8A }), EUbxMsg::UBX_CFG_VALSET);
 }
 

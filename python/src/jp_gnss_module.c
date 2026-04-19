@@ -3700,6 +3700,1360 @@ static PyObject* utc_time_iso8601(PyObject* self, PyObject* args)
     return PyUnicode_FromString(iso_str);
 }
 
+/* ================================================================== */
+/*  NtripCaster                                                       */
+/* ================================================================== */
+
+static PyTypeObject NtripCasterType;
+
+typedef struct
+{
+    PyObject_HEAD
+    jp_gnss_ntrip_caster_t* caster;
+    PyObject* log_callback;
+} NtripCasterObj;
+
+static void ntrip_caster_log_trampoline(
+    jp_ntrip_log_level_t level, const char* message, void* user_data)
+{
+    PyObject* cb = (PyObject*)user_data;
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    PyObject* result = PyObject_CallFunction(cb, "is", (int)level, message);
+    Py_XDECREF(result);
+    if (PyErr_Occurred()) PyErr_Clear();
+    PyGILState_Release(gstate);
+}
+
+#define CHECK_CASTER(self)                                              \
+    do {                                                                \
+        if (!(self)->caster) {                                          \
+            PyErr_SetString(PyExc_RuntimeError,                         \
+                "NtripCaster has been destroyed");                      \
+            return NULL;                                                \
+        }                                                               \
+    } while (0)
+
+static PyObject* NtripCaster_new(PyTypeObject* type, PyObject* args,
+    PyObject* kwds)
+{
+    NtripCasterObj* self = (NtripCasterObj*)type->tp_alloc(type, 0);
+    if (self)
+        self->caster = NULL;
+    return (PyObject*)self;
+}
+
+static int NtripCaster_init(NtripCasterObj* self, PyObject* args,
+    PyObject* kwds)
+{
+    static char* kwlist[] = {
+        "host", "port", "mountpoint", "max_clients", NULL
+    };
+
+    const char* host = "0.0.0.0";
+    unsigned short port = 2101;
+    const char* mountpoint = "GNSS_HAT";
+    unsigned int max_clients = 10;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|sHsI", kwlist,
+            &host, &port, &mountpoint, &max_clients))
+        return -1;
+
+    self->caster = jp_gnss_ntrip_caster_create(
+        host, port, mountpoint, max_clients);
+    if (!self->caster)
+    {
+        PyErr_SetString(PyExc_RuntimeError,
+            "Failed to create NtripCaster");
+        return -1;
+    }
+
+    self->log_callback = NULL;
+    return 0;
+}
+
+static void NtripCaster_dealloc(NtripCasterObj* self)
+{
+    if (self->caster)
+    {
+        /* Clear the log callback first so C++ threads no longer call
+           into Python during shutdown. */
+        jp_gnss_ntrip_caster_set_log_callback(self->caster, NULL, NULL);
+
+        /* Release the GIL before stopping — handler threads being joined
+           may need the GIL for final operations. */
+        Py_BEGIN_ALLOW_THREADS
+        jp_gnss_ntrip_caster_stop(self->caster);
+        jp_gnss_ntrip_caster_destroy(self->caster);
+        Py_END_ALLOW_THREADS
+        self->caster = NULL;
+    }
+    Py_XDECREF(self->log_callback);
+    self->log_callback = NULL;
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject* NtripCaster_start(NtripCasterObj* self, PyObject* args)
+{
+    CHECK_CASTER(self);
+
+    bool result;
+    Py_BEGIN_ALLOW_THREADS
+    result = jp_gnss_ntrip_caster_start(self->caster);
+    Py_END_ALLOW_THREADS
+
+    if (!result)
+    {
+        PyErr_SetString(PyExc_RuntimeError,
+            "Failed to start NTRIP caster");
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripCaster_stop(NtripCasterObj* self, PyObject* args)
+{
+    CHECK_CASTER(self);
+
+    Py_BEGIN_ALLOW_THREADS
+    jp_gnss_ntrip_caster_stop(self->caster);
+    Py_END_ALLOW_THREADS
+
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripCaster_feed(NtripCasterObj* self, PyObject* args)
+{
+    CHECK_CASTER(self);
+
+    PyObject* frames_list;
+    if (!PyArg_ParseTuple(args, "O", &frames_list))
+        return NULL;
+
+    if (!PyList_Check(frames_list))
+    {
+        PyErr_SetString(PyExc_TypeError,
+            "frames must be a list of bytes objects");
+        return NULL;
+    }
+
+    Py_ssize_t count = PyList_Size(frames_list);
+    if (count == 0)
+        Py_RETURN_NONE;
+
+    jp_gnss_rtcm3_frame_t* frames = (jp_gnss_rtcm3_frame_t*)calloc(
+        count, sizeof(jp_gnss_rtcm3_frame_t));
+    if (!frames)
+    {
+        PyErr_NoMemory();
+        return NULL;
+    }
+
+    for (Py_ssize_t i = 0; i < count; i++)
+    {
+        PyObject* item = PyList_GetItem(frames_list, i);
+        if (!PyBytes_Check(item))
+        {
+            free(frames);
+            PyErr_Format(PyExc_TypeError,
+                "frames[%zd] must be a bytes object", i);
+            return NULL;
+        }
+        frames[i].data = (uint8_t*)PyBytes_AsString(item);
+        frames[i].size = (uint32_t)PyBytes_Size(item);
+    }
+
+    Py_BEGIN_ALLOW_THREADS
+    jp_gnss_ntrip_caster_feed(self->caster, frames, (uint32_t)count);
+    Py_END_ALLOW_THREADS
+
+    free(frames);
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripCaster_client_count(NtripCasterObj* self,
+    PyObject* args)
+{
+    CHECK_CASTER(self);
+    uint32_t count = jp_gnss_ntrip_caster_client_count(self->caster);
+    return PyLong_FromUnsignedLong(count);
+}
+
+static PyObject* NtripCaster_update_position(NtripCasterObj* self,
+    PyObject* args)
+{
+    CHECK_CASTER(self);
+
+    double lat, lon;
+    if (!PyArg_ParseTuple(args, "dd", &lat, &lon))
+        return NULL;
+
+    jp_gnss_ntrip_caster_update_position(self->caster, lat, lon);
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripCaster_enter(NtripCasterObj* self, PyObject* args)
+{
+    Py_INCREF(self);
+    return (PyObject*)self;
+}
+
+static PyObject* NtripCaster_exit(NtripCasterObj* self, PyObject* args)
+{
+    if (self->caster)
+    {
+        jp_gnss_ntrip_caster_stop(self->caster);
+        jp_gnss_ntrip_caster_destroy(self->caster);
+        self->caster = NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripCaster_set_log_callback(NtripCasterObj* self,
+    PyObject* args)
+{
+    CHECK_CASTER(self);
+
+    PyObject* cb;
+    if (!PyArg_ParseTuple(args, "O", &cb))
+        return NULL;
+
+    if (cb == Py_None)
+    {
+        jp_gnss_ntrip_caster_set_log_callback(self->caster, NULL, NULL);
+        Py_XDECREF(self->log_callback);
+        self->log_callback = NULL;
+    }
+    else
+    {
+        if (!PyCallable_Check(cb))
+        {
+            PyErr_SetString(PyExc_TypeError,
+                "log callback must be callable or None");
+            return NULL;
+        }
+        Py_INCREF(cb);
+        Py_XDECREF(self->log_callback);
+        self->log_callback = cb;
+        jp_gnss_ntrip_caster_set_log_callback(
+            self->caster, ntrip_caster_log_trampoline, (void*)cb);
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripCaster_set_log_level(NtripCasterObj* self,
+    PyObject* args)
+{
+    CHECK_CASTER(self);
+
+    int level;
+    if (!PyArg_ParseTuple(args, "i", &level))
+        return NULL;
+
+    if (level < 0 || level > 3)
+    {
+        PyErr_SetString(PyExc_ValueError,
+            "log level must be 0 (Error) to 3 (Debug)");
+        return NULL;
+    }
+
+    jp_gnss_ntrip_caster_set_log_level(
+        self->caster, (jp_ntrip_log_level_t)level);
+    Py_RETURN_NONE;
+}
+
+/* Convert jp_ntrip_stats_t to a Python dict */
+static PyObject* ntrip_stats_to_dict(const jp_ntrip_stats_t* s)
+{
+    PyObject* d = PyDict_New();
+    if (!d) return NULL;
+
+    PyDict_SetItemString(d, "bytes_tx", PyLong_FromUnsignedLongLong(s->bytes_tx));
+    PyDict_SetItemString(d, "bytes_rx", PyLong_FromUnsignedLongLong(s->bytes_rx));
+    PyDict_SetItemString(d, "frames_tx", PyLong_FromUnsignedLongLong(s->frames_tx));
+    PyDict_SetItemString(d, "frames_rx", PyLong_FromUnsignedLongLong(s->frames_rx));
+    PyDict_SetItemString(d, "uptime_ms", PyLong_FromUnsignedLongLong(s->uptime_ms));
+    PyDict_SetItemString(d, "last_frame_age_ms",
+        PyLong_FromUnsignedLongLong(s->last_frame_age_ms));
+    PyDict_SetItemString(d, "avg_inter_frame_ms",
+        PyFloat_FromDouble(s->avg_inter_frame_ms));
+    PyDict_SetItemString(d, "max_inter_frame_ms",
+        PyFloat_FromDouble(s->max_inter_frame_ms));
+
+    PyObject* mt = PyDict_New();
+    if (mt)
+    {
+        for (uint32_t i = 0; i < s->num_msg_types; ++i)
+        {
+            PyObject* key = PyLong_FromLong(s->msg_type_ids[i]);
+            PyObject* val = PyLong_FromUnsignedLong(s->msg_type_counts[i]);
+            PyDict_SetItem(mt, key, val);
+            Py_DECREF(key);
+            Py_DECREF(val);
+        }
+    }
+    PyDict_SetItemString(d, "message_types", mt);
+    Py_XDECREF(mt);
+
+    return d;
+}
+
+static PyObject* NtripCaster_get_stats(NtripCasterObj* self,
+    PyObject* Py_UNUSED(args))
+{
+    CHECK_CASTER(self);
+    jp_ntrip_stats_t stats;
+    jp_gnss_ntrip_caster_get_stats(self->caster, &stats);
+    return ntrip_stats_to_dict(&stats);
+}
+
+static PyObject* NtripCaster_set_credentials(NtripCasterObj* self,
+    PyObject* args)
+{
+    CHECK_CASTER(self);
+
+    const char* username;
+    const char* password;
+    if (!PyArg_ParseTuple(args, "ss", &username, &password))
+        return NULL;
+
+    jp_gnss_ntrip_caster_set_credentials(self->caster, username, password);
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripCaster_set_tls(NtripCasterObj* self,
+    PyObject* args)
+{
+    CHECK_CASTER(self);
+    const char* cert_file;
+    const char* key_file;
+    if (!PyArg_ParseTuple(args, "ss", &cert_file, &key_file))
+        return NULL;
+    bool ok = jp_gnss_ntrip_caster_set_tls(self->caster, cert_file, key_file);
+    return PyBool_FromLong(ok);
+}
+
+static PyObject* NtripCaster_is_tls_available(NtripCasterObj* self,
+    PyObject* Py_UNUSED(ignored))
+{
+    return PyBool_FromLong(jp_gnss_ntrip_is_tls_available());
+}
+
+static PyMethodDef NtripCaster_methods[] = {
+    {
+        "start",
+        (PyCFunction)NtripCaster_start,
+        METH_NOARGS,
+        "Start the NTRIP caster TCP server."
+    },
+    {
+        "stop",
+        (PyCFunction)NtripCaster_stop,
+        METH_NOARGS,
+        "Stop the NTRIP caster and disconnect all clients."
+    },
+    {
+        "feed",
+        (PyCFunction)NtripCaster_feed,
+        METH_VARARGS,
+        "Broadcast RTCM3 frames to all connected clients. "
+        "Takes a list of bytes objects."
+    },
+    {
+        "client_count",
+        (PyCFunction)NtripCaster_client_count,
+        METH_NOARGS,
+        "Get the number of connected NTRIP clients."
+    },
+    {
+        "update_position",
+        (PyCFunction)NtripCaster_update_position,
+        METH_VARARGS,
+        "Update the base station position shown in the sourcetable. "
+        "Takes (latitude, longitude) in degrees."
+    },
+    {
+        "__enter__",
+        (PyCFunction)NtripCaster_enter,
+        METH_NOARGS,
+        "Context manager entry"
+    },
+    {
+        "__exit__",
+        (PyCFunction)NtripCaster_exit,
+        METH_VARARGS,
+        "Context manager exit"
+    },
+    {
+        "set_log_callback",
+        (PyCFunction)NtripCaster_set_log_callback,
+        METH_VARARGS,
+        "Set a logging callback: callback(level: int, message: str). "
+        "Pass None to disable."
+    },
+    {
+        "set_log_level",
+        (PyCFunction)NtripCaster_set_log_level,
+        METH_VARARGS,
+        "Set minimum log level (0=Error, 1=Warning, 2=Info, 3=Debug)."
+    },
+    {
+        "get_stats",
+        (PyCFunction)NtripCaster_get_stats,
+        METH_NOARGS,
+        "Get connection statistics as a dict."
+    },
+    {
+        "set_credentials",
+        (PyCFunction)NtripCaster_set_credentials,
+        METH_VARARGS,
+        "Set Basic auth credentials: set_credentials(username, password). "
+        "Empty strings disable auth."
+    },
+    {
+        "set_tls",
+        (PyCFunction)NtripCaster_set_tls,
+        METH_VARARGS,
+        "Enable TLS on the caster with cert and key PEM files: "
+        "set_tls(cert_file, key_file). Must be called before start()."
+    },
+    {
+        "is_tls_available",
+        (PyCFunction)NtripCaster_is_tls_available,
+        METH_NOARGS | METH_STATIC,
+        "Return True if TLS support was compiled in."
+    },
+    {NULL}
+};
+
+static PyTypeObject NtripCasterType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "jimmypaputto.gnsshat.NtripCaster",
+    .tp_doc = "Simplified single-mountpoint NTRIP v2.0 caster.\n\n"
+              "Usage:\n"
+              "    caster = NtripCaster('0.0.0.0', 2101, 'GNSS_HAT')\n"
+              "    caster.start()\n"
+              "    caster.feed(corrections)  # list of bytes\n"
+              "    caster.stop()\n",
+    .tp_basicsize = sizeof(NtripCasterObj),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_new = NtripCaster_new,
+    .tp_init = (initproc)NtripCaster_init,
+    .tp_dealloc = (destructor)NtripCaster_dealloc,
+    .tp_methods = NtripCaster_methods,
+};
+
+/* ================================================================== */
+/*  NtripClient                                                       */
+/* ================================================================== */
+
+static PyTypeObject NtripClientType;
+
+typedef struct
+{
+    PyObject_HEAD
+    jp_gnss_ntrip_client_t* client;
+    PyObject* log_callback;
+} NtripClientObj;
+
+static void ntrip_client_log_trampoline(
+    jp_ntrip_log_level_t level, const char* message, void* user_data)
+{
+    PyObject* cb = (PyObject*)user_data;
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    PyObject* result = PyObject_CallFunction(cb, "is", (int)level, message);
+    Py_XDECREF(result);
+    if (PyErr_Occurred()) PyErr_Clear();
+    PyGILState_Release(gstate);
+}
+
+#define CHECK_CLIENT(self)                                              \
+    do {                                                                \
+        if (!(self)->client) {                                          \
+            PyErr_SetString(PyExc_RuntimeError,                         \
+                "NtripClient has been destroyed");                      \
+            return NULL;                                                \
+        }                                                               \
+    } while (0)
+
+static PyObject* NtripClient_new(PyTypeObject* type, PyObject* args,
+    PyObject* kwds)
+{
+    NtripClientObj* self = (NtripClientObj*)type->tp_alloc(type, 0);
+    if (self)
+        self->client = NULL;
+    return (PyObject*)self;
+}
+
+static int NtripClient_init(NtripClientObj* self, PyObject* args,
+    PyObject* kwds)
+{
+    static char* kwlist[] = {
+        "host", "port", "mountpoint", "username", "password", NULL
+    };
+
+    const char* host = "localhost";
+    unsigned short port = 2101;
+    const char* mountpoint = "GNSS_HAT";
+    const char* username = "";
+    const char* password = "";
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|sHsss", kwlist,
+            &host, &port, &mountpoint, &username, &password))
+        return -1;
+
+    self->client = jp_gnss_ntrip_client_create(
+        host, port, mountpoint, username, password);
+    if (!self->client)
+    {
+        PyErr_SetString(PyExc_RuntimeError,
+            "Failed to create NtripClient");
+        return -1;
+    }
+
+    self->log_callback = NULL;
+    return 0;
+}
+
+static void NtripClient_dealloc(NtripClientObj* self)
+{
+    if (self->client)
+    {
+        jp_gnss_ntrip_client_set_log_callback(self->client, NULL, NULL);
+
+        Py_BEGIN_ALLOW_THREADS
+        jp_gnss_ntrip_client_disconnect(self->client);
+        jp_gnss_ntrip_client_destroy(self->client);
+        Py_END_ALLOW_THREADS
+        self->client = NULL;
+    }
+    Py_XDECREF(self->log_callback);
+    self->log_callback = NULL;
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject* NtripClient_connect(NtripClientObj* self, PyObject* args)
+{
+    CHECK_CLIENT(self);
+
+    bool result;
+    Py_BEGIN_ALLOW_THREADS
+    result = jp_gnss_ntrip_client_connect(self->client);
+    Py_END_ALLOW_THREADS
+
+    if (!result)
+    {
+        PyErr_SetString(PyExc_RuntimeError,
+            "Failed to connect to NTRIP caster");
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripClient_disconnect(NtripClientObj* self,
+    PyObject* args)
+{
+    CHECK_CLIENT(self);
+
+    Py_BEGIN_ALLOW_THREADS
+    jp_gnss_ntrip_client_disconnect(self->client);
+    Py_END_ALLOW_THREADS
+
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripClient_is_connected(NtripClientObj* self,
+    PyObject* args)
+{
+    CHECK_CLIENT(self);
+    bool connected = jp_gnss_ntrip_client_is_connected(self->client);
+    return PyBool_FromLong(connected);
+}
+
+static PyObject* NtripClient_receive(NtripClientObj* self,
+    PyObject* args)
+{
+    CHECK_CLIENT(self);
+
+    jp_gnss_rtcm3_frame_t* frames = NULL;
+    uint32_t count;
+
+    Py_BEGIN_ALLOW_THREADS
+    count = jp_gnss_ntrip_client_receive(self->client, &frames);
+    Py_END_ALLOW_THREADS
+
+    PyObject* list = PyList_New(count);
+    if (!list)
+    {
+        jp_gnss_ntrip_client_free_frames(frames, count);
+        return NULL;
+    }
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        PyObject* item = PyBytes_FromStringAndSize(
+            (const char*)frames[i].data, frames[i].size);
+        if (!item)
+        {
+            Py_DECREF(list);
+            jp_gnss_ntrip_client_free_frames(frames, count);
+            return NULL;
+        }
+        PyList_SET_ITEM(list, i, item);
+    }
+
+    jp_gnss_ntrip_client_free_frames(frames, count);
+    return list;
+}
+
+static PyObject* NtripClient_send_position(NtripClientObj* self,
+    PyObject* args)
+{
+    CHECK_CLIENT(self);
+
+    double lat, lon, alt = 0.0;
+    if (!PyArg_ParseTuple(args, "dd|d", &lat, &lon, &alt))
+        return NULL;
+
+    jp_gnss_ntrip_client_send_position(self->client, lat, lon, alt);
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripClient_enter(NtripClientObj* self, PyObject* args)
+{
+    Py_INCREF(self);
+    return (PyObject*)self;
+}
+
+static PyObject* NtripClient_exit(NtripClientObj* self, PyObject* args)
+{
+    if (self->client)
+    {
+        jp_gnss_ntrip_client_disconnect(self->client);
+        jp_gnss_ntrip_client_destroy(self->client);
+        self->client = NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripClient_set_log_callback(NtripClientObj* self,
+    PyObject* args)
+{
+    CHECK_CLIENT(self);
+
+    PyObject* cb;
+    if (!PyArg_ParseTuple(args, "O", &cb))
+        return NULL;
+
+    if (cb == Py_None)
+    {
+        jp_gnss_ntrip_client_set_log_callback(self->client, NULL, NULL);
+        Py_XDECREF(self->log_callback);
+        self->log_callback = NULL;
+    }
+    else
+    {
+        if (!PyCallable_Check(cb))
+        {
+            PyErr_SetString(PyExc_TypeError,
+                "log callback must be callable or None");
+            return NULL;
+        }
+        Py_INCREF(cb);
+        Py_XDECREF(self->log_callback);
+        self->log_callback = cb;
+        jp_gnss_ntrip_client_set_log_callback(
+            self->client, ntrip_client_log_trampoline, (void*)cb);
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripClient_set_log_level(NtripClientObj* self,
+    PyObject* args)
+{
+    CHECK_CLIENT(self);
+
+    int level;
+    if (!PyArg_ParseTuple(args, "i", &level))
+        return NULL;
+
+    if (level < 0 || level > 3)
+    {
+        PyErr_SetString(PyExc_ValueError,
+            "log level must be 0 (Error) to 3 (Debug)");
+        return NULL;
+    }
+
+    jp_gnss_ntrip_client_set_log_level(
+        self->client, (jp_ntrip_log_level_t)level);
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripClient_get_stats(NtripClientObj* self,
+    PyObject* Py_UNUSED(args))
+{
+    CHECK_CLIENT(self);
+    jp_ntrip_stats_t stats;
+    jp_gnss_ntrip_client_get_stats(self->client, &stats);
+    return ntrip_stats_to_dict(&stats);
+}
+
+static PyObject* NtripClient_set_auto_reconnect(NtripClientObj* self,
+    PyObject* args)
+{
+    CHECK_CLIENT(self);
+    int enable;
+    unsigned int initial_ms = 1000, max_ms = 30000;
+    if (!PyArg_ParseTuple(args, "p|II", &enable, &initial_ms, &max_ms))
+        return NULL;
+    jp_gnss_ntrip_client_set_auto_reconnect(
+        self->client, enable, initial_ms, max_ms);
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripClient_reconnect_count(NtripClientObj* self,
+    PyObject* Py_UNUSED(args))
+{
+    CHECK_CLIENT(self);
+    return PyLong_FromUnsignedLong(
+        jp_gnss_ntrip_client_reconnect_count(self->client));
+}
+
+static PyObject* NtripClient_update_position(NtripClientObj* self,
+    PyObject* args)
+{
+    CHECK_CLIENT(self);
+    double lat, lon, alt = 0.0;
+    if (!PyArg_ParseTuple(args, "dd|d", &lat, &lon, &alt))
+        return NULL;
+    jp_gnss_ntrip_client_update_position(self->client, lat, lon, alt);
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripClient_set_auto_gga(NtripClientObj* self,
+    PyObject* args)
+{
+    CHECK_CLIENT(self);
+    unsigned int interval_ms = 0;
+    if (!PyArg_ParseTuple(args, "I", &interval_ms))
+        return NULL;
+    jp_gnss_ntrip_client_set_auto_gga(self->client, interval_ms);
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripClient_set_tls(NtripClientObj* self,
+    PyObject* args)
+{
+    CHECK_CLIENT(self);
+    int enable;
+    int verify_peer = 1;
+    if (!PyArg_ParseTuple(args, "p|p", &enable, &verify_peer))
+        return NULL;
+    jp_gnss_ntrip_client_set_tls(self->client, enable, verify_peer);
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripClient_is_tls_available(NtripClientObj* self,
+    PyObject* Py_UNUSED(ignored))
+{
+    return PyBool_FromLong(jp_gnss_ntrip_is_tls_available());
+}
+
+static PyMethodDef NtripClient_methods[] = {
+    {
+        "connect",
+        (PyCFunction)NtripClient_connect,
+        METH_NOARGS,
+        "Connect to the NTRIP caster."
+    },
+    {
+        "disconnect",
+        (PyCFunction)NtripClient_disconnect,
+        METH_NOARGS,
+        "Disconnect from the NTRIP caster."
+    },
+    {
+        "is_connected",
+        (PyCFunction)NtripClient_is_connected,
+        METH_NOARGS,
+        "Check if connected to the NTRIP caster."
+    },
+    {
+        "receive",
+        (PyCFunction)NtripClient_receive,
+        METH_NOARGS,
+        "Receive buffered RTCM3 frames. Returns a list of bytes objects."
+    },
+    {
+        "send_position",
+        (PyCFunction)NtripClient_send_position,
+        METH_VARARGS,
+        "Send GGA position to the caster for VRS/nearest base. "
+        "Takes (latitude, longitude[, altitude])."
+    },
+    {
+        "__enter__",
+        (PyCFunction)NtripClient_enter,
+        METH_NOARGS,
+        "Context manager entry"
+    },
+    {
+        "__exit__",
+        (PyCFunction)NtripClient_exit,
+        METH_VARARGS,
+        "Context manager exit"
+    },
+    {
+        "set_log_callback",
+        (PyCFunction)NtripClient_set_log_callback,
+        METH_VARARGS,
+        "Set a logging callback: f(level, message). Pass None to clear."
+    },
+    {
+        "set_log_level",
+        (PyCFunction)NtripClient_set_log_level,
+        METH_VARARGS,
+        "Set minimum log level: 0=Error, 1=Warning, 2=Info, 3=Debug."
+    },
+    {
+        "get_stats",
+        (PyCFunction)NtripClient_get_stats,
+        METH_NOARGS,
+        "Get connection statistics as a dict."
+    },
+    {
+        "set_auto_reconnect",
+        (PyCFunction)NtripClient_set_auto_reconnect,
+        METH_VARARGS,
+        "Enable/disable auto-reconnect: set_auto_reconnect(enable, initial_ms=1000, max_ms=30000)."
+    },
+    {
+        "reconnect_count",
+        (PyCFunction)NtripClient_reconnect_count,
+        METH_NOARGS,
+        "Number of reconnect attempts since last connect()."
+    },
+    {
+        "update_position",
+        (PyCFunction)NtripClient_update_position,
+        METH_VARARGS,
+        "Update stored position for auto-GGA: update_position(lat, lon[, alt])."
+    },
+    {
+        "set_auto_gga",
+        (PyCFunction)NtripClient_set_auto_gga,
+        METH_VARARGS,
+        "Start/stop periodic GGA sending: set_auto_gga(interval_ms). "
+        "0 disables. Call update_position() first."
+    },
+    {
+        "set_tls",
+        (PyCFunction)NtripClient_set_tls,
+        METH_VARARGS,
+        "Enable TLS: set_tls(enable, verify_peer=True). Call before connect()."
+    },
+    {
+        "is_tls_available",
+        (PyCFunction)NtripClient_is_tls_available,
+        METH_NOARGS,
+        "Return True if the library was compiled with TLS support."
+    },
+    {NULL}
+};
+
+static PyTypeObject NtripClientType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "jimmypaputto.gnsshat.NtripClient",
+    .tp_doc = "NTRIP v2.0 client for receiving RTCM3 corrections.\n\n"
+              "Usage:\n"
+              "    client = NtripClient('caster.ip', 2101, 'MOUNT')\n"
+              "    client.connect()\n"
+              "    frames = client.receive()  # list of bytes\n"
+              "    client.disconnect()\n",
+    .tp_basicsize = sizeof(NtripClientObj),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_new = NtripClient_new,
+    .tp_init = (initproc)NtripClient_init,
+    .tp_dealloc = (destructor)NtripClient_dealloc,
+    .tp_methods = NtripClient_methods,
+};
+
+/* ================================================================== */
+/*  NtripServer                                                       */
+/* ================================================================== */
+
+static PyTypeObject NtripServerType;
+
+typedef struct
+{
+    PyObject_HEAD
+    jp_gnss_ntrip_server_t* server;
+    PyObject* log_callback;
+} NtripServerObj;
+
+static void ntrip_server_log_trampoline(
+    jp_ntrip_log_level_t level, const char* message, void* user_data)
+{
+    PyObject* cb = (PyObject*)user_data;
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    PyObject* result = PyObject_CallFunction(cb, "is", (int)level, message);
+    Py_XDECREF(result);
+    if (PyErr_Occurred()) PyErr_Clear();
+    PyGILState_Release(gstate);
+}
+
+#define CHECK_SERVER(self)                                              \
+    do {                                                                \
+        if (!(self)->server) {                                          \
+            PyErr_SetString(PyExc_RuntimeError,                         \
+                "NtripServer has been destroyed");                      \
+            return NULL;                                                \
+        }                                                               \
+    } while (0)
+
+static PyObject* NtripServer_new(PyTypeObject* type, PyObject* args,
+    PyObject* kwds)
+{
+    NtripServerObj* self = (NtripServerObj*)type->tp_alloc(type, 0);
+    if (self)
+        self->server = NULL;
+    return (PyObject*)self;
+}
+
+static int NtripServer_init(NtripServerObj* self, PyObject* args,
+    PyObject* kwds)
+{
+    static char* kwlist[] = {
+        "host", "port", "mountpoint", "username", "password", NULL
+    };
+
+    const char* host = "localhost";
+    unsigned short port = 2101;
+    const char* mountpoint = "GNSS_HAT";
+    const char* username = "";
+    const char* password = "";
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|sHsss", kwlist,
+            &host, &port, &mountpoint, &username, &password))
+        return -1;
+
+    self->server = jp_gnss_ntrip_server_create(
+        host, port, mountpoint, username, password);
+    if (!self->server)
+    {
+        PyErr_SetString(PyExc_RuntimeError,
+            "Failed to create NtripServer");
+        return -1;
+    }
+
+    self->log_callback = NULL;
+    return 0;
+}
+
+static void NtripServer_dealloc(NtripServerObj* self)
+{
+    if (self->server)
+    {
+        jp_gnss_ntrip_server_set_log_callback(self->server, NULL, NULL);
+
+        Py_BEGIN_ALLOW_THREADS
+        jp_gnss_ntrip_server_disconnect(self->server);
+        jp_gnss_ntrip_server_destroy(self->server);
+        Py_END_ALLOW_THREADS
+        self->server = NULL;
+    }
+    Py_XDECREF(self->log_callback);
+    self->log_callback = NULL;
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject* NtripServer_connect(NtripServerObj* self, PyObject* args)
+{
+    CHECK_SERVER(self);
+
+    bool result;
+    Py_BEGIN_ALLOW_THREADS
+    result = jp_gnss_ntrip_server_connect(self->server);
+    Py_END_ALLOW_THREADS
+
+    if (!result)
+    {
+        PyErr_SetString(PyExc_RuntimeError,
+            "Failed to connect to NTRIP caster");
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripServer_disconnect(NtripServerObj* self,
+    PyObject* args)
+{
+    CHECK_SERVER(self);
+
+    Py_BEGIN_ALLOW_THREADS
+    jp_gnss_ntrip_server_disconnect(self->server);
+    Py_END_ALLOW_THREADS
+
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripServer_is_connected(NtripServerObj* self,
+    PyObject* args)
+{
+    CHECK_SERVER(self);
+    bool connected = jp_gnss_ntrip_server_is_connected(self->server);
+    return PyBool_FromLong(connected);
+}
+
+static PyObject* NtripServer_feed(NtripServerObj* self, PyObject* args)
+{
+    CHECK_SERVER(self);
+
+    PyObject* frames_list;
+    if (!PyArg_ParseTuple(args, "O", &frames_list))
+        return NULL;
+
+    if (!PyList_Check(frames_list))
+    {
+        PyErr_SetString(PyExc_TypeError,
+            "frames must be a list of bytes objects");
+        return NULL;
+    }
+
+    Py_ssize_t count = PyList_Size(frames_list);
+    if (count == 0)
+        Py_RETURN_NONE;
+
+    jp_gnss_rtcm3_frame_t* frames = (jp_gnss_rtcm3_frame_t*)calloc(
+        count, sizeof(jp_gnss_rtcm3_frame_t));
+    if (!frames)
+    {
+        PyErr_NoMemory();
+        return NULL;
+    }
+
+    for (Py_ssize_t i = 0; i < count; i++)
+    {
+        PyObject* item = PyList_GetItem(frames_list, i);
+        if (!PyBytes_Check(item))
+        {
+            free(frames);
+            PyErr_Format(PyExc_TypeError,
+                "frames[%zd] must be a bytes object", i);
+            return NULL;
+        }
+        frames[i].data = (uint8_t*)PyBytes_AsString(item);
+        frames[i].size = (uint32_t)PyBytes_Size(item);
+    }
+
+    Py_BEGIN_ALLOW_THREADS
+    jp_gnss_ntrip_server_feed(self->server, frames, (uint32_t)count);
+    Py_END_ALLOW_THREADS
+
+    free(frames);
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripServer_enter(NtripServerObj* self, PyObject* args)
+{
+    Py_INCREF(self);
+    return (PyObject*)self;
+}
+
+static PyObject* NtripServer_exit(NtripServerObj* self, PyObject* args)
+{
+    if (self->server)
+    {
+        jp_gnss_ntrip_server_disconnect(self->server);
+        jp_gnss_ntrip_server_destroy(self->server);
+        self->server = NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripServer_set_log_callback(NtripServerObj* self,
+    PyObject* args)
+{
+    CHECK_SERVER(self);
+
+    PyObject* cb;
+    if (!PyArg_ParseTuple(args, "O", &cb))
+        return NULL;
+
+    if (cb == Py_None)
+    {
+        jp_gnss_ntrip_server_set_log_callback(self->server, NULL, NULL);
+        Py_XDECREF(self->log_callback);
+        self->log_callback = NULL;
+    }
+    else
+    {
+        if (!PyCallable_Check(cb))
+        {
+            PyErr_SetString(PyExc_TypeError,
+                "log callback must be callable or None");
+            return NULL;
+        }
+        Py_INCREF(cb);
+        Py_XDECREF(self->log_callback);
+        self->log_callback = cb;
+        jp_gnss_ntrip_server_set_log_callback(
+            self->server, ntrip_server_log_trampoline, (void*)cb);
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripServer_set_log_level(NtripServerObj* self,
+    PyObject* args)
+{
+    CHECK_SERVER(self);
+
+    int level;
+    if (!PyArg_ParseTuple(args, "i", &level))
+        return NULL;
+
+    if (level < 0 || level > 3)
+    {
+        PyErr_SetString(PyExc_ValueError,
+            "log level must be 0 (Error) to 3 (Debug)");
+        return NULL;
+    }
+
+    jp_gnss_ntrip_server_set_log_level(
+        self->server, (jp_ntrip_log_level_t)level);
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripServer_get_stats(NtripServerObj* self,
+    PyObject* Py_UNUSED(args))
+{
+    CHECK_SERVER(self);
+    jp_ntrip_stats_t stats;
+    jp_gnss_ntrip_server_get_stats(self->server, &stats);
+    return ntrip_stats_to_dict(&stats);
+}
+
+static PyObject* NtripServer_set_auto_reconnect(NtripServerObj* self,
+    PyObject* args)
+{
+    CHECK_SERVER(self);
+    int enable;
+    unsigned int initial_ms = 1000, max_ms = 30000;
+    if (!PyArg_ParseTuple(args, "p|II", &enable, &initial_ms, &max_ms))
+        return NULL;
+    jp_gnss_ntrip_server_set_auto_reconnect(
+        self->server, enable, initial_ms, max_ms);
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripServer_reconnect_count(NtripServerObj* self,
+    PyObject* Py_UNUSED(args))
+{
+    CHECK_SERVER(self);
+    return PyLong_FromUnsignedLong(
+        jp_gnss_ntrip_server_reconnect_count(self->server));
+}
+
+static PyObject* NtripServer_set_tls(NtripServerObj* self,
+    PyObject* args)
+{
+    CHECK_SERVER(self);
+    int enable;
+    int verify_peer = 1;
+    if (!PyArg_ParseTuple(args, "p|p", &enable, &verify_peer))
+        return NULL;
+    jp_gnss_ntrip_server_set_tls(self->server, enable, verify_peer);
+    Py_RETURN_NONE;
+}
+
+static PyObject* NtripServer_is_tls_available(NtripServerObj* self,
+    PyObject* Py_UNUSED(ignored))
+{
+    return PyBool_FromLong(jp_gnss_ntrip_is_tls_available());
+}
+
+static PyMethodDef NtripServer_methods[] = {
+    {
+        "connect",
+        (PyCFunction)NtripServer_connect,
+        METH_NOARGS,
+        "Connect to the remote NTRIP caster."
+    },
+    {
+        "disconnect",
+        (PyCFunction)NtripServer_disconnect,
+        METH_NOARGS,
+        "Disconnect from the caster."
+    },
+    {
+        "is_connected",
+        (PyCFunction)NtripServer_is_connected,
+        METH_NOARGS,
+        "Check if connected to the NTRIP caster."
+    },
+    {
+        "feed",
+        (PyCFunction)NtripServer_feed,
+        METH_VARARGS,
+        "Push RTCM3 frames to the caster. Takes a list of bytes objects."
+    },
+    {
+        "__enter__",
+        (PyCFunction)NtripServer_enter,
+        METH_NOARGS,
+        "Context manager entry"
+    },
+    {
+        "__exit__",
+        (PyCFunction)NtripServer_exit,
+        METH_VARARGS,
+        "Context manager exit"
+    },
+    {
+        "set_log_callback",
+        (PyCFunction)NtripServer_set_log_callback,
+        METH_VARARGS,
+        "Set a logging callback: f(level, message). Pass None to clear."
+    },
+    {
+        "set_log_level",
+        (PyCFunction)NtripServer_set_log_level,
+        METH_VARARGS,
+        "Set minimum log level: 0=Error, 1=Warning, 2=Info, 3=Debug."
+    },
+    {
+        "get_stats",
+        (PyCFunction)NtripServer_get_stats,
+        METH_NOARGS,
+        "Get connection statistics as a dict."
+    },
+    {
+        "set_auto_reconnect",
+        (PyCFunction)NtripServer_set_auto_reconnect,
+        METH_VARARGS,
+        "Enable/disable auto-reconnect: set_auto_reconnect(enable, initial_ms=1000, max_ms=30000)."
+    },
+    {
+        "reconnect_count",
+        (PyCFunction)NtripServer_reconnect_count,
+        METH_NOARGS,
+        "Number of reconnect attempts since last connect()."
+    },
+    {
+        "set_tls",
+        (PyCFunction)NtripServer_set_tls,
+        METH_VARARGS,
+        "Enable TLS: set_tls(enable, verify_peer=True). Call before connect()."
+    },
+    {
+        "is_tls_available",
+        (PyCFunction)NtripServer_is_tls_available,
+        METH_NOARGS,
+        "Return True if the library was compiled with TLS support."
+    },
+    {NULL}
+};
+
+static PyTypeObject NtripServerType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "jimmypaputto.gnsshat.NtripServer",
+    .tp_doc = "NTRIP v2.0 server/source that pushes RTCM3 to a remote caster.\n\n"
+              "Usage:\n"
+              "    server = NtripServer('caster.ip', 2101, 'MOUNT', 'user', 'pass')\n"
+              "    server.connect()\n"
+              "    server.feed(corrections)  # list of bytes\n"
+              "    server.disconnect()\n",
+    .tp_basicsize = sizeof(NtripServerObj),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_new = NtripServer_new,
+    .tp_init = (initproc)NtripServer_init,
+    .tp_dealloc = (destructor)NtripServer_dealloc,
+    .tp_methods = NtripServer_methods,
+};
+
+/* ================================================================== */
+/*  Module-level: fetch_sourcetable                                   */
+/* ================================================================== */
+
+static PyObject* ntrip_fetch_sourcetable(PyObject* self, PyObject* args,
+    PyObject* kwds)
+{
+    static char* kwlist[] = {
+        "host", "port", "username", "password", "timeout_ms",
+        "use_tls", "verify_peer", NULL
+    };
+
+    const char* host;
+    unsigned short port = 2101;
+    const char* username = "";
+    const char* password = "";
+    unsigned int timeout_ms = 5000;
+    int use_tls = 0;
+    int verify_peer = 1;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "s|HssIpp", kwlist,
+            &host, &port, &username, &password, &timeout_ms,
+            &use_tls, &verify_peer))
+        return NULL;
+
+    jp_ntrip_sourcetable_entry_t* entries = NULL;
+    uint32_t count;
+
+    Py_BEGIN_ALLOW_THREADS
+    count = jp_gnss_ntrip_fetch_sourcetable(
+        host, port, username, password, timeout_ms, &entries,
+        use_tls, verify_peer);
+    Py_END_ALLOW_THREADS
+
+    PyObject* list = PyList_New(count);
+    if (!list)
+    {
+        jp_gnss_ntrip_free_sourcetable(entries, count);
+        return NULL;
+    }
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        PyObject* d = PyDict_New();
+        if (!d)
+        {
+            Py_DECREF(list);
+            jp_gnss_ntrip_free_sourcetable(entries, count);
+            return NULL;
+        }
+
+        #define SET_STR(key, val) do { \
+            PyObject* s = PyUnicode_FromString((val) ? (val) : ""); \
+            PyDict_SetItemString(d, key, s); \
+            Py_DECREF(s); \
+        } while(0)
+
+        SET_STR("mountpoint", entries[i].mountpoint);
+        SET_STR("identifier", entries[i].identifier);
+        SET_STR("format", entries[i].format);
+        SET_STR("format_details", entries[i].format_details);
+        SET_STR("carrier", entries[i].carrier);
+        SET_STR("nav_system", entries[i].nav_system);
+
+        #undef SET_STR
+
+        PyObject* lat = PyFloat_FromDouble(entries[i].latitude);
+        PyDict_SetItemString(d, "latitude", lat);
+        Py_DECREF(lat);
+
+        PyObject* lon = PyFloat_FromDouble(entries[i].longitude);
+        PyDict_SetItemString(d, "longitude", lon);
+        Py_DECREF(lon);
+
+        PyList_SET_ITEM(list, i, d);
+    }
+
+    jp_gnss_ntrip_free_sourcetable(entries, count);
+    return list;
+}
+
 static PyMethodDef jimmypaputto_gnss_methods[] = {
     {
         "version",
@@ -3713,6 +5067,14 @@ static PyMethodDef jimmypaputto_gnss_methods[] = {
         METH_VARARGS,
         "Convert PVT navigation data to ISO 8601 UTC time string. "
         "Takes a Navigation or PositionVelocityTime object."
+    },
+    {
+        "fetch_sourcetable",
+        (PyCFunction)ntrip_fetch_sourcetable,
+        METH_VARARGS | METH_KEYWORDS,
+        "Fetch the NTRIP sourcetable from a caster. "
+        "Returns a list of dicts. "
+        "fetch_sourcetable(host, port=2101, username='', password='', timeout_ms=5000)"
     },
     {NULL, NULL, 0, NULL}
 };
@@ -3760,6 +5122,12 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
     if (PyType_Ready(&DateType) < 0)
         return NULL;
     if (PyType_Ready(&TimeMarkType) < 0)
+        return NULL;
+    if (PyType_Ready(&NtripCasterType) < 0)
+        return NULL;
+    if (PyType_Ready(&NtripClientType) < 0)
+        return NULL;
+    if (PyType_Ready(&NtripServerType) < 0)
         return NULL;
     
     m = PyModule_Create(&jimmypaputto_gnss_module);
@@ -3818,6 +5186,15 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
 
     Py_INCREF(&TimeMarkType);
     PyModule_AddObject(m, "TimeMark", (PyObject*)&TimeMarkType);
+
+    Py_INCREF(&NtripCasterType);
+    PyModule_AddObject(m, "NtripCaster", (PyObject*)&NtripCasterType);
+
+    Py_INCREF(&NtripClientType);
+    PyModule_AddObject(m, "NtripClient", (PyObject*)&NtripClientType);
+
+    Py_INCREF(&NtripServerType);
+    PyModule_AddObject(m, "NtripServer", (PyObject*)&NtripServerType);
 
     /* ── IntEnum helper ─────────────────────────────────────────────── */
     PyObject *enum_mod = PyImport_ImportModule("enum");
@@ -4011,6 +5388,14 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
         {"CODE_AND_CARRIER_LOCKED_1",        JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_1},
         {"CODE_AND_CARRIER_LOCKED_2",        JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_2},
         {"CODE_AND_CARRIER_LOCKED_3",        JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_3}
+    );
+
+    /* ── NtripLogLevel ───────────────────────────────────────────────── */
+    MAKE_ENUM("NtripLogLevel",
+        {"ERROR",   JP_NTRIP_LOG_ERROR},
+        {"WARNING", JP_NTRIP_LOG_WARNING},
+        {"INFO",    JP_NTRIP_LOG_INFO},
+        {"DEBUG",   JP_NTRIP_LOG_DEBUG}
     );
 
     #undef MAKE_ENUM

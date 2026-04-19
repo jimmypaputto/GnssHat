@@ -246,3 +246,61 @@ void setBit(uint32_t& val, uint8_t pos, bool bit)
 {
     val = bit ? val | (1 << pos) : val & ~(1 << pos);
 }
+
+std::string base64Encode(const std::string &input)
+{
+    static const char table[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve(((input.size() + 2) / 3) * 4);
+
+    for (size_t i = 0; i < input.size(); i += 3)
+    {
+        uint32_t v = static_cast<uint8_t>(input[i]) << 16;
+        if (i + 1 < input.size()) v |= static_cast<uint8_t>(input[i + 1]) << 8;
+        if (i + 2 < input.size()) v |= static_cast<uint8_t>(input[i + 2]);
+
+        out.push_back(table[(v >> 18) & 0x3F]);
+        out.push_back(table[(v >> 12) & 0x3F]);
+        out.push_back((i + 1 < input.size()) ? table[(v >> 6) & 0x3F] : '=');
+        out.push_back((i + 2 < input.size()) ? table[v & 0x3F] : '=');
+    }
+    return out;
+}
+
+std::string base64Decode(const std::string &in)
+{
+    static const int T[256] = {
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,
+        52,53,54,55,56,57,58,59,60,61,-1,-1,-1,-1,-1,-1,
+        -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,
+        15,16,17,18,19,20,21,22,23,24,25,-1,-1,-1,-1,-1,
+        -1,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
+        41,42,43,44,45,46,47,48,49,50,51,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    };
+    std::string out;
+    out.reserve(in.size() * 3 / 4);
+    int v = 0, bits = -8;
+    for (unsigned char c : in)
+    {
+        if (T[c] < 0) break;
+        v = (v << 6) + T[c];
+        bits += 6;
+        if (bits >= 0)
+        {
+            out.push_back(static_cast<char>((v >> bits) & 0xFF));
+            bits -= 8;
+        }
+    }
+    return out;
+}

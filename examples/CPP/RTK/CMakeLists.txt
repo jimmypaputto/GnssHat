@@ -11,3 +11,6 @@ target_link_libraries(RtkBase GnssHat)
 
 add_executable(RtkRover src/RtkRover.cpp)
 target_link_libraries(RtkRover GnssHat)
+
+add_executable(RtkServer src/RtkServer.cpp)
+target_link_libraries(RtkServer GnssHat)

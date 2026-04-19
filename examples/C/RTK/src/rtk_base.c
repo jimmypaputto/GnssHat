@@ -144,8 +144,19 @@ jp_gnss_gnss_config_t create_fixed_position_ecef_config()
     return config;
 }
 
-int main(void)
+int main(int argc, char* argv[])
 {
+    uint16_t port = 2101;
+    const char* mountpoint = "GNSS_HAT";
+
+    for (int i = 1; i < argc; ++i)
+    {
+        if (strcmp(argv[i], "--port") == 0 && i + 1 < argc)
+            port = (uint16_t)atoi(argv[++i]);
+        else if (strcmp(argv[i], "--mountpoint") == 0 && i + 1 < argc)
+            mountpoint = argv[++i];
+    }
+
     signal(SIGINT, signal_handler);
 
     jp_gnss_hat_t* gnss = jp_gnss_hat_create();
@@ -171,6 +182,23 @@ int main(void)
     printf("GNSS started as RTK Base (Survey-In mode).\r\n");
     printf("Waiting for corrections...\r\n\n");
 
+    jp_gnss_ntrip_caster_t* caster =
+        jp_gnss_ntrip_caster_create("0.0.0.0", port, mountpoint, 10);
+    if (!caster)
+    {
+        printf("Failed to create NTRIP caster\r\n");
+        jp_gnss_hat_destroy(gnss);
+        return -1;
+    }
+
+    if (!jp_gnss_ntrip_caster_start(caster))
+    {
+        printf("Failed to start NTRIP caster\r\n");
+        jp_gnss_ntrip_caster_destroy(caster);
+        jp_gnss_hat_destroy(gnss);
+        return -1;
+    }
+
     jp_gnss_navigation_t navigation;
 
     while (atomic_load(&running))
@@ -192,18 +220,34 @@ int main(void)
             printf("[%s] RTK Base ready with TimeOnlyFix\r\n", time_str);
 
             jp_gnss_rtk_corrections_t* corrections =
-                jp_gnss_rtk_get_tiny_corrections(gnss);
+                jp_gnss_rtk_get_full_corrections(gnss);
             if (corrections)
             {
                 for (uint32_t i = 0; i < corrections->count; ++i)
                 {
                     print_rtcm3_frame(&corrections->frames[i]);
                 }
+
+                jp_gnss_ntrip_caster_feed(
+                    caster, corrections->frames, corrections->count);
+                jp_gnss_ntrip_caster_update_position(
+                    caster,
+                    navigation.pvt.latitude,
+                    navigation.pvt.longitude);
+
+                uint32_t clients =
+                    jp_gnss_ntrip_caster_client_count(caster);
+                if (clients > 0)
+                    printf("[%s] Broadcasting to %u client(s)\r\n",
+                        time_str, clients);
+
                 jp_gnss_rtk_corrections_free(corrections);
             }
         }
     }
 
+    jp_gnss_ntrip_caster_stop(caster);
+    jp_gnss_ntrip_caster_destroy(caster);
     jp_gnss_hat_destroy(gnss);
     printf("Application terminated gracefully\n");
 

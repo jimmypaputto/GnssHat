@@ -28,7 +28,7 @@ if(TARGET GnssHat)
     )
 else()
     # Standalone build — find installed library
-    find_library(GNSS_LIBRARY GnssHat PATHS /usr/local/lib REQUIRED)
+    find_library(GNSS_LIBRARY gnsshat PATHS /usr/local/lib REQUIRED)
     find_path(GNSS_INCLUDE_DIR GnssHat.h PATHS /usr/local/include/jimmypaputto REQUIRED)
     message(STATUS "Library: ${GNSS_LIBRARY}")
     target_include_directories(gnsshat PRIVATE
@@ -41,14 +41,14 @@ else()
     )
 endif()
 
-# User installation
+# System-wide installation (consistent with C library in /usr/local/lib)
 execute_process(
-    COMMAND ${Python3_EXECUTABLE} -c "import sysconfig; print(sysconfig.get_path('platlib', 'posix_user'))"
-    OUTPUT_VARIABLE PYTHON_USER_SITE
+    COMMAND ${Python3_EXECUTABLE} -c "import sysconfig; print(sysconfig.get_path('platlib', vars={'base': '/usr', 'platbase': '/usr'}))"
+    OUTPUT_VARIABLE PYTHON_INSTALL_DIR
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-install(TARGETS gnsshat LIBRARY DESTINATION ${PYTHON_USER_SITE}/jimmypaputto)
-install(FILES jimmypaputto_init.py DESTINATION ${PYTHON_USER_SITE}/jimmypaputto RENAME __init__.py)
+install(TARGETS gnsshat LIBRARY DESTINATION ${PYTHON_INSTALL_DIR}/jimmypaputto)
+install(FILES jimmypaputto_init.py DESTINATION ${PYTHON_INSTALL_DIR}/jimmypaputto RENAME __init__.py)
 
-message(STATUS "Will install to: ${PYTHON_USER_SITE}")
+message(STATUS "Will install to: ${PYTHON_INSTALL_DIR}")

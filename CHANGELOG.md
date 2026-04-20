@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - CMake config package (`find_package(GnssHat)`) and pkg-config
 - `BUILD_TESTS` option — tests integrate into root build via `ctest`
 - CMake `uninstall` target
+- rebuild.sh script for frequent clean/purge/install/test operations 
 
 ### Changed
 - Single-source version via `Version.hpp.in`

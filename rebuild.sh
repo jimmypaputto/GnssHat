@@ -6,19 +6,25 @@ BUILD_DIR="build"
 DO_CLEAN=false
 DO_INSTALL=false
 DO_PURGE=false
+DO_TEST=false
 CMAKE_EXTRA_ARGS=()
 
 usage() {
     echo "Usage: $(basename "$0") [options] [cmake-args...]"
     echo ""
     echo "Options:"
-    echo "  clean    Remove build directory before building"
-    echo "  install  Run 'sudo make install' after building"
-    echo "  purge    Uninstall + clean before rebuilding"
-    echo "  help     Show this message"
+    echo "  clean      Remove build directory before building"
+    echo "  install    Run 'make install' after building (requires sudo)"
+    echo "  test       Run tests after building"
+    echo "  purge      Uninstall + clean before rebuilding (requires sudo)"
+    echo "  help       Show this message"
     echo ""
     echo "Extra arguments are passed to cmake, e.g.:"
-    echo "  $(basename "$0") clean install -DCMAKE_BUILD_TYPE=Release"
+    echo "  ./$(basename "$0") clean install -DCMAKE_BUILD_TYPE=Release"
+    echo ""
+    echo "Purge and install require root."
+    echo "  sudo ./$(basename "$0") purge install"
+    echo ""
 }
 
 for arg in "$@"; do
@@ -26,14 +32,20 @@ for arg in "$@"; do
         help|-h|--help) usage; exit 0 ;;
         clean)   DO_CLEAN=true ;;
         install) DO_INSTALL=true ;;
+        test)    DO_TEST=true ;;
         purge)   DO_PURGE=true; DO_CLEAN=true ;;
         *)       CMAKE_EXTRA_ARGS+=("$arg") ;;
     esac
 done
 
+if ($DO_PURGE || $DO_INSTALL) && [ "$(id -u)" -ne 0 ]; then
+    echo "Error: purge/install require root — run with: sudo $(basename "$0") $*"
+    exit 1
+fi
+
 if $DO_PURGE && [ -f "$BUILD_DIR/install_manifest.txt" ]; then
     echo "Uninstalling..."
-    sudo make -C "$BUILD_DIR" uninstall
+    make -C "$BUILD_DIR" uninstall
 fi
 
 if $DO_CLEAN; then
@@ -55,5 +67,10 @@ cmake .. \
 make -j"$(nproc)"
 
 if $DO_INSTALL; then
-    sudo make install
+    make install
+fi
+
+if $DO_TEST; then
+    echo "Running tests..."
+    ./tests/gnsshat-tests
 fi

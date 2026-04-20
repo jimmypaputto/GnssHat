@@ -73,10 +73,10 @@ If no pulses - wait for GNSS fix or check antenna placement.
 
 ## 3. Install and start the bridge daemon [Required for L1 and RTK HATs unless using USB, Optional for TIME HAT]
 
-Build and install from `examples/GpsdIntegration/`:
+Build and install from `examples/gpsd-integration/`:
 
 ```bash
-cd examples/GpsdIntegration
+cd examples/gpsd-integration
 mkdir -p build && cd build
 cmake ..
 make

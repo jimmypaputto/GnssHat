@@ -139,3 +139,23 @@ Time Base example demonstrating:
 ```bash
 python time_base.py
 ```
+
+### 12. ntrip_server.py
+NTRIP server example demonstrating:
+- Pushing RTCM3 correction data from a local GNSS base station to a remote NTRIP caster
+- Useful when the base station is behind NAT / a firewall
+
+Edit the command-line arguments to set your NTRIP caster credentials.
+
+```bash
+python ntrip_server.py --caster-host <HOST> --caster-port 2101 --mountpoint <MOUNT> --password <PWD>
+```
+
+### 13. benchmark_25hz.py
+25 Hz measurement rate benchmark:
+- Measures frames/s received via `wait_and_get_fresh_navigation()` at 25 Hz
+- Outputs one ISO 8601 UTC time per line for post-processing
+
+```bash
+sudo python3 benchmark_25hz.py > /tmp/bench_py.csv
+```

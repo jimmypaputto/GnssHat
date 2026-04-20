@@ -38,7 +38,7 @@ ubxHat->stopForwardForGpsd();
 Build and run:
 
 ```bash
-cd examples/GpsdIntegration
+cd examples/gpsd-integration
 mkdir -p build && cd build
 cmake .. && make
 sudo ./GpsdInteractive
@@ -74,7 +74,7 @@ The daemon:
 ## Build
 
 ```bash
-cd examples/GpsdIntegration
+cd examples/gpsd-integration
 mkdir -p build && cd build
 cmake ..
 make
@@ -83,14 +83,14 @@ make
 ## Install
 
 ```bash
-cd examples/GpsdIntegration
+cd examples/gpsd-integration
 sudo ./scripts/install_daemon.sh
 ```
 
 Or manually:
 
 ```bash
-cd examples/GpsdIntegration/build
+cd examples/gpsd-integration/build
 sudo make install
 sudo systemctl daemon-reload
 sudo systemctl enable jpgnss2gpsd-bridge
@@ -128,7 +128,7 @@ sudo ppstest /dev/pps0
 
 > **Note:** Kernel PPS (`/dev/pps0`) and the library's `IGnssHat::timepulse()` callback both use GPIO 5 — they cannot run at the same time.
 
-If you skip this step, gpsd works fine without PPS — you just won't get sub-microsecond timing. For a full PPS + chrony time server setup, see [../TimeServer/README.md](../TimeServer/README.md).
+If you skip this step, gpsd works fine without PPS — you just won't get sub-microsecond timing. For a full PPS + chrony time server setup, see [../time-server/README.md](../time-server/README.md).
 
 ## Configure gpsd
 
@@ -322,7 +322,7 @@ Helper scripts in `scripts/`:
 
 ## Time server
 
-Once gpsd is running, you can set up a PPS-disciplined time server with sub-microsecond accuracy. See [../TimeServer/README.md](../TimeServer/README.md) for the full setup guide.
+Once gpsd is running, you can set up a PPS-disciplined time server with sub-microsecond accuracy. See [../time-server/README.md](../time-server/README.md) for the full setup guide.
 
 ## Uninstall
 

@@ -6,10 +6,7 @@
 #ifndef GNSS_HAT_H_
 #define GNSS_HAT_H_
 
-#define GNSS_HAT_VERSION_MAJOR 1
-#define GNSS_HAT_VERSION_MINOR 0
-#define GNSS_HAT_VERSION_PATCH 0
-#define GNSS_HAT_VERSION "1.0.0"
+#include "Version.hpp"
 
 #include <stdint.h>
 #include <stdbool.h>

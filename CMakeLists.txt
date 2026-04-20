@@ -7,6 +7,7 @@ project(GnssHat VERSION 1.0.0)
 option(BUILD_PYTHON "Build Python bindings" OFF)
 option(BUILD_EXAMPLES "Build C and C++ examples" OFF)
 option(BUILD_TOOLS "Build CLI tools (gnsshat-info, gnsshat-probe)" ON)
+option(BUILD_TESTS "Build unit tests (requires GTest)" OFF)
 option(NTRIP_TLS_SUPPORT "Enable TLS for NTRIP connections (requires OpenSSL)" OFF)
 
 set(LIBGPIOD_VERSION 2)
@@ -57,6 +58,12 @@ else()
         "Unsupported platform: ${CMAKE_SYSTEM_PROCESSOR}. Raspberry Pi 4 or 5 is required."
     )
 endif()
+
+configure_file(
+    ${CMAKE_SOURCE_DIR}/src/Version.hpp.in
+    ${CMAKE_SOURCE_DIR}/src/Version.hpp
+    @ONLY
+)
 
 include_directories(
     src
@@ -142,6 +149,11 @@ endif()
 
 if(BUILD_TOOLS)
     add_subdirectory(tools)
+endif()
+
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
 endif()
 
 if(BUILD_EXAMPLES)
@@ -265,6 +277,7 @@ install(
     FILES
         src/GnssHat.hpp
         src/GnssHat.h
+        src/Version.hpp
     DESTINATION
         /usr/local/include/jimmypaputto
 )
@@ -281,6 +294,8 @@ install(
         src/ntrip/NtripCaster.hpp
         src/ntrip/NtripClient.hpp
         src/ntrip/NtripServer.hpp
+        src/ntrip/NtripLog.hpp
+        src/ntrip/NtripStats.hpp
         src/ntrip/NtripTls.hpp
     DESTINATION
         /usr/local/include/jimmypaputto/ntrip

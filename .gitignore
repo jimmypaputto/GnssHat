@@ -7,3 +7,4 @@ examples/build/
 examples/python/__pycache__/
 examples/visualization/venv/
 examples/bin/
+src/Version.hpp

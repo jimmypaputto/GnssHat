@@ -19,6 +19,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
+include(GNUInstallDirs)
+
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
     execute_process(
         COMMAND grep "Model" /proc/cpuinfo
@@ -100,6 +102,12 @@ set(LIB_SOURCES
 )
 
 add_library(GnssHat SHARED ${LIB_SOURCES})
+
+target_include_directories(GnssHat
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/jimmypaputto>
+)
 
 # Git info for BuildInfo
 execute_process(
@@ -243,8 +251,9 @@ if(BUILD_EXAMPLES)
 endif()
 
 install(TARGETS GnssHat
-    LIBRARY DESTINATION /usr/local/lib
-    ARCHIVE DESTINATION /usr/local/lib
+    EXPORT GnssHatTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
 install(
@@ -270,7 +279,7 @@ install(
         src/ublox/TimepulsePinConfig.hpp
         src/ublox/RFBlockSpectrumData.hpp
     DESTINATION
-        /usr/local/include/jimmypaputto/ublox
+        ${CMAKE_INSTALL_INCLUDEDIR}/jimmypaputto/ublox
 )
 
 install(
@@ -279,14 +288,14 @@ install(
         src/GnssHat.h
         src/Version.hpp
     DESTINATION
-        /usr/local/include/jimmypaputto
+        ${CMAKE_INSTALL_INCLUDEDIR}/jimmypaputto
 )
 
 install(
     FILES
         src/common/BuildInfo.hpp
     DESTINATION
-        /usr/local/include/jimmypaputto/common
+        ${CMAKE_INSTALL_INCLUDEDIR}/jimmypaputto/common
 )
 
 install(
@@ -298,7 +307,50 @@ install(
         src/ntrip/NtripStats.hpp
         src/ntrip/NtripTls.hpp
     DESTINATION
-        /usr/local/include/jimmypaputto/ntrip
+        ${CMAKE_INSTALL_INCLUDEDIR}/jimmypaputto/ntrip
+)
+
+# ── CMake package config (enables find_package(GnssHat)) ────────────────────
+
+include(CMakePackageConfigHelpers)
+
+install(EXPORT GnssHatTargets
+    FILE GnssHatTargets.cmake
+    NAMESPACE GnssHat::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/GnssHat
+)
+
+configure_package_config_file(
+    ${CMAKE_SOURCE_DIR}/cmake/GnssHatConfig.cmake.in
+    ${CMAKE_BINARY_DIR}/GnssHatConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/GnssHat
+)
+
+write_basic_package_version_file(
+    ${CMAKE_BINARY_DIR}/GnssHatConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+install(
+    FILES
+        ${CMAKE_BINARY_DIR}/GnssHatConfig.cmake
+        ${CMAKE_BINARY_DIR}/GnssHatConfigVersion.cmake
+    DESTINATION
+        ${CMAKE_INSTALL_LIBDIR}/cmake/GnssHat
+)
+
+# ── pkg-config ───────────────────────────────────────────────────────────────
+
+configure_file(
+    ${CMAKE_SOURCE_DIR}/cmake/gnsshat.pc.in
+    ${CMAKE_BINARY_DIR}/gnsshat.pc
+    @ONLY
+)
+
+install(
+    FILES ${CMAKE_BINARY_DIR}/gnsshat.pc
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
 )
 
 install(CODE "
@@ -337,9 +389,9 @@ file(WRITE ${CMAKE_BINARY_DIR}/cmake_uninstall.cmake "
             message(STATUS \"Not found (skipping): \${FILE}\")
         endif()
     endforeach()
-    if(IS_DIRECTORY \"/usr/local/include/jimmypaputto\")
-        message(STATUS \"Removing: /usr/local/include/jimmypaputto\")
-        file(REMOVE_RECURSE \"/usr/local/include/jimmypaputto\")
+    if(IS_DIRECTORY \"${CMAKE_INSTALL_FULL_INCLUDEDIR}/jimmypaputto\")
+        message(STATUS \"Removing: ${CMAKE_INSTALL_FULL_INCLUDEDIR}/jimmypaputto\")
+        file(REMOVE_RECURSE \"${CMAKE_INSTALL_FULL_INCLUDEDIR}/jimmypaputto\")
     endif()
     execute_process(COMMAND ldconfig)
     if(FAILED_FILES)

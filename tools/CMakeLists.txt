@@ -8,5 +8,5 @@ target_include_directories(gnsshat-probe PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(gnsshat-probe GnssHat)
 
 install(TARGETS gnsshat-info gnsshat-probe
-    RUNTIME DESTINATION /usr/local/bin
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )

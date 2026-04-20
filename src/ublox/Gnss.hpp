@@ -12,6 +12,7 @@
 #include "ublox/TimeMark.hpp"
 
 #include <optional>
+#include <string>
 
 
 namespace JimmyPaputto
@@ -32,6 +33,12 @@ public:
     void rawMeasurements(const RawMeasurements& rawMeasurements);
     void subframe(const SubframeData& subframe);
 
+    void monVer(const std::string& swVersion, const std::string& hwVersion,
+                const std::vector<std::string>& extensions);
+    std::string swVersion() const;
+    std::string hwVersion() const;
+    std::vector<std::string> monVerExtensions() const;
+
     void timeMark(const TimeMark& timeMark);
     std::optional<TimeMark> timeMark() const;
 
@@ -43,6 +50,9 @@ public:
 private:
     Navigation navigation_;
     std::optional<TimeMark> timeMark_;
+    std::string swVersion_;
+    std::string hwVersion_;
+    std::vector<std::string> monVerExtensions_;
     mutable JPGuard xSemaphore_;
 };
 

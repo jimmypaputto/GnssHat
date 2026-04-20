@@ -15,6 +15,7 @@
 #include "ubxmsg/UBX_CFG_VALGET.hpp"
 #include "ubxmsg/UBX_MON_RF.hpp"
 #include "ubxmsg/UBX_MON_SPAN.hpp"
+#include "ubxmsg/UBX_MON_VER.hpp"
 #include "ubxmsg/UBX_NAV_DOP.hpp"
 #include "ubxmsg/UBX_NAV_GEOFENCE.hpp"
 #include "ubxmsg/UBX_NAV_PVT.hpp"
@@ -98,6 +99,12 @@ UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
     callbacks_[to_underlying(UBX_MON_SPAN)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
         const auto& ubxMonSpan = static_cast<ubxmsg::UBX_MON_SPAN&>(ubxMsg);
         Gnss::instance().rfBlocksSpectrumData(ubxMonSpan.rfBlocksSpectrumData());
+    };
+
+    callbacks_[to_underlying(UBX_MON_VER)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
+        const auto& ubxMonVer = static_cast<ubxmsg::UBX_MON_VER&>(ubxMsg);
+        Gnss::instance().monVer(ubxMonVer.swVersion(), ubxMonVer.hwVersion(),
+                                ubxMonVer.extensions());
     };
 
     callbacks_[to_underlying(UBX_NAV_DOP)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {

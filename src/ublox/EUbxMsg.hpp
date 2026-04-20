@@ -35,6 +35,7 @@ enum class EUbxMsg: std::uint8_t
     UBX_MON_SPAN     = 0x11,
     UBX_RXM_RAWX     = 0x12,
     UBX_RXM_SFRBX    = 0x13,
+    UBX_MON_VER      = 0x12,
     END_UBX
 };
 

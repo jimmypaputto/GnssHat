@@ -17,6 +17,7 @@
 #include "ubxmsg/UBX_CFG_VALGET.hpp"
 #include "ubxmsg/UBX_MON_RF.hpp"
 #include "ubxmsg/UBX_MON_SPAN.hpp"
+#include "ubxmsg/UBX_MON_VER.hpp"
 #include "ubxmsg/UBX_NAV_DOP.hpp"
 #include "ubxmsg/UBX_NAV_GEOFENCE.hpp"
 #include "ubxmsg/UBX_NAV_PVT.hpp"
@@ -67,6 +68,8 @@ UbxFactory::UbxFactory()
     create_[to_underlying(UBX_MON_RF)] = &mon_rf;
     static ubxmsg::UBX_MON_SPAN mon_span;
     create_[to_underlying(UBX_MON_SPAN)] = &mon_span;
+    static ubxmsg::UBX_MON_VER mon_ver;
+    create_[to_underlying(UBX_MON_VER)] = &mon_ver;
     static ubxmsg::UBX_NAV_DOP nav_dop;
     create_[to_underlying(UBX_NAV_DOP)] = &nav_dop;
     static ubxmsg::UBX_NAV_GEOFENCE nav_geofence;

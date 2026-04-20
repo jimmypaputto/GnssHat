@@ -35,15 +35,16 @@ mkdir -p build && cd build
 cmake .. -DBUILD_PYTHON=ON -DBUILD_EXAMPLES=ON
 make
 sudo make install
-sudo ldconfig
 ```
 
-| Flag | Description |
-|------|-------------|
-| `BUILD_PYTHON` | Build and install the Python CPython extension module |
-| `BUILD_EXAMPLES` | Build all C and C++ examples. Binaries are symlinked into `examples/BinariesSymlinks/` for convenience |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `BUILD_PYTHON` | OFF | Build and install the Python CPython extension module |
+| `BUILD_EXAMPLES` | OFF | Build all C and C++ examples. Binaries are symlinked into `examples/bin/` for convenience |
+| `BUILD_TOOLS` | ON | Build CLI tools (`gnsshat-info`, `gnsshat-probe`) |
+| `BUILD_TESTS` | OFF | Build unit tests (requires GTest). Run with `ctest` |
 
-Both flags are optional.
+All flags are optional.
 
 ### Build/First run troubleshooting
 
@@ -262,7 +263,7 @@ auto frame = hat->rtk()->base()->getRtcm3Frame(1077);         // specific messag
 hat->rtk()->rover()->applyCorrections(corrections);
 ```
 
-See the RTK examples in `examples/CPP/RTK/` and `examples/Python/rtk_base.py` / `rtk_rover.py` for complete base+rover setups including NTRIP client usage.
+See the RTK examples in `examples/cpp/rtk/` and `examples/python/rtk_base.py` / `rtk_rover.py` for complete base+rover setups including NTRIP client usage.
 
 ### Time Base (L1/L5 TIME HAT only)
 
@@ -295,7 +296,7 @@ GnssConfig config {
 };
 ```
 
-See the TimeBase examples in `examples/CPP/TimeBase/`, `examples/C/TimeBase/` and `examples/Python/time_base.py`.
+See the TimeBase examples in `examples/cpp/time-base/`, `examples/c/time-base/` and `examples/python/time_base.py`.
 
 ### TimeMark (L1/L5 TIME HAT only)
 
@@ -330,7 +331,7 @@ printf("rising TOW: %u ms + %u ns, accuracy: %u ns\n",
     tm.towRising_ms, tm.towSubRising_ns, tm.accuracyEstimate_ns);
 ```
 
-See the TimeMark examples in `examples/CPP/TimeMark/`, `examples/C/TimeMark/` and `examples/Python/time_mark.py`.
+See the TimeMark examples in `examples/cpp/time-mark/`, `examples/c/time-mark/` and `examples/python/time_mark.py`.
 
 ### Geofencing
 
@@ -346,30 +347,30 @@ The library can forward NMEA sentences (GGA, RMC, GSA, GSV, ZDA) to a virtual se
 
 **USB shortcut (L1 HAT & RTK HAT):** The L1 GNSS HAT and L1/L5 RTK HAT have an exposed USB port connected directly to the u-blox module. Plug a USB cable from the HAT to the Raspberry Pi and the module appears as `/dev/ttyACM0` - gpsd can read it directly without the bridge daemon or the library. This is the simplest way to get gpsd running on these two HATs.
 
-See [`examples/GpsdIntegration/`](examples/GpsdIntegration/) for a ready-to-use systemd daemon, USB setup, and configuration scripts.
+See [`examples/gpsd-integration/`](examples/gpsd-integration/) for a ready-to-use systemd daemon, USB setup, and configuration scripts.
 
 ### Time Server
 
-A complete guide for setting up a PPS-disciplined time server using chrony + gpsd is available in [`examples/TimeServer/`](examples/TimeServer/).
+A complete guide for setting up a PPS-disciplined time server using chrony + gpsd is available in [`examples/time-server/`](examples/time-server/).
 
 ## Examples
 
 | Directory | Language | Description |
 |-----------|----------|-------------|
-| `examples/CPP/PrintNavigation` | C++ | Print position, speed, time, fix info |
-| `examples/CPP/PrintSatellites` | C++ | Per-satellite table with signal quality |
-| `examples/CPP/Geofencing` | C++ | Configure and monitor geofences |
-| `examples/CPP/JammingDetector` | C++ | RF interference monitoring |
-| `examples/CPP/TimepulseInterrupt` | C++ | Timepulse synchronization |
-| `examples/CPP/HotStart` | C++ | Cold vs hot start timing benchmark |
-| `examples/CPP/RTK` | C++ | RTK base station and rover |
-| `examples/CPP/TimeBase` | C++ | Time base mode for improved time accuracy |
-| `examples/CPP/TimeMark` | C++ | EXTINT time mark event timestamping |
-| `examples/C/` | C | Same set of examples using the C API |
-| `examples/Python/` | Python | Same set + JSON config loader + NTRIP rover ([README](examples/Python/README.md)) |
-| `examples/GpsdIntegration/` | C++ | Systemd daemon for gpsd bridging ([README](examples/GpsdIntegration/README.md)) |
-| `examples/TimeServer/` | -- | PPS time server setup guide ([README](examples/TimeServer/README.md)) |
-| `examples/Visualization/` | Python/JS | Flask web app with live maps, skyview, and config editor ([README](examples/Visualization/README.md)) |
+| `examples/cpp/print-navigation` | C++ | Print position, speed, time, fix info |
+| `examples/cpp/print-satellites` | C++ | Per-satellite table with signal quality |
+| `examples/cpp/geofencing` | C++ | Configure and monitor geofences |
+| `examples/cpp/jamming-detector` | C++ | RF interference monitoring |
+| `examples/cpp/timepulse-interrupt` | C++ | Timepulse synchronization |
+| `examples/cpp/hot-start` | C++ | Cold vs hot start timing benchmark |
+| `examples/cpp/rtk` | C++ | RTK base station and rover |
+| `examples/cpp/time-base` | C++ | Time base mode for improved time accuracy |
+| `examples/cpp/time-mark` | C++ | EXTINT time mark event timestamping |
+| `examples/c/` | C | Same set of examples using the C API |
+| `examples/python/` | Python | Same set + JSON config loader + NTRIP server/rover ([README](examples/python/README.md)) |
+| `examples/gpsd-integration/` | C++ | Systemd daemon for gpsd bridging ([README](examples/gpsd-integration/README.md)) |
+| `examples/time-server/` | -- | PPS time server setup guide ([README](examples/time-server/README.md)) |
+| `examples/visualization/` | Python/JS | Flask web app with live maps, skyview, and config editor ([README](examples/visualization/README.md)) |
 
 ## Architecture
 
@@ -394,7 +395,7 @@ GnssHat/
 │   └── common/                      GPIO, synchronization, utilities
 ├── python/                          Python CPython extension module
 ├── examples/                        C, C++, Python examples + Visualization + GPSD + TimeServer
-│   └── BinariesSymlinks/            Symlinks to C++ binaries (created by BUILD_EXAMPLES)
+│   └── bin/                         Symlinks to C++ binaries (created by BUILD_EXAMPLES)
 └── scripts/                         Build and dependency scripts
 ```
 

@@ -150,7 +150,7 @@ target_link_libraries(GnssHat gpiod pthread util)
 
 if(NTRIP_TLS_SUPPORT)
     find_package(OpenSSL REQUIRED)
-    target_compile_definitions(GnssHat PRIVATE GNSSHAT_HAS_TLS)
+    target_compile_definitions(GnssHat PUBLIC GNSSHAT_HAS_TLS)
     target_link_libraries(GnssHat OpenSSL::SSL OpenSSL::Crypto)
     message(STATUS "NTRIP TLS support enabled")
 endif()

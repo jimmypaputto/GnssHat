@@ -6,6 +6,7 @@ project(GnssHat VERSION 1.0.0)
 
 option(BUILD_PYTHON "Build Python bindings" OFF)
 option(BUILD_EXAMPLES "Build C and C++ examples" OFF)
+option(BUILD_TOOLS "Build CLI tools (gnsshat-info, gnsshat-probe)" ON)
 option(NTRIP_TLS_SUPPORT "Enable TLS for NTRIP connections (requires OpenSSL)" OFF)
 
 set(LIBGPIOD_VERSION 2)
@@ -65,6 +66,7 @@ set(LIB_SOURCES
     src/ntrip/NtripCaster.cpp
     src/ntrip/NtripClient.cpp
     src/ntrip/NtripServer.cpp
+    src/common/BuildInfo.cpp
     src/common/GpioInterruptLine.cpp
     src/common/JPGuard.cpp
     src/common/Utils.cpp
@@ -92,6 +94,37 @@ set(LIB_SOURCES
 
 add_library(GnssHat SHARED ${LIB_SOURCES})
 
+# Git info for BuildInfo
+execute_process(
+    COMMAND git describe --always --dirty
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_REVISION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+execute_process(
+    COMMAND git rev-list --count HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_BUILD_NUMBER
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT GIT_REVISION)
+    set(GIT_REVISION "unknown")
+endif()
+if(NOT GIT_BUILD_NUMBER)
+    set(GIT_BUILD_NUMBER 0)
+endif()
+set_source_files_properties(src/common/BuildInfo.cpp PROPERTIES
+    COMPILE_DEFINITIONS "GNSSHAT_GIT_REVISION=\"${GIT_REVISION}\";GNSSHAT_BUILD_NUMBER=${GIT_BUILD_NUMBER}"
+)
+
+# Force BuildInfo.cpp recompile on every build for fresh __DATE__/__TIME__
+add_custom_target(BuildInfoRefresh ALL
+    COMMAND ${CMAKE_COMMAND} -E touch_nocreate ${CMAKE_SOURCE_DIR}/src/common/BuildInfo.cpp
+)
+add_dependencies(GnssHat BuildInfoRefresh)
+
 set_target_properties(GnssHat PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
@@ -105,6 +138,10 @@ if(NTRIP_TLS_SUPPORT)
     target_compile_definitions(GnssHat PRIVATE GNSSHAT_HAS_TLS)
     target_link_libraries(GnssHat OpenSSL::SSL OpenSSL::Crypto)
     message(STATUS "NTRIP TLS support enabled")
+endif()
+
+if(BUILD_TOOLS)
+    add_subdirectory(tools)
 endif()
 
 if(BUILD_EXAMPLES)
@@ -230,6 +267,13 @@ install(
         src/GnssHat.h
     DESTINATION
         /usr/local/include/jimmypaputto
+)
+
+install(
+    FILES
+        src/common/BuildInfo.hpp
+    DESTINATION
+        /usr/local/include/jimmypaputto/common
 )
 
 install(

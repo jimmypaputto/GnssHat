@@ -38,6 +38,10 @@ required_accuracy_m = 50.0
 type = "lla"
 
 # LLA coordinates (used when type = "lla")
+# height_m is WGS-84 ellipsoidal height (HAE), NOT mean-sea-level.
+# Tip: run once in survey-in mode; the service logs "alt_hae=... alt_msl=..."
+#      in its periodic stats line -- copy the alt_hae value here to skip
+#      survey-in on the next startup.
 latitude_deg = 52.232222222
 longitude_deg = 21.008055556
 height_m = 110.0

@@ -217,7 +217,7 @@ static void printUsage(const char* progname)
         "  --username <user>        NTRIP username\n"
         "  --password <pass>        NTRIP password\n"
         "  --survey-in              Use survey-in base mode (default)\n"
-        "  --fixed-lla <lat,lon,h>  Use fixed LLA position\n"
+        "  --fixed-lla <lat,lon,h>  Use fixed LLA position (h = WGS-84 HAE in meters)\n"
         "  --fixed-ecef <x,y,z>    Use fixed ECEF position\n"
         "  --accuracy <meters>      Position accuracy for fixed mode (default: 0.5)\n"
         "  --reset <cold|hot|none>  Receiver reset mode (default: cold)\n"
@@ -511,19 +511,28 @@ int main(int argc, char* argv[])
 
     switch (cfg.resetMode)
     {
-        case EResetMode::Cold: hat->hardResetUbloxSom_ColdStart(); break;
-        case EResetMode::Hot:  hat->softResetUbloxSom_HotStart();  break;
+        case EResetMode::Cold:
+            sdNotifyRaw("STATUS=Cold-resetting receiver...");
+            hat->hardResetUbloxSom_ColdStart();
+            break;
+        case EResetMode::Hot:
+            sdNotifyRaw("STATUS=Hot-resetting receiver...");
+            hat->softResetUbloxSom_HotStart();
+            break;
         case EResetMode::None: break;
     }
 
+    sdNotifyRaw("STATUS=Configuring receiver...");
     const auto gnssConfig = cfg.buildGnssConfig();
     if (!hat->start(gnssConfig))
     {
         logLine(LogLvl::Error, "Failed to start GNSS");
+        sdNotifyRaw("STATUS=Failed to configure receiver");
         delete hat;
         return 1;
     }
     logLine(LogLvl::Info, "GNSS started. Waiting for TimeOnlyFix...");
+    sdNotifyRaw("STATUS=Waiting for base fix (TimeOnlyFix)...");
 
     // ── Start NTRIP ─────────────────────────────────────────────────
     NtripCaster* caster = nullptr;
@@ -608,6 +617,30 @@ int main(int argc, char* argv[])
     size_t   prevClientCount = static_cast<size_t>(-1);
     bool     firstRtcmSeen = false;
 
+    // High-level phase, reflected in systemd STATUS= on every transition so
+    // `systemctl status` is informative even between periodic summaries.
+    enum class Phase { AwaitingFix, FixNoRtcm, Streaming, FixLost };
+    auto phaseStr = [](Phase p) {
+        switch (p) {
+            case Phase::AwaitingFix: return "awaiting-fix";
+            case Phase::FixNoRtcm:   return "fix-no-rtcm";
+            case Phase::Streaming:   return "streaming";
+            case Phase::FixLost:     return "fix-lost";
+        }
+        return "?";
+    };
+    Phase phase = Phase::AwaitingFix;
+    bool phaseEmitted = false;
+    auto setPhase = [&](Phase p, const char* detail)
+    {
+        if (phaseEmitted && p == phase) return;
+        phase = p;
+        phaseEmitted = true;
+        char msg[192];
+        std::snprintf(msg, sizeof(msg), "STATUS=%s: %s", phaseStr(p), detail);
+        sdNotifyRaw(msg);
+    };
+
     // Counters accumulated across the interval window.
     uint64_t winFrames = 0;
     uint64_t winBytes  = 0;
@@ -644,11 +677,20 @@ int main(int argc, char* argv[])
         if (pvt.fixType != EFixType::TimeOnlyFix)
         {
             ++winNoFixEpochs;
+            // Lost fix after we had one, otherwise still waiting.
+            if (firstRtcmSeen || phase == Phase::FixNoRtcm)
+                setPhase(Phase::FixLost, Utils::eFixType2string(pvt.fixType).c_str());
+            else
+                setPhase(Phase::AwaitingFix, Utils::eFixType2string(pvt.fixType).c_str());
         }
         else
         {
             auto corrections = hat->rtk()->base()->getFullCorrections();
-            if (!corrections.empty())
+            if (corrections.empty())
+            {
+                setPhase(Phase::FixNoRtcm, "base fix acquired, waiting for RTCM");
+            }
+            else
             {
                 size_t thisBytes = 0;
                 for (const auto& frame : corrections) thisBytes += frame.size();
@@ -661,6 +703,8 @@ int main(int argc, char* argv[])
                     logLine(LogLvl::Info, "First RTCM3 frames ready (%zu)", corrections.size());
                     firstRtcmSeen = true;
                 }
+                setPhase(Phase::Streaming, caster ? "serving RTCM to clients"
+                                                  : "pushing RTCM to upstream caster");
 
                 if (caster)
                 {
@@ -699,9 +743,16 @@ int main(int argc, char* argv[])
             }
             else
             {
+                // alt_hae = height above WGS-84 ellipsoid (what u-blox CFG-TMODE3
+                //           LLA mode expects, and what to paste into
+                //           [base.fixed_position] height_m after a survey-in).
+                // alt_msl = height above mean sea level (geoid), for humans.
                 std::snprintf(posBuf, sizeof(posBuf),
-                              "pos=%.7f,%.7f alt=%.1fm hAcc=%.2fm sats=%u",
-                              pvt.latitude, pvt.longitude, pvt.altitudeMSL,
+                              "pos=%.7f,%.7f alt_hae=%.2fm alt_msl=%.2fm "
+                              "hAcc=%.2fm sats=%u",
+                              pvt.latitude, pvt.longitude,
+                              static_cast<double>(pvt.altitude),
+                              static_cast<double>(pvt.altitudeMSL),
                               static_cast<double>(pvt.horizontalAccuracy),
                               static_cast<unsigned>(pvt.visibleSatellites));
             }
@@ -710,8 +761,9 @@ int main(int argc, char* argv[])
             if (caster)
             {
                 std::snprintf(status, sizeof(status),
-                              "fix=%s %s frames=%llu bytes=%llu clients=%zu "
+                              "%s: fix=%s %s frames=%llu bytes=%llu clients=%zu "
                               "no_fix_epochs=%u/%u in %.1fs",
+                              phaseStr(phase),
                               fixStr.c_str(), posBuf,
                               (unsigned long long)winFrames,
                               (unsigned long long)winBytes,
@@ -722,8 +774,9 @@ int main(int argc, char* argv[])
             {
                 auto st = server->getStats();
                 std::snprintf(status, sizeof(status),
-                              "fix=%s %s frames=%llu bytes=%llu total_tx=%lluB "
+                              "%s: fix=%s %s frames=%llu bytes=%llu total_tx=%lluB "
                               "uptime=%.1fs no_fix_epochs=%u/%u in %.1fs",
+                              phaseStr(phase),
                               fixStr.c_str(), posBuf,
                               (unsigned long long)winFrames,
                               (unsigned long long)winBytes,
@@ -768,5 +821,6 @@ int main(int argc, char* argv[])
 
     delete hat;
     logLine(LogLvl::Info, "Done.");
+    sdNotifyRaw("STATUS=Stopped");
     return 0;
 }

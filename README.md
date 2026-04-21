@@ -219,6 +219,8 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 
 Utility functions in `JimmyPaputto::Utils`: `eFixQuality2string()`, `jammingState2string()`, `utcTimeFromGnss_ISO8601()`, etc.
 
+HAT detection helpers in `JimmyPaputto::Hat`: `detectProduct()` (returns the HAT product name from the device-tree EEPROM without instantiating `IGnssHat`) and `readEepromField(field)` (generic EEPROM field reader).
+
 ### C
 
 Include `<jimmypaputto/GnssHat.h>`. All functions are prefixed with `jp_gnss_hat_` (lifecycle/navigation) or `jp_gnss_` (config helpers, string converters). See the C example above and the header for the full list.
@@ -365,6 +367,16 @@ See [`examples/gpsd-integration/`](examples/gpsd-integration/) for a ready-to-us
 ### Time Server
 
 A complete guide for setting up a PPS-disciplined time server using chrony + gpsd is available in [`examples/time-server/`](examples/time-server/).
+
+### RTK Base Station service
+
+The `gnsshat-rtk-base` CLI tool ([`tools/gnsshat-rtk-base.cpp`](tools/gnsshat-rtk-base.cpp)) runs a full RTK base station with a local NTRIP caster or a remote NTRIP server. It takes a TOML config file (see [`tools/example-rtk-base.toml`](tools/example-rtk-base.toml)) with CLI overrides. Install as a systemd service with:
+
+```bash
+sudo tools/scripts/install-rtk-base-service.sh
+sudo systemctl start gnsshat-rtk-base
+journalctl -u gnsshat-rtk-base -f
+```
 
 ## Examples
 

@@ -50,30 +50,60 @@ class AltitudeTape {
         const slider = document.getElementById('altitude-scale-slider');
         if (slider) {
             slider.addEventListener('input', (e) => {
-                this.scale = parseFloat(e.target.value);
-                const valueEl = document.getElementById('altitude-scale-value');
-                if (valueEl) valueEl.textContent = `${this.scale}m`;
-                this.updateScaleDisplay();
+                this.setScale(parseFloat(e.target.value));
             });
+        }
+        // Mouse wheel zoom while hovering the canvas wrapper
+        const wrapper = this.canvas.parentElement;
+        if (wrapper) {
+            wrapper.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const factor = e.deltaY > 0 ? 1.125 : 1 / 1.125;
+                this.setScale(this.scale * factor);
+            }, { passive: false });
+        }
+        this.updateScaleDisplay();
+    }
+
+    setScale(value) {
+        const slider = document.getElementById('altitude-scale-slider');
+        const min = slider ? parseFloat(slider.min) : 0.05;
+        const max = slider ? parseFloat(slider.max) : 100;
+        const clamped = Math.max(min, Math.min(max, value));
+        this.scale = Math.round(clamped * 100) / 100;
+        if (slider) slider.value = this.scale;
+        const valueEl = document.getElementById('altitude-scale-value');
+        if (valueEl) {
+            valueEl.textContent = this.scale < 1
+                ? `${(this.scale * 100).toFixed(0)}cm`
+                : `${this.scale.toFixed(this.scale < 10 ? 1 : 0)}m`;
         }
         this.updateScaleDisplay();
     }
 
     getGridSpacing() {
-        if (this.scale <= 1)       return 0.25;
-        else if (this.scale <= 2)  return 0.5;
-        else if (this.scale <= 5)  return 1;
-        else if (this.scale <= 20) return 2;
-        else if (this.scale <= 50) return 5;
-        else                       return 10;
+        // Extended ladder for RTK-grade centimetre ranges.
+        if (this.scale <= 0.05)      return 0.01;  // 1 cm
+        else if (this.scale <= 0.1)  return 0.02;  // 2 cm
+        else if (this.scale <= 0.25) return 0.05;  // 5 cm
+        else if (this.scale <= 0.5)  return 0.1;   // 10 cm
+        else if (this.scale <= 1)    return 0.25;  // 25 cm
+        else if (this.scale <= 2)    return 0.5;
+        else if (this.scale <= 5)    return 1;
+        else if (this.scale <= 20)   return 2;
+        else if (this.scale <= 50)   return 5;
+        else                         return 10;
     }
 
     updateScaleDisplay() {
         const scaleInfo = document.getElementById('altitude-scale-info');
         if (scaleInfo) {
             const grid = this.getGridSpacing();
-            const gridLabel = grid < 1 ? `${(grid * 100).toFixed(0)}cm` : `${grid}m`;
-            scaleInfo.textContent = `Scale: ±${this.scale.toFixed(1)}m  |  Grid: ${gridLabel}`;
+            const gridLabel = grid < 1 ? `${(grid * 100).toFixed(grid < 0.1 ? 1 : 0)}cm` : `${grid}m`;
+            const scaleLabel = this.scale < 1
+                ? `±${(this.scale * 100).toFixed(0)}cm`
+                : `±${this.scale.toFixed(this.scale < 10 ? 1 : 0)}m`;
+            scaleInfo.textContent = `Scale: ${scaleLabel}  |  Grid: ${gridLabel}`;
         }
     }
 
@@ -172,7 +202,17 @@ class AltitudeTape {
         if (!this.width || !this.height) return;
 
         const ctx = this.ctx;
-        ctx.fillStyle = '#ffffff';
+        const p = (typeof getChartPalette === 'function') ? getChartPalette('altitude') : null;
+        const pal = p || {
+            bg: '#ffffff', grid: '#e0e0e0', gridText: '#555555',
+            axisLabel: '#000000', zero: '#000000',
+            tape: '#f5f5f5', tapeBorder: '#000000', tapeTicks: '#888888',
+            marker: '#ef4444', markerOutline: '#ffffff',
+            offScale: '#f59e0b', trail: '#22c55e',
+            accBand: 'rgba(239, 68, 68, 0.12)', accStroke: 'rgba(239, 68, 68, 0.35)',
+            delta: '#000000', waiting: '#888888',
+        };
+        ctx.fillStyle = pal.bg;
         ctx.fillRect(0, 0, this.width, this.height);
 
         // Centre line (X pos of the tape), plenty of room for labels on the left.
@@ -180,26 +220,26 @@ class AltitudeTape {
         const tapeX = Math.max(80, this.width * 0.35);
         const tapeWidth = 40;
 
-        this.drawGrid(centerY, tapeX, tapeWidth);
-        this.drawTape(centerY, tapeX, tapeWidth);
-        this.drawZeroLine(centerY, tapeX, tapeWidth);
-        this.drawTrail(centerY, tapeX, tapeWidth);
+        this.drawGrid(centerY, tapeX, tapeWidth, pal);
+        this.drawTape(centerY, tapeX, tapeWidth, pal);
+        this.drawZeroLine(centerY, tapeX, tapeWidth, pal);
+        this.drawTrail(centerY, tapeX, tapeWidth, pal);
 
         if (this.originSet) {
-            this.drawAccuracyBand(centerY, tapeX, tapeWidth);
-            this.drawMarker(centerY, tapeX, tapeWidth);
+            this.drawAccuracyBand(centerY, tapeX, tapeWidth, pal);
+            this.drawMarker(centerY, tapeX, tapeWidth, pal);
         } else {
-            this.drawWaitingMessage();
+            this.drawWaitingMessage(pal);
         }
     }
 
-    drawGrid(centerY, tapeX, tapeWidth) {
+    drawGrid(centerY, tapeX, tapeWidth, pal) {
         const ctx = this.ctx;
         const gridSpacing = this.getGridSpacing();
 
-        ctx.strokeStyle = '#e0e0e0';
+        ctx.strokeStyle = pal.grid;
         ctx.lineWidth = 1;
-        ctx.fillStyle = '#555555';
+        ctx.fillStyle = pal.gridText;
         ctx.font = '12px monospace';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
@@ -232,7 +272,7 @@ class AltitudeTape {
         }
 
         // Axis label at the top
-        ctx.fillStyle = '#000000';
+        ctx.fillStyle = pal.axisLabel;
         ctx.font = 'bold 13px sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
@@ -240,17 +280,17 @@ class AltitudeTape {
         ctx.fillText(srcLabel, 10, 10);
     }
 
-    drawTape(centerY, tapeX, tapeWidth) {
+    drawTape(centerY, tapeX, tapeWidth, pal) {
         const ctx = this.ctx;
         // Tape bar
-        ctx.fillStyle = '#f5f5f5';
-        ctx.strokeStyle = '#000000';
+        ctx.fillStyle = pal.tape;
+        ctx.strokeStyle = pal.tapeBorder;
         ctx.lineWidth = 1.5;
         ctx.fillRect(tapeX, 0, tapeWidth, this.height);
         ctx.strokeRect(tapeX, 0, tapeWidth, this.height);
 
         // Minor ticks on tape
-        ctx.strokeStyle = '#888888';
+        ctx.strokeStyle = pal.tapeTicks;
         ctx.lineWidth = 1;
         const gridSpacing = this.getGridSpacing();
         const minorSpacing = gridSpacing / 5;
@@ -268,23 +308,23 @@ class AltitudeTape {
         }
     }
 
-    drawZeroLine(centerY, tapeX, tapeWidth) {
+    drawZeroLine(centerY, tapeX, tapeWidth, pal) {
         const ctx = this.ctx;
-        ctx.strokeStyle = '#000000';
+        ctx.strokeStyle = pal.zero;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(tapeX - 12, centerY);
         ctx.lineTo(this.width, centerY);
         ctx.stroke();
 
-        ctx.fillStyle = '#000000';
+        ctx.fillStyle = pal.zero;
         ctx.font = 'bold 12px sans-serif';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
         ctx.fillText('0', tapeX - 14, centerY);
     }
 
-    drawTrail(centerY, tapeX, tapeWidth) {
+    drawTrail(centerY, tapeX, tapeWidth, pal) {
         if (this.trail.length < 2) return;
         const ctx = this.ctx;
 
@@ -298,7 +338,7 @@ class AltitudeTape {
         ctx.rect(traceX0, 0, traceX1 - traceX0, this.height);
         ctx.clip();
 
-        ctx.strokeStyle = '#22c55e';
+        ctx.strokeStyle = pal.trail;
         ctx.lineWidth = 2;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
@@ -317,7 +357,7 @@ class AltitudeTape {
         ctx.restore();
     }
 
-    drawAccuracyBand(centerY, tapeX, tapeWidth) {
+    drawAccuracyBand(centerY, tapeX, tapeWidth, pal) {
         if (!this.hasAccuracy || this.currentAccuracy <= 0) return;
         const ctx = this.ctx;
         const delta = this.currentAlt - this.referenceAltitude;
@@ -327,8 +367,8 @@ class AltitudeTape {
         const x1 = this.width - 4;
 
         ctx.save();
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.12)';
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.35)';
+        ctx.fillStyle = pal.accBand;
+        ctx.strokeStyle = pal.accStroke;
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
         const top = Math.max(0, centerPx - bandPx);
@@ -338,7 +378,7 @@ class AltitudeTape {
         ctx.restore();
     }
 
-    drawMarker(centerY, tapeX, tapeWidth) {
+    drawMarker(centerY, tapeX, tapeWidth, pal) {
         const ctx = this.ctx;
         const delta = this.currentAlt - this.referenceAltitude;
         const deltaClamped = Math.max(-this.scale, Math.min(this.scale, delta));
@@ -352,15 +392,15 @@ class AltitudeTape {
         ctx.shadowBlur = 4;
         ctx.shadowOffsetY = 2;
 
-        ctx.fillStyle = offScale ? '#f59e0b' : '#ef4444';
+        ctx.fillStyle = offScale ? pal.offScale : pal.marker;
         ctx.beginPath();
         ctx.arc(px, y, 9, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = '#ffffff';
+        ctx.strokeStyle = pal.markerOutline;
         ctx.lineWidth = 2;
         ctx.stroke();
         ctx.shadowColor = 'transparent';
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = pal.markerOutline;
         ctx.beginPath();
         ctx.arc(px, y, 3, 0, Math.PI * 2);
         ctx.fill();
@@ -368,7 +408,7 @@ class AltitudeTape {
 
         // Off-scale arrow if clamped
         if (offScale) {
-            ctx.fillStyle = '#f59e0b';
+            ctx.fillStyle = pal.offScale;
             ctx.font = 'bold 18px sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -377,7 +417,7 @@ class AltitudeTape {
         }
 
         // Δ label next to marker
-        ctx.fillStyle = '#000000';
+        ctx.fillStyle = pal.delta;
         ctx.font = 'bold 13px monospace';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
@@ -385,9 +425,9 @@ class AltitudeTape {
         ctx.fillText(label, tapeX + tapeWidth + 6, y);
     }
 
-    drawWaitingMessage() {
+    drawWaitingMessage(pal) {
         const ctx = this.ctx;
-        ctx.fillStyle = '#888888';
+        ctx.fillStyle = pal.waiting;
         ctx.font = 'italic 14px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';

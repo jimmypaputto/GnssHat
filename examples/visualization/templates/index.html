@@ -58,11 +58,16 @@
                         <span id="scale-info">Scale: ±20.0m</span>
                         <div class="scale-slider-container">
                             <label for="scale-slider">Range:</label>
-                            <input type="range" id="scale-slider" class="scale-slider" min="0.5" max="30" value="20" step="0.5">
+                            <button type="button" class="btn-zoom" data-zoom="relative" data-dir="out" title="Zoom out">−</button>
+                            <input type="range" id="scale-slider" class="scale-slider" min="0.05" max="30" value="20" step="0.05">
+                            <button type="button" class="btn-zoom" data-zoom="relative" data-dir="in" title="Zoom in">+</button>
                             <span id="scale-value">20m</span>
                         </div>
                         <button id="reset-btn" class="btn-reset" title="Reset reference position">
                             🎯 Reset Origin
+                        </button>
+                        <button class="btn-theme" data-chart-theme="relative" title="Toggle light / dark">
+                            🌙
                         </button>
                     </div>
                     <div class="canvas-wrapper">
@@ -92,7 +97,9 @@
                         <span id="altitude-scale-info">Scale: ±20.0m</span>
                         <div class="scale-slider-container">
                             <label for="altitude-scale-slider">Range:</label>
-                            <input type="range" id="altitude-scale-slider" class="scale-slider" min="0.5" max="100" value="20" step="0.5">
+                            <button type="button" class="btn-zoom" data-zoom="altitude" data-dir="out" title="Zoom out">−</button>
+                            <input type="range" id="altitude-scale-slider" class="scale-slider" min="0.05" max="100" value="20" step="0.05">
+                            <button type="button" class="btn-zoom" data-zoom="altitude" data-dir="in" title="Zoom in">+</button>
                             <span id="altitude-scale-value">20m</span>
                         </div>
                         <div class="alt-source-toggle" role="group" aria-label="Altitude source">
@@ -103,6 +110,9 @@
                         </div>
                         <button id="alt-reset-btn" class="btn-reset" title="Reset reference altitude">
                             🎯 Reset Origin
+                        </button>
+                        <button class="btn-theme" data-chart-theme="altitude" title="Toggle light / dark">
+                            🌙
                         </button>
                     </div>
                     <div class="canvas-wrapper">
@@ -129,6 +139,11 @@
                 {% if hat_name != 'L1/L5 GNSS TIME HAT' %}
                 <!-- Sky View - Satellite polar plot -->
                 <div id="skyview-map" class="map-view" style="display: none;">
+                    <div class="map-info">
+                        <button class="btn-theme" data-chart-theme="skyview" title="Toggle light / dark">
+                            🌙
+                        </button>
+                    </div>
                     <div class="skyview-layout">
                         <div class="skyview-plot-wrap">
                             <canvas id="sky-canvas"></canvas>
@@ -175,6 +190,11 @@
                 {% if mode in ['native', 'ros2'] %}
                 <!-- RF Analyzer - Spectrum from MON-SPAN + RF status from MON-RF -->
                 <div id="rfanalyzer-map" class="map-view" style="display: none;">
+                    <div class="map-info">
+                        <button class="btn-theme" data-chart-theme="spectrum" title="Toggle light / dark">
+                            🌙
+                        </button>
+                    </div>
                     <div class="rfanalyzer-layout">
                         <div class="rfanalyzer-chart-wrap">
                             <div id="spectrum-charts-container"></div>

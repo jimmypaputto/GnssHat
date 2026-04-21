@@ -1,5 +1,91 @@
 // GPS Visualization Map - Jimmy Paputto 2025
 
+// Shared chart theme palettes (light = original look; dark = new default).
+const CHART_THEMES = {
+    relative: {
+        light: {
+            bg: '#ffffff', grid: '#e0e0e0', axis: '#000000', axisText: '#000000',
+            trail: '#22c55e', trailDot: 'rgba(34, 197, 94, 0.4)',
+            position: '#ef4444', positionOutline: '#ffffff',
+            origin: '#000000',
+            geofenceFill: 'rgba(0, 180, 255, 0.08)',
+            geofenceStroke: 'rgba(0, 180, 255, 0.6)',
+            geofenceLabel: 'rgba(0, 140, 220, 0.85)',
+        },
+        dark: {
+            bg: '#0f1220', grid: '#252844', axis: '#b8c0ff', axisText: '#e6e8ff',
+            trail: '#4ade80', trailDot: 'rgba(74, 222, 128, 0.5)',
+            position: '#ff6b6b', positionOutline: '#0f1220',
+            origin: '#ffffff',
+            geofenceFill: 'rgba(56, 189, 248, 0.12)',
+            geofenceStroke: 'rgba(56, 189, 248, 0.75)',
+            geofenceLabel: 'rgba(125, 211, 252, 0.95)',
+        },
+    },
+    altitude: {
+        light: {
+            bg: '#ffffff', grid: '#e0e0e0', gridText: '#555555',
+            axisLabel: '#000000', zero: '#000000',
+            tape: '#f5f5f5', tapeBorder: '#000000', tapeTicks: '#888888',
+            marker: '#ef4444', markerOutline: '#ffffff',
+            offScale: '#f59e0b',
+            trail: '#22c55e',
+            accBand: 'rgba(239, 68, 68, 0.12)', accStroke: 'rgba(239, 68, 68, 0.35)',
+            delta: '#000000', waiting: '#888888',
+        },
+        dark: {
+            bg: '#0f1220', grid: '#252844', gridText: '#a5acd8',
+            axisLabel: '#e6e8ff', zero: '#e6e8ff',
+            tape: '#1a1e35', tapeBorder: '#b8c0ff', tapeTicks: '#5a6297',
+            marker: '#ff6b6b', markerOutline: '#0f1220',
+            offScale: '#fbbf24',
+            trail: '#4ade80',
+            accBand: 'rgba(255, 107, 107, 0.18)', accStroke: 'rgba(255, 107, 107, 0.5)',
+            delta: '#e6e8ff', waiting: '#8a93c9',
+        },
+    },
+    skyview: {
+        light: {
+            bg: '#ffffff', rings: '#d0d0d0', ringText: '#666666',
+            compass: '#b0b0b0', compassLabel: '#333333', center: '#000000',
+        },
+        dark: {
+            bg: '#0a0a1a', rings: '#2a2a3e', ringText: '#555555',
+            compass: '#2a2a3e', compassLabel: '#888888', center: '#ffffff',
+        },
+    },
+    spectrum: {
+        light: {
+            bg: '#ffffff', grid: '#e0e0e0', border: '#b0b0b0',
+            axisText: '#444444', separator: '#cccccc', noData: '#888888',
+        },
+        dark: {
+            bg: '#0a0a1a', grid: '#1a1a2e', border: '#333333',
+            axisText: '#555555', separator: '#222222', noData: '#666666',
+        },
+    },
+};
+
+// Read persisted theme, default to 'dark'.
+function getChartTheme(name) {
+    try {
+        const v = localStorage.getItem('chartTheme:' + name);
+        if (v === 'light' || v === 'dark') return v;
+    } catch (_) {}
+    return 'dark';
+}
+
+function setChartThemeStored(name, value) {
+    try { localStorage.setItem('chartTheme:' + name, value); } catch (_) {}
+}
+
+function getChartPalette(name) {
+    const theme = getChartTheme(name);
+    const themes = CHART_THEMES[name];
+    if (!themes) return null;
+    return themes[theme] || themes.dark;
+}
+
 class GPSMap {
     constructor(canvasId) {
         this.canvas = document.getElementById(canvasId);
@@ -30,11 +116,37 @@ class GPSMap {
         const slider = document.getElementById('scale-slider');
         if (slider) {
             slider.addEventListener('input', (e) => {
-                this.scale = parseFloat(e.target.value);
-                document.getElementById('scale-value').textContent = `${this.scale}m`;
-                this.updateScaleDisplay();
+                this.setScale(parseFloat(e.target.value));
             });
         }
+
+        // Mouse wheel zoom while hovering the canvas (map.js handles relative)
+        const wrapper = this.canvas.parentElement;
+        if (wrapper) {
+            wrapper.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                // Multiplicative zoom: each wheel notch = 12.5% change
+                const factor = e.deltaY > 0 ? 1.125 : 1 / 1.125;
+                this.setScale(this.scale * factor);
+            }, { passive: false });
+        }
+    }
+
+    setScale(value) {
+        const slider = document.getElementById('scale-slider');
+        const min = slider ? parseFloat(slider.min) : 0.05;
+        const max = slider ? parseFloat(slider.max) : 30;
+        const clamped = Math.max(min, Math.min(max, value));
+        // Round to slider step precision
+        this.scale = Math.round(clamped * 100) / 100;
+        if (slider) slider.value = this.scale;
+        const valEl = document.getElementById('scale-value');
+        if (valEl) {
+            valEl.textContent = this.scale < 1
+                ? `${(this.scale * 100).toFixed(0)}cm`
+                : `${this.scale.toFixed(this.scale < 10 ? 1 : 0)}m`;
+        }
+        this.updateScaleDisplay();
     }
     
     setupCanvas() {
@@ -107,18 +219,27 @@ class GPSMap {
     }
     
     getGridSpacing() {
-        if (this.scale <= 1)       return 0.25;
-        else if (this.scale <= 2)  return 0.5;
-        else if (this.scale <= 5)  return 1;
-        else                       return 5;
+        // Extended ladder for RTK-grade centimetre ranges.
+        if (this.scale <= 0.05)      return 0.01;  // 1 cm
+        else if (this.scale <= 0.1)  return 0.02;  // 2 cm
+        else if (this.scale <= 0.25) return 0.05;  // 5 cm
+        else if (this.scale <= 0.5)  return 0.1;   // 10 cm
+        else if (this.scale <= 1)    return 0.25;  // 25 cm
+        else if (this.scale <= 2)    return 0.5;
+        else if (this.scale <= 5)    return 1;
+        else if (this.scale <= 10)   return 2;
+        else                         return 5;
     }
     
     updateScaleDisplay() {
         const scaleInfo = document.getElementById('scale-info');
         if (scaleInfo) {
             const grid = this.getGridSpacing();
-            const gridLabel = grid < 1 ? `${(grid * 100).toFixed(0)}cm` : `${grid}m`;
-            scaleInfo.textContent = `Scale: ±${this.scale.toFixed(1)}m  |  Grid: ${gridLabel}`;
+            const gridLabel = grid < 1 ? `${(grid * 100).toFixed(grid < 0.1 ? 1 : 0)}cm` : `${grid}m`;
+            const scaleLabel = this.scale < 1
+                ? `±${(this.scale * 100).toFixed(0)}cm`
+                : `±${this.scale.toFixed(this.scale < 10 ? 1 : 0)}m`;
+            scaleInfo.textContent = `Scale: ${scaleLabel}  |  Grid: ${gridLabel}`;
         }
     }
     
@@ -134,8 +255,10 @@ class GPSMap {
     }
     
     draw() {
-        // Clear canvas with WHITE background
-        this.ctx.fillStyle = '#ffffff';
+        // Pull current palette fresh each frame — cheap, and lets the theme
+        // toggle update instantly without plumbing events through.
+        const p = getChartPalette('relative');
+        this.ctx.fillStyle = p.bg;
         this.ctx.fillRect(0, 0, this.width, this.height);
         
         // Calculate center
@@ -143,24 +266,23 @@ class GPSMap {
         const centerY = this.height / 2;
         
         // Draw grid
-        this.drawGrid(centerX, centerY);
+        this.drawGrid(centerX, centerY, p);
         
         // Draw axes
-        this.drawAxes(centerX, centerY);
+        this.drawAxes(centerX, centerY, p);
         
         // Draw geofences (behind trail and position)
-        this.drawGeofences(centerX, centerY);
+        this.drawGeofences(centerX, centerY, p);
         
-        // Draw trail (GREEN, persistent)
-        this.drawTrail(centerX, centerY);
+        // Draw trail
+        this.drawTrail(centerX, centerY, p);
         
-        // Draw current position (RED dot)
-        this.drawPosition(centerX, centerY);
+        // Draw current position
+        this.drawPosition(centerX, centerY, p);
     }
     
-    drawGrid(centerX, centerY) {
-        // Light gray grid lines
-        this.ctx.strokeStyle = '#e0e0e0';
+    drawGrid(centerX, centerY, p) {
+        this.ctx.strokeStyle = p.grid;
         this.ctx.lineWidth = 1;
         
         // Dynamic grid spacing based on current scale
@@ -196,24 +318,24 @@ class GPSMap {
         }
     }
     
-    drawAxes(centerX, centerY) {
-        // X-axis (East-West) - BLACK, solid
-        this.ctx.strokeStyle = '#000000';
+    drawAxes(centerX, centerY, p) {
+        // X-axis (East-West)
+        this.ctx.strokeStyle = p.axis;
         this.ctx.lineWidth = 2;
         this.ctx.beginPath();
         this.ctx.moveTo(0, centerY);
         this.ctx.lineTo(this.width, centerY);
         this.ctx.stroke();
         
-        // Y-axis (North-South) - BLACK, solid
+        // Y-axis (North-South)
         this.ctx.lineWidth = 2;
         this.ctx.beginPath();
         this.ctx.moveTo(centerX, 0);
         this.ctx.lineTo(centerX, this.height);
         this.ctx.stroke();
         
-        // Axis labels - BLACK text
-        this.ctx.fillStyle = '#000000';
+        // Axis labels
+        this.ctx.fillStyle = p.axisText;
         this.ctx.font = 'bold 14px sans-serif';
         this.ctx.textAlign = 'center';
         
@@ -229,17 +351,16 @@ class GPSMap {
         this.ctx.fillText('W', 20, centerY - 8);
         
         // Origin (0,0) marker - small circle at center
-        this.ctx.fillStyle = '#000000';
+        this.ctx.fillStyle = p.origin;
         this.ctx.beginPath();
         this.ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
         this.ctx.fill();
     }
     
-    drawTrail(centerX, centerY) {
+    drawTrail(centerX, centerY, p) {
         if (this.trail.length < 1) return;
         
-        // GREEN line for trail
-        this.ctx.strokeStyle = '#22c55e';
+        this.ctx.strokeStyle = p.trail;
         this.ctx.lineWidth = 2;
         this.ctx.lineCap = 'round';
         this.ctx.lineJoin = 'round';
@@ -268,8 +389,8 @@ class GPSMap {
         
         this.ctx.restore();
         
-        // Draw semi-transparent green dots for trail history (every 5th point)
-        this.ctx.fillStyle = 'rgba(34, 197, 94, 0.4)';
+        // Draw semi-transparent trail history dots (every 5th point)
+        this.ctx.fillStyle = p.trailDot;
         for (let i = 0; i < this.trail.length; i += Math.max(1, Math.floor(this.trail.length / 20))) {
             const point = this.trail[i];
             const px = centerX + this.metersToPixels(point.x);
@@ -283,7 +404,7 @@ class GPSMap {
         }
     }
     
-    drawPosition(centerX, centerY) {
+    drawPosition(centerX, centerY, p) {
         const px = centerX + this.metersToPixels(this.position.x);
         const py = centerY - this.metersToPixels(this.position.y); // Invert Y
         
@@ -292,25 +413,24 @@ class GPSMap {
             return;
         }
         
-        // RED dot with shadow
         this.ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
         this.ctx.shadowBlur = 4;
         this.ctx.shadowOffsetX = 0;
         this.ctx.shadowOffsetY = 2;
         
-        // Main red circle - current position
-        this.ctx.fillStyle = '#ef4444';
+        // Main position circle
+        this.ctx.fillStyle = p.position;
         this.ctx.beginPath();
         this.ctx.arc(px, py, 8, 0, Math.PI * 2);
         this.ctx.fill();
         
-        // White outline
-        this.ctx.strokeStyle = '#ffffff';
+        // Outline
+        this.ctx.strokeStyle = p.positionOutline;
         this.ctx.lineWidth = 2;
         this.ctx.stroke();
         
-        // White center dot
-        this.ctx.fillStyle = '#ffffff';
+        // Centre dot
+        this.ctx.fillStyle = p.positionOutline;
         this.ctx.beginPath();
         this.ctx.arc(px, py, 3, 0, Math.PI * 2);
         this.ctx.fill();
@@ -319,7 +439,7 @@ class GPSMap {
         this.ctx.shadowColor = 'transparent';
     }
     
-    drawGeofences(centerX, centerY) {
+    drawGeofences(centerX, centerY, p) {
         if (this.geofences.length === 0) return;
 
         for (let i = 0; i < this.geofences.length; i++) {
@@ -329,13 +449,13 @@ class GPSMap {
             const rPx = this.metersToPixels(gf.radius);
 
             // Fill
-            this.ctx.fillStyle = 'rgba(0, 180, 255, 0.08)';
+            this.ctx.fillStyle = p.geofenceFill;
             this.ctx.beginPath();
             this.ctx.arc(px, py, rPx, 0, Math.PI * 2);
             this.ctx.fill();
 
             // Stroke
-            this.ctx.strokeStyle = 'rgba(0, 180, 255, 0.6)';
+            this.ctx.strokeStyle = p.geofenceStroke;
             this.ctx.lineWidth = 2;
             this.ctx.setLineDash([6, 4]);
             this.ctx.beginPath();
@@ -344,7 +464,7 @@ class GPSMap {
             this.ctx.setLineDash([]);
 
             // Label
-            this.ctx.fillStyle = 'rgba(0, 140, 220, 0.85)';
+            this.ctx.fillStyle = p.geofenceLabel;
             this.ctx.font = 'bold 12px sans-serif';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'bottom';
@@ -570,6 +690,47 @@ function setupUIHandlers() {
             document.getElementById('distance').textContent = '0.00 m';
         });
     }
+
+    // Per-chart theme toggles. Each chart redraws on its own animation loop or
+    // on the next data frame, so we don't need to invoke a redraw explicitly
+    // for canvas-based charts; for spectrum/sky view we kick an update from
+    // window.lastGPSData.
+    document.querySelectorAll('.btn-theme').forEach(function (btn) {
+        const chart = btn.dataset.chartTheme;
+        if (!chart) return;
+        const render = function () {
+            const t = getChartTheme(chart);
+            btn.textContent = t === 'dark' ? '☀️' : '🌙';
+            btn.setAttribute('aria-label', t === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+            btn.title = t === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+        };
+        render();
+        btn.addEventListener('click', function () {
+            const next = getChartTheme(chart) === 'dark' ? 'light' : 'dark';
+            setChartThemeStored(chart, next);
+            render();
+            // Spectrum / sky view only redraw when data arrives — nudge them.
+            if (chart === 'spectrum' && window.lastGPSData) {
+                updateRfAnalyzer(window.lastGPSData);
+            } else if (chart === 'skyview' && window.lastGPSData && window.lastGPSData.satellites) {
+                updateSkyView(window.lastGPSData.satellites);
+            }
+        });
+    });
+
+    // Zoom +/- buttons next to the range sliders
+    document.querySelectorAll('.btn-zoom').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const which = btn.dataset.zoom;
+            const dir = btn.dataset.dir;
+            const factor = dir === 'in' ? 1 / 1.25 : 1.25;
+            if (which === 'relative' && map) {
+                map.setScale(map.scale * factor);
+            } else if (which === 'altitude' && window.altitudeTape) {
+                window.altitudeTape.setScale(window.altitudeTape.scale * factor);
+            }
+        });
+    });
 }
 
 function updateConnectionStatus(connected) {
@@ -796,14 +957,15 @@ function drawSingleSpectrum(canvas, block, blockIndex) {
     ctx.scale(dpr, dpr);
 
     const color = RF_BLOCK_COLORS[blockIndex % RF_BLOCK_COLORS.length];
+    const p = getChartPalette('spectrum');
 
     // Background
-    ctx.fillStyle = '#0a0a1a';
+    ctx.fillStyle = p.bg;
     ctx.fillRect(0, 0, width, height);
 
     const data = block.data;
     if (!data || data.length === 0) {
-        ctx.fillStyle = '#666';
+        ctx.fillStyle = p.noData;
         ctx.font = '13px monospace';
         ctx.textAlign = 'center';
         ctx.fillText('No spectrum data', width / 2, height / 2);
@@ -840,7 +1002,7 @@ function drawSingleSpectrum(canvas, block, blockIndex) {
         margin.left, headerH - 9
     );
     // thin separator
-    ctx.strokeStyle = '#222';
+    ctx.strokeStyle = p.separator;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(margin.left, headerH - 3);
@@ -848,13 +1010,13 @@ function drawSingleSpectrum(canvas, block, blockIndex) {
     ctx.stroke();
 
     // --- Grid ---
-    ctx.strokeStyle = '#1a1a2e';
+    ctx.strokeStyle = p.grid;
     ctx.lineWidth = 0.5;
 
     // Horizontal grid (amplitude)
     const ySteps = 4;
     ctx.font = '10px monospace';
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = p.axisText;
     ctx.textAlign = 'right';
     for (let i = 0; i <= ySteps; i++) {
         const y = margin.top + (plotH / ySteps) * i;
@@ -879,12 +1041,12 @@ function drawSingleSpectrum(canvas, block, blockIndex) {
     const freqDecimals = freqStep >= 1 ? 0 : (freqStep >= 0.1 ? 1 : 2);
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = p.axisText;
     const firstTick = Math.ceil(startFreqMHz / freqStep) * freqStep;
     for (let freq = firstTick; freq <= endFreqMHz + 1e-9; freq += freqStep) {
         const xFrac = (freq - startFreqMHz) / freqRange;
         const x = margin.left + xFrac * plotW;
-        ctx.strokeStyle = '#1a1a2e';
+        ctx.strokeStyle = p.grid;
         ctx.beginPath();
         ctx.moveTo(x, margin.top);
         ctx.lineTo(x, margin.top + plotH);
@@ -914,7 +1076,7 @@ function drawSingleSpectrum(canvas, block, blockIndex) {
     ctx.globalAlpha = 1.0;
 
     // --- Axis labels ---
-    ctx.fillStyle = '#666';
+    ctx.fillStyle = p.axisText;
     ctx.font = '10px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('MHz', margin.left + plotW + 2, margin.top + plotH + 14);
@@ -926,7 +1088,7 @@ function drawSingleSpectrum(canvas, block, blockIndex) {
     ctx.restore();
 
     // Plot border
-    ctx.strokeStyle = '#333';
+    ctx.strokeStyle = p.border;
     ctx.lineWidth = 1;
     ctx.strokeRect(margin.left, margin.top, plotW, plotH);
 }
@@ -1077,13 +1239,14 @@ function drawSkyPlot(satellites) {
     const cx = size / 2;
     const cy = size / 2;
     const maxR = size / 2 * 0.88;
+    const p = getChartPalette('skyview');
 
     // Background
-    ctx.fillStyle = '#0a0a1a';
+    ctx.fillStyle = p.bg;
     ctx.fillRect(0, 0, size, size);
 
     // Elevation rings (90° center, 0° edge)
-    ctx.strokeStyle = '#2a2a3e';
+    ctx.strokeStyle = p.rings;
     ctx.lineWidth = 1;
     for (let el = 0; el <= 90; el += 30) {
         const r = maxR * (1 - el / 90);
@@ -1092,7 +1255,7 @@ function drawSkyPlot(satellites) {
         ctx.stroke();
         // Label
         if (el > 0 && el < 90) {
-            ctx.fillStyle = '#555';
+            ctx.fillStyle = p.ringText;
             ctx.font = '11px monospace';
             ctx.textAlign = 'center';
             ctx.fillText(`${el}°`, cx, cy - r + 13);
@@ -1106,7 +1269,7 @@ function drawSkyPlot(satellites) {
         { label: 'S', angle: 90 },
         { label: 'W', angle: 180 },
     ];
-    ctx.strokeStyle = '#2a2a3e';
+    ctx.strokeStyle = p.compass;
     ctx.lineWidth = 1;
     for (const d of dirs) {
         const rad = d.angle * Math.PI / 180;
@@ -1115,7 +1278,7 @@ function drawSkyPlot(satellites) {
         ctx.lineTo(cx + Math.cos(rad) * maxR, cy + Math.sin(rad) * maxR);
         ctx.stroke();
         // Label
-        ctx.fillStyle = '#888';
+        ctx.fillStyle = p.compassLabel;
         ctx.font = 'bold 14px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -1159,7 +1322,7 @@ function drawSkyPlot(satellites) {
     // Center dot
     ctx.beginPath();
     ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = p.center;
     ctx.fill();
 }
 

@@ -41,6 +41,7 @@
                 <div class="map-header">
                     <div class="map-tabs">
                         <button class="map-tab active" data-tab="relative">📐 Relative Map</button>
+                        <button class="map-tab" data-tab="altitude">📏 Altitude</button>
                         <button class="map-tab" data-tab="terrain">🗺️ Terrain Map</button>
                         {% if hat_name != 'L1/L5 GNSS TIME HAT' %}
                         <button class="map-tab" data-tab="skyview">🛰️ Sky View</button>
@@ -84,7 +85,47 @@
                         </div>
                     </div>
                 </div>
-                
+
+                <!-- Altitude Tape - one-axis altimeter relative to a reference -->
+                <div id="altitude-map" class="map-view" style="display: none;">
+                    <div class="map-info">
+                        <span id="altitude-scale-info">Scale: ±20.0m</span>
+                        <div class="scale-slider-container">
+                            <label for="altitude-scale-slider">Range:</label>
+                            <input type="range" id="altitude-scale-slider" class="scale-slider" min="0.5" max="100" value="20" step="0.5">
+                            <span id="altitude-scale-value">20m</span>
+                        </div>
+                        <div class="alt-source-toggle" role="group" aria-label="Altitude source">
+                            <button type="button" class="alt-source-btn active" data-alt-source="msl">MSL</button>
+                            {% if mode in ['native', 'ros2'] %}
+                            <button type="button" class="alt-source-btn" data-alt-source="wgs84">WGS84</button>
+                            {% endif %}
+                        </div>
+                        <button id="alt-reset-btn" class="btn-reset" title="Reset reference altitude">
+                            🎯 Reset Origin
+                        </button>
+                    </div>
+                    <div class="canvas-wrapper">
+                        <canvas id="altitude-tape"></canvas>
+                    </div>
+                    <div class="map-footer">
+                        <div class="position-display">
+                            <div class="coord-item">
+                                <span class="coord-label">Δ Altitude:</span>
+                                <span id="alt-delta" class="coord-value">0.00 m</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Absolute:</span>
+                                <span id="alt-absolute" class="coord-value">0.00 m</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Vert. accuracy:</span>
+                                <span id="alt-vacc" class="coord-value">—</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 {% if hat_name != 'L1/L5 GNSS TIME HAT' %}
                 <!-- Sky View - Satellite polar plot -->
                 <div id="skyview-map" class="map-view" style="display: none;">
@@ -1047,5 +1088,6 @@
         window.HAT_NAME = '{{ hat_name or '' }}';
     </script>
     <script src="{{ url_for('static', filename='js/map.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/altitude.js') }}"></script>
 </body>
 </html>

@@ -405,6 +405,12 @@ header h1 {
     display: block;
 }
 
+#altitude-tape {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
 #map-canvas {
     width: 100%;
     height: 100%;
@@ -1385,3 +1391,59 @@ footer {
 ::-webkit-scrollbar-thumb:hover {
     background: var(--accent-cyan);
 }
+
+/* Altitude tape view */
+#altitude-scale-info {
+    color: var(--text-secondary);
+    font-family: monospace;
+    font-size: 14px;
+    padding: 5px 12px;
+    background: var(--bg-card);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+#altitude-scale-value {
+    color: var(--text-primary);
+    font-family: monospace;
+    font-weight: 600;
+    font-size: 13px;
+    min-width: 35px;
+    text-align: right;
+}
+
+.alt-source-toggle {
+    display: inline-flex;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.alt-source-btn {
+    padding: 6px 14px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    border-right: 1px solid var(--border-color);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: monospace;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.alt-source-btn:last-child {
+    border-right: none;
+}
+
+.alt-source-btn:hover {
+    background: rgba(0, 180, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.alt-source-btn.active {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+}
+

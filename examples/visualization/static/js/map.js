@@ -687,6 +687,11 @@ function updateGPSData(data) {
     if (data.satellites) {
         updateSkyView(data.satellites);
     }
+
+    // Altitude tape
+    if (typeof window.updateAltitudeTape === 'function') {
+        window.updateAltitudeTape(data);
+    }
 }
 
 function updateRfBlocks(rfBlocks) {
@@ -861,18 +866,22 @@ function drawSingleSpectrum(canvas, block, blockIndex) {
         ctx.fillText(val.toString(), margin.left - 5, y + 3);
     }
 
-    // Vertical grid (frequency)
+    // Vertical grid (frequency) — target ~1 tick per 80 px so labels stay legible
     const freqRange = endFreqMHz - startFreqMHz;
-    let freqStep;
-    if (freqRange > 5) freqStep = 1;
-    else if (freqRange > 2) freqStep = 0.5;
-    else if (freqRange > 0.5) freqStep = 0.1;
-    else freqStep = 0.05;
+    const desiredTicks = Math.max(3, Math.min(10, Math.floor(plotW / 80)));
+    const rawStep = freqRange / desiredTicks;
+    // Snap to a "nice" step (1/2/5 × 10^k)
+    const niceSteps = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
+    let freqStep = niceSteps[niceSteps.length - 1];
+    for (const s of niceSteps) {
+        if (s >= rawStep) { freqStep = s; break; }
+    }
+    const freqDecimals = freqStep >= 1 ? 0 : (freqStep >= 0.1 ? 1 : 2);
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#555';
     const firstTick = Math.ceil(startFreqMHz / freqStep) * freqStep;
-    for (let freq = firstTick; freq <= endFreqMHz; freq += freqStep) {
+    for (let freq = firstTick; freq <= endFreqMHz + 1e-9; freq += freqStep) {
         const xFrac = (freq - startFreqMHz) / freqRange;
         const x = margin.left + xFrac * plotW;
         ctx.strokeStyle = '#1a1a2e';
@@ -880,7 +889,7 @@ function drawSingleSpectrum(canvas, block, blockIndex) {
         ctx.moveTo(x, margin.top);
         ctx.lineTo(x, margin.top + plotH);
         ctx.stroke();
-        ctx.fillText(freq.toFixed(freqStep < 0.1 ? 2 : 1), x, margin.top + plotH + 14);
+        ctx.fillText(freq.toFixed(freqDecimals), x, margin.top + plotH + 14);
     }
 
     // --- Spectrum line ---
@@ -1004,8 +1013,17 @@ function updateRfAnalyzer(data) {
     const rfEl = document.getElementById('rfanalyzer-map');
     if (!rfEl) return;
 
-    drawSpectrumChart(data.spectrum);
-    updateRfAnalyzerStatus(data.rf_blocks);
+    // rf_blocks and spectrum are only emitted ~once per second (throttled in
+    // native_reader_thread). On frames where they're absent, DO NOT wipe the
+    // panels to "No RF data" — that causes the right-hand status pane to
+    // collapse, which in turn lets the chart column expand and the axis
+    // labels reflow, producing the blinking/stretched-axis effect.
+    if (data.spectrum !== undefined) {
+        drawSpectrumChart(data.spectrum);
+    }
+    if (data.rf_blocks !== undefined) {
+        updateRfAnalyzerStatus(data.rf_blocks);
+    }
 }
 
 // =======================
@@ -1414,6 +1432,11 @@ function setupTabs() {
                 // Re-setup relative map canvas when switching back
                 if (tabName === 'relative' && map) {
                     setTimeout(() => map.setupCanvas(), 50);
+                }
+
+                // Re-setup altitude tape canvas when switching to it
+                if (tabName === 'altitude' && window.altitudeTape) {
+                    setTimeout(() => window.altitudeTape.setupCanvas(), 50);
                 }
 
                 // Initialize OSM map when terrain tab is first opened

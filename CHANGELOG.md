@@ -31,6 +31,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `WatchdogSec=30`, `SyslogLevelPrefix=true`, journald rate-limit
   fallback (`LogRateLimitIntervalSec=30`, `LogRateLimitBurst=200`),
   `StartLimit*` moved to `[Unit]` where they actually take effect
+- Visualization app: new **Altitude** tab — one-axis tape altimeter
+  relative to a reference, with MSL / WGS84 source toggle that
+  preserves the origin across conversions
+- Visualization app: per-chart light / dark theme toggle (Relative Map,
+  Altitude, Sky View, RF Analyzer) persisted in `localStorage`; dark
+  is the default
+- Visualization app: RF Analyzer no longer flickers "No RF data" when
+  only one of `spectrum` / `rf_blocks` is present in a frame; spectrum
+  x-axis tick density is now width-aware
+- Visualization app: Relative Map and Altitude charts support mouse
+  wheel zoom on hover plus +/- zoom buttons next to the range slider;
+  grid ladder extended down to 1 cm for RTK-grade ranges (slider min
+  lowered from 0.5 m to 0.05 m)
+- Visualization app: Sky View and RF Analyzer theme toggles moved into
+  a proper `.map-info` toolbar (matching the other tabs) instead of a
+  floating overlay button
 
 ## [1.0.0] - 2026-04-06
 

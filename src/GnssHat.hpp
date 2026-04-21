@@ -60,6 +60,18 @@ public:
     virtual ~IGnssHat() = default;
 };
 
+namespace Hat
+{
+    // Reads /proc/device-tree/hat/<field>. Returns empty string if the field
+    // is missing or the HAT EEPROM device-tree entry is not present. Does NOT
+    // touch hardware.
+    std::string readEepromField(const std::string& field);
+
+    // Convenience: returns the HAT product name (e.g. "L1/L5 GNSS RTK HAT"),
+    // or an empty string if no HAT is detected.
+    std::string detectProduct();
+}
+
 namespace Utils
 {
 

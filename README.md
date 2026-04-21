@@ -26,6 +26,19 @@ For Python bindings you also need:
 sudo apt-get install python3-dev
 ```
 
+For CLI tools (`gnsshat-rtk-base`) you also need **toml11** (TOML config parser):
+
+```sh
+# If packaged on your distro:
+sudo apt-get install libtoml11-dev
+
+# Or install from source:
+git clone https://github.com/ToruNiina/toml11.git -b v4.2.0
+cd toml11
+cmake -B build
+sudo cmake --install build
+```
+
 ### Build & install
 
 ```sh
@@ -41,7 +54,7 @@ sudo make install
 |------|---------|-------------|
 | `BUILD_PYTHON` | OFF | Build and install the Python CPython extension module |
 | `BUILD_EXAMPLES` | OFF | Build all C and C++ examples. Binaries are symlinked into `examples/bin/` for convenience |
-| `BUILD_TOOLS` | ON | Build CLI tools (`gnsshat-info`, `gnsshat-probe`) |
+| `BUILD_TOOLS` | ON | Build CLI tools (`gnsshat-info`, `gnsshat-probe`, `gnsshat-rtk-base`). Requires toml11 |
 | `BUILD_TESTS` | OFF | Build unit tests (requires GTest). Run with `ctest` |
 
 All flags are optional.

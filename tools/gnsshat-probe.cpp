@@ -4,26 +4,15 @@
 
 #include <cstdio>
 #include <cstring>
-#include <fstream>
 #include <map>
 #include <string>
 #include <vector>
 
+#include "GnssHat.hpp"
 #include "ublox/SpiDriver.hpp"
 #include "ublox/UartDriver.hpp"
 #include "ublox/UbxParser.hpp"
 #include "ublox/ubxmsg/UBX_MON_VER.hpp"
-
-static std::string readDeviceTreeEntry(const std::string& name)
-{
-    const std::string path = "/proc/device-tree/hat/" + name;
-    std::ifstream file(path);
-    if (!file.is_open())
-        return {};
-    std::string value;
-    std::getline(file, value, '\0');
-    return value;
-}
 
 static std::map<std::string, std::string> parseCustom0(const std::string& raw)
 {
@@ -110,18 +99,18 @@ int main(int argc, char* argv[])
         }
     }
 
-    const std::string product = readDeviceTreeEntry("product");
+    const std::string product = JimmyPaputto::Hat::readEepromField("product");
     if (product.empty())
     {
         printf("No GNSS HAT detected (device-tree entry not found).\n");
         return 1;
     }
 
-    const std::string vendor = readDeviceTreeEntry("vendor");
-    const std::string productId = readDeviceTreeEntry("product_id");
-    const std::string productVer = readDeviceTreeEntry("product_ver");
-    const std::string uuid = readDeviceTreeEntry("uuid");
-    const std::string custom0 = readDeviceTreeEntry("custom_0");
+    const std::string vendor = JimmyPaputto::Hat::readEepromField("vendor");
+    const std::string productId = JimmyPaputto::Hat::readEepromField("product_id");
+    const std::string productVer = JimmyPaputto::Hat::readEepromField("product_ver");
+    const std::string uuid = JimmyPaputto::Hat::readEepromField("uuid");
+    const std::string custom0 = JimmyPaputto::Hat::readEepromField("custom_0");
 
     printf("Product:     %s\n", product.c_str());
     printf("Vendor:      %s\n", vendor.c_str());

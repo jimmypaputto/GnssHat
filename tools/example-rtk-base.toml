@@ -1,0 +1,108 @@
+# gnsshat-rtk-base configuration
+#
+# All fields are optional. Defaults match a survey-in base station
+# with a local NTRIP caster on port 2101.
+#
+# CLI arguments override values from this file.
+
+# Receiver reset before start: "cold", "hot", or "none"
+reset_mode = "cold"
+
+# GNSS measurement rate in Hz (1-25)
+measurement_rate_hz = 1
+
+# Dynamic model: "stationary", "portable", "pedestrian", "automotive",
+#   "sea", "airborne1g", "airborne2g", "airborne4g", "wrist",
+#   "bike", "mower", "escooter"
+dynamic_model = "stationary"
+
+
+[timepulse]
+active = true
+frequency_hz = 1
+duty_cycle = 0.1
+# "rising" = rising edge at top of second, "falling" = falling edge
+polarity = "rising"
+
+
+[base]
+# Base station mode: "survey_in" or "fixed"
+mode = "survey_in"
+
+[base.survey_in]
+min_observation_time_s = 120
+required_accuracy_m = 50.0
+
+[base.fixed_position]
+# Position type: "lla" (lat/lon/height) or "ecef" (Earth-Centered)
+type = "lla"
+
+# LLA coordinates (used when type = "lla")
+latitude_deg = 52.232222222
+longitude_deg = 21.008055556
+height_m = 110.0
+
+# ECEF coordinates (used when type = "ecef")
+# x_m = 3656215.987
+# y_m = 1409547.654
+# z_m = 5049982.321
+
+# Position accuracy for the fixed coordinates
+accuracy_m = 0.5
+
+
+[ntrip]
+# NTRIP operation mode:
+#   "caster" - run a local NTRIP caster (rovers connect to this machine)
+#   "server" - push corrections to a remote NTRIP caster
+mode = "caster"
+
+# For caster mode: bind address (use "0.0.0.0" to listen on all interfaces)
+# For server mode: remote caster hostname or IP
+host = "0.0.0.0"
+
+port = 2101
+mountpoint = "GNSS_HAT"
+
+# Credentials (empty = no authentication for caster, anonymous for server)
+# username = ""
+# password = ""
+
+# Caster-only: maximum number of connected clients
+max_clients = 10
+
+# Server-only: auto-reconnect with exponential backoff
+auto_reconnect = true
+reconnect_initial_ms = 1000
+reconnect_max_ms = 30000
+
+[ntrip.tls]
+enabled = false
+# verify_peer = true      # server mode only
+# cert_file = ""           # caster mode: path to PEM certificate
+# key_file = ""            # caster mode: path to PEM private key
+
+
+[logging]
+# NTRIP subsystem log level: "error", "warning", "info", "debug"
+ntrip_log_level = "info"
+
+# Global tool log level (applies to the main loop messages).
+log_level = "info"
+
+# Main-loop summary interval, in seconds.
+#   0  = auto (1 s when running interactively, 30 s when running as a service)
+#   >0 = fixed interval, regardless of mode
+# interval_sec = 0
+
+
+[service]
+# How the tool should format its output:
+#   "auto"        = detect (non-TTY or systemd env → service mode)
+#   "interactive" = timestamped lines, per-epoch status
+#   "service"     = priority-prefixed lines (<N>) for journald, rate-limited
+mode = "auto"
+
+# Honor systemd's WATCHDOG_USEC and ping the watchdog from the main loop.
+# No effect outside systemd (when NOTIFY_SOCKET is not set).
+watchdog = true

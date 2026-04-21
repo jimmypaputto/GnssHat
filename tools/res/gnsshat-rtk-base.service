@@ -1,0 +1,62 @@
+[Unit]
+Description=GNSS RTK Base Station (Jimmy Paputto)
+Documentation=https://github.com/jimmypaputto/GnssHat
+After=network-online.target
+Wants=network-online.target
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Type=notify
+NotifyAccess=main
+WatchdogSec=30
+User=gnsshat
+Group=gnsshat
+SupplementaryGroups=spi gpio dialout
+
+ExecStartPre=/usr/bin/test -f /etc/gnsshat/rtk-base.toml
+ExecStartPre=/usr/local/bin/gnsshat-rtk-base --config /etc/gnsshat/rtk-base.toml --validate
+ExecStart=/usr/local/bin/gnsshat-rtk-base --config /etc/gnsshat/rtk-base.toml
+
+Restart=on-failure
+RestartSec=5
+
+# Exit code 78 (EX_CONFIG) is used for unrecoverable config problems,
+# such as "HAT not detected" or "wrong HAT for RTK base". Do not loop
+# the restart limiter on those — let the unit stay in a failed state
+# until the operator fixes the hardware/config.
+RestartPreventExitStatus=78
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gnsshat-rtk-base
+SyslogLevelPrefix=true
+
+# Belt-and-braces rate-limit on journald side; the tool itself also
+# rate-limits its own output when running in service mode.
+LogRateLimitIntervalSec=30
+LogRateLimitBurst=200
+
+# ── Security hardening ───────────────────────────────────────────
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+# ── Device access ────────────────────────────────────────────────
+# Raspberry Pi 5 (gpiochip4). For Pi 4 change to gpiochip0.
+DeviceAllow=/dev/spidev0.0 rw
+DeviceAllow=/dev/ttyAMA0 rw
+DeviceAllow=/dev/gpiochip4 rw
+
+[Install]
+WantedBy=multi-user.target

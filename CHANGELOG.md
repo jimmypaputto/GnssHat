@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Navigation input filters (`CFG-NAVSPG-INFIL_*`): full library support
+  for all six u-blox keys — `MINSVS`, `MAXSVS`, `MINCNO`, `MINELEV`
+  (signed, degrees), `NCNOTHRS`, `CNOTHRS` — exposed through the C++
+  `GnssConfig::NavigationFilters` optional struct, the C binding
+  (`jp_gnss_navigation_filters_t`), and the Python `gnsshat` module
+  (`navigation_filters` dict). Applied via VALSET/VALGET in the M9N,
+  F9P and F10T startup paths with poll → set-mismatches → verify
 - NTRIP caster, client, and server with optional TLS
 - CLI tools: `gnsshat-info`, `gnsshat-probe`
 - `gnsshat-rtk-base` — RTK base station tool with TOML config and a
@@ -34,9 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Visualization app: new **Altitude** tab — one-axis tape altimeter
   relative to a reference, with MSL / WGS84 source toggle that
   preserves the origin across conversions
-- Visualization app: per-chart light / dark theme toggle (Relative Map,
-  Altitude, Sky View, RF Analyzer) persisted in `localStorage`; dark
-  is the default
+- Visualization app: Configuration tab gained a **Navigation
+  Filters** section with an Elevation Mask slider (0–60°)
+- Visualization app: per-chart light / dark theme toggle (Relative
+  Map, Altitude, Sky View, RF Analyzer) persisted in `localStorage`;
+  dark is the default
 - Visualization app: RF Analyzer no longer flickers "No RF data" when
   only one of `spectrum` / `rf_blocks` is present in a frame; spectrum
   x-axis tick density is now width-aware

@@ -358,6 +358,8 @@ bool validateConfig(const GnssConfig& config)
         return false;
     if (!checkTimepulsePinConfig(config.timepulsePinConfig))
         return false;
+    if (!checkNavigationFilters(config.navigationFilters))
+        return false;
 
     if constexpr (std::is_same_v<StartupStrategy, M9NStartup> ||
         std::is_same_v<StartupStrategy, F9PStartup>)

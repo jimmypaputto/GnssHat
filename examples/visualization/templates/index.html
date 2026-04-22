@@ -527,6 +527,116 @@
                             </div>
                         </fieldset>
 
+                        <!-- Navigation Filters (CFG-NAVSPG-INFIL_*) -->
+                        <fieldset class="cfg-section">
+                            <legend>🛰️ Navigation Filters</legend>
+                            <div class="cfg-row">
+                                <label for="cfg-navfilt-minelev">Elevation Mask</label>
+                                <input type="range" id="cfg-navfilt-minelev"
+                                       min="0" max="60" step="1" value="5"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-minelev-num"
+                                       min="-90" max="90" step="1" value="5"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">deg</span>
+                                <button type="button" id="cfg-navfilt-minelev-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (5°)">↺ Default</button>
+                            </div>
+                            <p class="cfg-help">
+                                Satellites below this elevation angle are
+                                excluded from the navigation solution. For
+                                RTK a moderate mask (10°–15°) reduces
+                                multipath from low-elevation signals.
+                            </p>
+                            <div class="cfg-navfilt-preview-wrap">
+                                <canvas id="cfg-navfilt-preview"></canvas>
+                            </div>
+
+                            <!-- Fix Mode (CFG-NAVSPG-FIXMODE) -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-fixmode"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-FIXMODE — dimensionality of the position fix.&#10;&#10;• Auto 2D/3D (default): receiver picks a 3D fix when enough SVs are available, falls back to 2D otherwise.&#10;• 3D only: rejects fixes without vertical observability.&#10;• 2D only: clamps altitude, for fixed-height platforms.">Fix Mode <span class="cfg-tip-icon">&#9432;</span></label>
+                                <select id="cfg-navfilt-fixmode" class="cfg-input">
+                                    <option value="3" selected>Auto 2D/3D</option>
+                                    <option value="2">3D only</option>
+                                    <option value="1">2D only</option>
+                                </select>
+                                <button type="button" id="cfg-navfilt-fixmode-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (Auto)">↺ Default</button>
+                            </div>
+
+                            <!-- OUTFIL_PDOP -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-pdop"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-OUTFIL_PDOP — maximum Position DOP allowed in a valid fix.&#10;&#10;PDOP reflects satellite-geometry quality (lower is better). Fixes exceeding this threshold are flagged invalid.&#10;&#10;Unit: DOP (unitless, 0.1 steps).&#10;Default: 25.0 DOP. Set 0 to disable.">PDOP Mask <span class="cfg-tip-icon">&#9432;</span></label>
+                                <input type="range" id="cfg-navfilt-pdop"
+                                       min="1" max="99.9" step="0.1" value="25"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-pdop-num"
+                                       min="1" max="99.9" step="0.1" value="25"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">DOP</span>
+                                <button type="button" id="cfg-navfilt-pdop-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (25.0)">↺ Default</button>
+                            </div>
+
+                            <!-- OUTFIL_TDOP -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-tdop"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-OUTFIL_TDOP — maximum Time DOP allowed in a valid fix.&#10;&#10;TDOP captures how well the satellite geometry constrains the receiver clock, mainly affecting time-transfer and timepulse accuracy.&#10;&#10;Unit: DOP (unitless).&#10;Default: 25.0 DOP. Set 0 to disable.">TDOP Mask <span class="cfg-tip-icon">&#9432;</span></label>
+                                <input type="range" id="cfg-navfilt-tdop"
+                                       min="1" max="99.9" step="0.1" value="25"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-tdop-num"
+                                       min="1" max="99.9" step="0.1" value="25"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">DOP</span>
+                                <button type="button" id="cfg-navfilt-tdop-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (25.0)">↺ Default</button>
+                            </div>
+
+                            <!-- OUTFIL_PACC -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-pacc"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-OUTFIL_PACC — maximum estimated horizontal position error (1-sigma) allowed in a valid fix.&#10;&#10;Fixes whose computed position accuracy is worse than this are flagged invalid.&#10;&#10;Unit: metres.&#10;Default: 100 m. Set 0 to disable.">Position Accuracy Mask <span class="cfg-tip-icon">&#9432;</span></label>
+                                <input type="range" id="cfg-navfilt-pacc"
+                                       min="1" max="500" step="1" value="100"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-pacc-num"
+                                       min="0" max="65535" step="1" value="100"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">m</span>
+                                <button type="button" id="cfg-navfilt-pacc-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (100 m)">↺ Default</button>
+                            </div>
+
+                            <!-- OUTFIL_TACC -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-tacc"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-OUTFIL_TACC — maximum estimated time-solution error (1-sigma) allowed in a valid fix.&#10;&#10;Caps how much timing jitter is tolerated before the PVT / timepulse output is flagged invalid.&#10;&#10;Unit: metres (light-travel equivalent, as u-blox encodes it).&#10;Default: 300 m. Set 0 to disable.">Time Accuracy Mask <span class="cfg-tip-icon">&#9432;</span></label>
+                                <input type="range" id="cfg-navfilt-tacc"
+                                       min="1" max="1000" step="1" value="300"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-tacc-num"
+                                       min="0" max="65535" step="1" value="300"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">m</span>
+                                <button type="button" id="cfg-navfilt-tacc-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (300 m)">↺ Default</button>
+                            </div>
+                        </fieldset>
+
                         <!-- Timepulse -->
                         <fieldset class="cfg-section">
                             <legend>⏱️ Timepulse Pin</legend>
@@ -1109,5 +1219,6 @@
     </script>
     <script src="{{ url_for('static', filename='js/map.js') }}"></script>
     <script src="{{ url_for('static', filename='js/altitude.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav-filter-preview.js') }}"></script>
 </body>
 </html>

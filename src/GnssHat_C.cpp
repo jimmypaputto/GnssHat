@@ -402,7 +402,28 @@ std::optional<GnssConfig> convert_gnss_config(
 
         cpp_config.timing = timing;
     }
- 
+
+    if (c_config.has_navigation_filters)
+    {
+        const auto& src = c_config.navigation_filters;
+        GnssConfig::NavigationFilters f;
+        if (src.has_min_svs)        f.minSvs        = src.min_svs;
+        if (src.has_max_svs)        f.maxSvs        = src.max_svs;
+        if (src.has_min_cno_dbhz)   f.minCno_dBHz   = src.min_cno_dbhz;
+        if (src.has_min_elev_deg)   f.minElev_deg   = src.min_elev_deg;
+        if (src.has_n_cno_thrs)     f.nCnoThrs      = src.n_cno_thrs;
+        if (src.has_cno_thrs_dbhz)  f.cnoThrs_dBHz  = src.cno_thrs_dbhz;
+        if (src.has_fix_mode)
+            f.fixMode =
+                static_cast<GnssConfig::NavigationFilters::FixMode>(
+                    src.fix_mode);
+        if (src.has_pdop_mask_x10)  f.pdopMask_x10  = src.pdop_mask_x10;
+        if (src.has_tdop_mask_x10)  f.tdopMask_x10  = src.tdop_mask_x10;
+        if (src.has_p_acc_mask_m)   f.pAccMask_m    = src.p_acc_mask_m;
+        if (src.has_t_acc_mask_m)   f.tAccMask_m    = src.t_acc_mask_m;
+        cpp_config.navigationFilters = f;
+    }
+
     cpp_config.saveToFlash = c_config.save_to_flash;
  
     return cpp_config;
@@ -862,6 +883,9 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
     std::memset(&config->rtk, 0, sizeof(config->rtk));
     config->has_timing = false;
     std::memset(&config->timing, 0, sizeof(config->timing));
+    config->has_navigation_filters = false;
+    std::memset(
+        &config->navigation_filters, 0, sizeof(config->navigation_filters));
     config->save_to_flash = false;
 }
 

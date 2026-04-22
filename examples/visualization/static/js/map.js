@@ -64,6 +64,20 @@ const CHART_THEMES = {
             axisText: '#555555', separator: '#222222', noData: '#666666',
         },
     },
+    navfilter: {
+        light: {
+            bg: '#ffffff', sky: '#f3f7ff', earth: '#d8dee8', earthHatch: '#b0b8c8',
+            horizon: '#000000', dome: '#8a93a8', ring: '#d0d5e0', ringText: '#666666',
+            maskLine: '#dc2626', maskFill: 'rgba(220, 38, 38, 0.15)', maskLabel: '#991b1b',
+            satOutline: '#222222', satFiltered: '#9aa3b2', label: '#111827',
+        },
+        dark: {
+            bg: '#0a0a1a', sky: '#10152b', earth: '#1b1f2d', earthHatch: '#2a2f42',
+            horizon: '#b8c0ff', dome: '#3c4264', ring: '#252844', ringText: '#6a7199',
+            maskLine: '#f87171', maskFill: 'rgba(248, 113, 113, 0.2)', maskLabel: '#fecaca',
+            satOutline: '#0f1220', satFiltered: '#4b5269', label: '#e6e8ff',
+        },
+    },
 };
 
 // Read persisted theme, default to 'dark'.
@@ -847,6 +861,9 @@ function updateGPSData(data) {
     // Satellites → sky view (all modes that provide satellite data)
     if (data.satellites) {
         updateSkyView(data.satellites);
+        if (window.elevationMaskPreview) {
+            window.elevationMaskPreview.setSatellites(data.satellites);
+        }
     }
 
     // Altitude tape
@@ -1829,11 +1846,141 @@ function setupConfigPanel() {
         });
     }
 
+    // Navigation Filters — Elevation Mask preview wiring
+    const navMaskRange = document.getElementById('cfg-navfilt-minelev');
+    const navMaskNum   = document.getElementById('cfg-navfilt-minelev-num');
+    const navMaskReset = document.getElementById('cfg-navfilt-minelev-reset');
+    if (navMaskRange && navMaskNum
+        && typeof window.ElevationMaskPreview === 'function') {
+        window.elevationMaskPreview =
+            new window.ElevationMaskPreview('cfg-navfilt-preview');
+
+        const syncFromRange = () => {
+            navMaskNum.value = navMaskRange.value;
+            window.elevationMaskPreview.setMask(
+                parseInt(navMaskRange.value, 10));
+        };
+        const syncFromNum = () => {
+            let v = parseInt(navMaskNum.value, 10);
+            if (!Number.isFinite(v)) v = 5;
+            v = Math.max(-90, Math.min(90, v));
+            // Slider only covers 0..60; clamp there but keep the real value
+            // in the number input.
+            navMaskRange.value = Math.max(0, Math.min(60, v));
+            navMaskNum.value = v;
+            window.elevationMaskPreview.setMask(v);
+        };
+
+        navMaskRange.addEventListener('input', syncFromRange);
+        navMaskNum.addEventListener('input', syncFromNum);
+        if (navMaskReset) {
+            navMaskReset.addEventListener('click', () => {
+                navMaskRange.value = 5;
+                navMaskNum.value = 5;
+                window.elevationMaskPreview.setMask(5);
+            });
+        }
+
+        // First paint — wait a frame so the canvas has its real size.
+        requestAnimationFrame(() => {
+            window.elevationMaskPreview.setMask(
+                parseInt(navMaskRange.value, 10));
+        });
+    }
+
+    // Navigation Filters — generic range/number slider wiring for the
+    // OUTFIL_* masks and FIXMODE reset button.
+    const bindNavFiltRangeNum = (id, def, clampFn) => {
+        const r   = document.getElementById(`cfg-navfilt-${id}`);
+        const n   = document.getElementById(`cfg-navfilt-${id}-num`);
+        const rst = document.getElementById(`cfg-navfilt-${id}-reset`);
+        if (!r || !n) return;
+        const clamp = clampFn || (v => v);
+        const fromRange = () => { n.value = r.value; };
+        const fromNum = () => {
+            let v = parseFloat(n.value);
+            if (!Number.isFinite(v)) v = def;
+            v = clamp(v);
+            n.value = v;
+            // Slider may have a narrower range than the number input;
+            // clamp silently to keep it in sync.
+            const rMin = parseFloat(r.min);
+            const rMax = parseFloat(r.max);
+            r.value = Math.max(rMin, Math.min(rMax, v));
+        };
+        r.addEventListener('input', fromRange);
+        n.addEventListener('input', fromNum);
+        if (rst) {
+            rst.addEventListener('click', () => {
+                r.value = def;
+                n.value = def;
+            });
+        }
+    };
+    bindNavFiltRangeNum('pdop', 25, v => Math.max(0, Math.min(999.9, v)));
+    bindNavFiltRangeNum('tdop', 25, v => Math.max(0, Math.min(999.9, v)));
+    bindNavFiltRangeNum('pacc', 100, v => Math.max(0, Math.min(65535, Math.round(v))));
+    bindNavFiltRangeNum('tacc', 300, v => Math.max(0, Math.min(65535, Math.round(v))));
+
+    const navFixModeReset = document.getElementById('cfg-navfilt-fixmode-reset');
+    const navFixModeSel   = document.getElementById('cfg-navfilt-fixmode');
+    if (navFixModeReset && navFixModeSel) {
+        navFixModeReset.addEventListener('click', () => {
+            navFixModeSel.value = '3';
+        });
+    }
+
     // Load config button
     document.getElementById('cfg-load-btn').addEventListener('click', loadConfig);
 
     // Send config button
     document.getElementById('cfg-send-btn').addEventListener('click', sendConfig);
+
+    // Make every .cfg-section collapsible via its legend. Most start
+    // expanded; Navigation Filters starts collapsed because its preview
+    // canvas takes a fair amount of vertical space.
+    const configPane = document.getElementById('config-pane');
+    if (configPane) {
+        const sections = configPane.querySelectorAll('fieldset.cfg-section');
+        sections.forEach((sec) => {
+            const legend = sec.querySelector(':scope > legend');
+            if (!legend) return;
+            sec.classList.add('cfg-collapsible');
+
+            // Collapse by default only if the section contains the
+            // elevation-mask preview canvas.
+            const startCollapsed = !!sec.querySelector('#cfg-navfilt-preview');
+            if (startCollapsed) {
+                sec.classList.add('cfg-section-collapsed');
+            }
+
+            legend.setAttribute('role', 'button');
+            legend.setAttribute('tabindex', '0');
+            legend.setAttribute('aria-expanded',
+                startCollapsed ? 'false' : 'true');
+
+            const toggle = () => {
+                const nowCollapsed = sec.classList.toggle(
+                    'cfg-section-collapsed');
+                legend.setAttribute('aria-expanded',
+                    nowCollapsed ? 'false' : 'true');
+                if (!nowCollapsed) {
+                    // Nudge any canvases inside to reflow.
+                    window.dispatchEvent(new Event('resize'));
+                }
+            };
+            legend.addEventListener('click', (e) => {
+                e.preventDefault();
+                toggle();
+            });
+            legend.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggle();
+                }
+            });
+        });
+    }
 }
 
 let geoFenceCount = 0;
@@ -1898,6 +2045,46 @@ function populateFormFromConfig(config) {
 
     // Dynamic model
     document.getElementById('cfg-dynmodel').value = config.dynamic_model ?? 2;
+
+    // Navigation Filters — only min_elev_deg is exposed in the UI.
+    const navMaskRange = document.getElementById('cfg-navfilt-minelev');
+    const navMaskNum   = document.getElementById('cfg-navfilt-minelev-num');
+    if (navMaskRange && navMaskNum) {
+        const nf = config.navigation_filters;
+        const v = (nf && typeof nf.min_elev_deg === 'number')
+            ? nf.min_elev_deg : 5;
+        navMaskNum.value = v;
+        navMaskRange.value = Math.max(0, Math.min(60, v));
+        if (window.elevationMaskPreview) {
+            window.elevationMaskPreview.setMask(v);
+        }
+    }
+
+    // Navigation Filters — FIXMODE + OUTFIL_* masks.
+    const nf = config.navigation_filters || {};
+    const setPair = (id, val, fallback) => {
+        const r = document.getElementById(`cfg-navfilt-${id}`);
+        const n = document.getElementById(`cfg-navfilt-${id}-num`);
+        if (!r || !n) return;
+        const v = (typeof val === 'number') ? val : fallback;
+        n.value = v;
+        const rMin = parseFloat(r.min);
+        const rMax = parseFloat(r.max);
+        r.value = Math.max(rMin, Math.min(rMax, v));
+    };
+    const fixSel = document.getElementById('cfg-navfilt-fixmode');
+    if (fixSel) {
+        fixSel.value = String(
+            (typeof nf.fix_mode === 'number') ? nf.fix_mode : 3);
+    }
+    setPair('pdop',
+        (typeof nf.pdop_mask_x10 === 'number') ? nf.pdop_mask_x10 / 10 : null,
+        25);
+    setPair('tdop',
+        (typeof nf.tdop_mask_x10 === 'number') ? nf.tdop_mask_x10 / 10 : null,
+        25);
+    setPair('pacc', nf.p_acc_mask_m, 100);
+    setPair('tacc', nf.t_acc_mask_m, 300);
 
     // Timepulse
     const tp = config.timepulse_pin_config;
@@ -2082,6 +2269,39 @@ function buildConfigFromForm() {
         measurement_rate_hz: parseInt(document.getElementById('cfg-rate').value) || 1,
         dynamic_model: parseInt(document.getElementById('cfg-dynmodel').value) || 2,
     };
+
+    // Navigation Filters — emit each sub-field only if it differs from
+    // the receiver default (keeps the outgoing config minimal and avoids
+    // spurious flash writes).
+    const nf = {};
+    const navMaskNum = document.getElementById('cfg-navfilt-minelev-num');
+    if (navMaskNum) {
+        const v = parseInt(navMaskNum.value, 10);
+        if (Number.isFinite(v) && v !== 5) nf.min_elev_deg = v;
+    }
+    const fixSel = document.getElementById('cfg-navfilt-fixmode');
+    if (fixSel) {
+        const v = parseInt(fixSel.value, 10);
+        if (Number.isFinite(v) && v !== 3) nf.fix_mode = v;
+    }
+    const readIntNum = (id, dflt) => {
+        const el = document.getElementById(`cfg-navfilt-${id}-num`);
+        if (!el) return null;
+        const v = parseFloat(el.value);
+        if (!Number.isFinite(v)) return null;
+        return (v !== dflt) ? v : null;
+    };
+    const pdop = readIntNum('pdop', 25);
+    if (pdop !== null) nf.pdop_mask_x10 = Math.round(pdop * 10);
+    const tdop = readIntNum('tdop', 25);
+    if (tdop !== null) nf.tdop_mask_x10 = Math.round(tdop * 10);
+    const pacc = readIntNum('pacc', 100);
+    if (pacc !== null) nf.p_acc_mask_m = Math.round(pacc);
+    const tacc = readIntNum('tacc', 300);
+    if (tacc !== null) nf.t_acc_mask_m = Math.round(tacc);
+    if (Object.keys(nf).length > 0) {
+        config.navigation_filters = nf;
+    }
 
     // Timepulse
     if (document.getElementById('cfg-tp-active').checked) {

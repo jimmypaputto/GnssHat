@@ -184,7 +184,9 @@ if(BUILD_EXAMPLES)
     add_subdirectory(examples/cpp/geofencing)
     add_subdirectory(examples/cpp/hot-start)
     add_subdirectory(examples/cpp/jamming-detector)
+    add_subdirectory(examples/cpp/position-from-raw)
     add_subdirectory(examples/cpp/print-navigation)
+    add_subdirectory(examples/cpp/print-raw-observations)
     add_subdirectory(examples/cpp/print-satellites)
     add_subdirectory(examples/cpp/rtk)
     add_subdirectory(examples/cpp/time-base)
@@ -199,8 +201,11 @@ if(BUILD_EXAMPLES)
         Geofencing
         HotStart
         JammingDetector
+        PositionFromRaw
         PrintNavigationAdvanced
         PrintNavigationBasic
+        PrintRawObservationsAdvanced
+        PrintRawObservationsBasic
         PrintSatellitesBasic
         PrintSatellitesAdvanced
         RtkBase
@@ -215,8 +220,11 @@ if(BUILD_EXAMPLES)
         geofencing
         hot-start
         jamming-detector
+        position-from-raw
         print-navigation-advanced
         print-navigation-basic
+        print-raw-observations-advanced
+        print-raw-observations-basic
         print-satellites-basic
         print-satellites-advanced
         rtk-base

@@ -366,6 +366,8 @@ A complete guide for setting up a PPS-disciplined time server using chrony + gps
 | `examples/cpp/rtk` | C++ | RTK base station and rover |
 | `examples/cpp/time-base` | C++ | Time base mode for improved time accuracy |
 | `examples/cpp/time-mark` | C++ | EXTINT time mark event timestamping |
+| `examples/cpp/print-raw-observations` | C++ | Dump UBX-RXM-RAWX raw pseudorange/carrier observations |
+| `examples/cpp/position-from-raw` | C++ | Compute own PVT from UBX-RXM-RAWX + UBX-RXM-SFRBX ephemerides |
 | `examples/c/` | C | Same set of examples using the C API |
 | `examples/python/` | Python | Same set + JSON config loader + NTRIP server/rover ([README](examples/python/README.md)) |
 | `examples/gpsd-integration/` | C++ | Systemd daemon for gpsd bridging ([README](examples/gpsd-integration/README.md)) |

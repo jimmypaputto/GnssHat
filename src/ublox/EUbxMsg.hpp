@@ -33,9 +33,9 @@ enum class EUbxMsg: std::uint8_t
     UBX_NAV_SAT      = 0x0F,
     UBX_TIM_TM2      = 0x10,
     UBX_MON_SPAN     = 0x11,
-    UBX_RXM_RAWX     = 0x12,
-    UBX_RXM_SFRBX    = 0x13,
     UBX_MON_VER      = 0x12,
+    UBX_RXM_RAWX     = 0x13,
+    UBX_RXM_SFRBX    = 0x14,
     END_UBX
 };
 

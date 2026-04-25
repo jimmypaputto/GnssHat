@@ -21,6 +21,7 @@
 #include "NtripLog.hpp"
 #include "NtripStats.hpp"
 #include "NtripTls.hpp"
+#include "RtcmAnalyzer.hpp"
 
 namespace JimmyPaputto
 {
@@ -53,6 +54,21 @@ namespace JimmyPaputto
 
         /// Set credentials for Basic auth.  Empty = accept all (default).
         void setCredentials(std::string username, std::string password);
+
+        /// Snapshot of the live RTCM3 stream feeding the active mountpoint.
+        /// Empty (default-constructed) when no source is connected.
+        RtcmSnapshot rtcmSnapshot() const;
+
+        /// Description of every currently connected source-side socket
+        /// (POST connections).
+        struct SourceInfo
+        {
+            int         fd          = -1;
+            std::string peer;        // "ip:port"
+            std::string mountpoint;  // empty unless this fd owns the active mount
+            uint64_t    connectedUnixMs = 0;
+        };
+        std::vector<SourceInfo> connectedSources() const;
 
         /// Enable server-side TLS.  Must be called before start().
         /// certFile and keyFile are paths to PEM files.
@@ -95,6 +111,14 @@ namespace JimmyPaputto
         std::mutex positionMutex_;
         double latitude_ = 0.0;
         double longitude_ = 0.0;
+
+        // Live RTCM3 stream analyzer fed by the active source thread.
+        mutable std::mutex   analyzerMutex_;
+        RtcmAnalyzer         analyzer_;
+
+        // Per-source metadata for status page.
+        mutable std::mutex   sourceInfoMutex_;
+        std::vector<SourceInfo> sourceInfo_;
 
         std::mutex authMutex_;
         std::string authUsername_;

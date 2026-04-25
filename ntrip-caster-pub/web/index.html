@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NTRIP Caster — Status</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>NTRIP Caster</h1>
+        <span class="subtitle" id="subtitle">live status</span>
+    </header>
+
+    <main>
+        <div class="error-banner" id="error-banner"></div>
+
+        <div class="card">
+            <h2>Active mountpoint</h2>
+            <div class="kv">
+                <div class="k">Name</div>          <div class="v" id="mp-name">—</div>
+                <div class="k">Status</div>        <div class="v" id="mp-status">—</div>
+                <div class="k">Connected rovers</div><div class="v" id="mp-clients">—</div>
+                <div class="k">Uptime</div>        <div class="v" id="mp-uptime">—</div>
+                <div class="k">Last frame</div>    <div class="v" id="mp-last">—</div>
+            </div>
+            <div style="margin-top:10px">
+                <a id="mp-link" href="#">View details &rarr;</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Throughput</h2>
+            <div class="kv">
+                <div class="k">Bytes received from sources</div><div class="v" id="bytes-tx">—</div>
+                <div class="k">Bytes received from clients</div><div class="v" id="bytes-rx">—</div>
+                <div class="k">Frames forwarded</div>           <div class="v" id="frames-tx">—</div>
+                <div class="k">Avg inter-frame</div>            <div class="v" id="avg-if">—</div>
+                <div class="k">Max inter-frame</div>            <div class="v" id="max-if">—</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>RTCM3 message types</h2>
+            <div class="msg-grid" id="msg-grid">
+                <div class="v muted">no frames yet</div>
+            </div>
+        </div>
+    </main>
+
+    <footer>ntrip-caster &middot; <a href="/api/status">/api/status</a></footer>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

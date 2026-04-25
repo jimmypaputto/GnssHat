@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <chrono>
 #include <sstream>
 
 #include "Base64.hpp"
@@ -198,6 +199,19 @@ namespace JimmyPaputto
         std::lock_guard lock(authMutex_);
         authUsername_ = std::move(username);
         authPassword_ = std::move(password);
+    }
+
+    RtcmSnapshot NtripCaster::rtcmSnapshot() const
+    {
+        std::lock_guard lock(analyzerMutex_);
+        return analyzer_.snapshot();
+    }
+
+    std::vector<NtripCaster::SourceInfo>
+    NtripCaster::connectedSources() const
+    {
+        std::lock_guard lock(sourceInfoMutex_);
+        return sourceInfo_;
     }
 
     bool NtripCaster::setTls(const std::string &certFile,
@@ -446,14 +460,31 @@ namespace JimmyPaputto
                 std::lock_guard lock(clientsMutex_);
                 sources_.push_back(clientFd);
             }
+
+            // Reset the analyzer for the new source — the snapshot now
+            // describes only the currently active stream.
+            {
+                std::lock_guard alock(analyzerMutex_);
+                analyzer_.reset();
+            }
+
+            // Track this source for the status page.
+            {
+                using namespace std::chrono;
+                std::lock_guard lk(sourceInfoMutex_);
+                SourceInfo si;
+                si.fd = clientFd;
+                si.peer = clientAddr;
+                si.mountpoint = mount;
+                si.connectedUnixMs = static_cast<uint64_t>(
+                    duration_cast<milliseconds>(
+                        system_clock::now().time_since_epoch()).count());
+                sourceInfo_.push_back(std::move(si));
+            }
+
             log(ENtripLogLevel::Info,
                 "[NtripCaster] Source %s connected, claimed mountpoint '%s'",
                 clientAddr.c_str(), mount.c_str());
-
-            // Sliding-window buffer used to scan for RTCM 1005/1006 frames
-            // across socket-read boundaries.
-            std::vector<uint8_t> scan;
-            scan.reserve(8192);
 
             uint8_t readBuf[8192];
             while (running_)
@@ -462,40 +493,21 @@ namespace JimmyPaputto
                 if (r <= 0)
                     break;
 
-                // Track relay statistics and extract RTCM3 message types
+                // Track relay statistics and extract RTCM3 message types.
                 statsRecordTxRaw(readBuf, static_cast<size_t>(r));
 
-                // Scan stream for RTCM 1005/1006 to update advertised position.
-                scan.insert(scan.end(), readBuf, readBuf + r);
-                size_t i = 0;
-                while (i + 6 <= scan.size())
+                // Feed the analyzer for the status page (validates CRC,
+                // decodes 1005/1006 ARP and MSM headers).
                 {
-                    if (scan[i] != 0xD3)
-                    {
-                        ++i;
-                        continue;
-                    }
-                    uint16_t payloadLen =
-                        (static_cast<uint16_t>(scan[i + 1] & 0x03) << 8) |
-                        static_cast<uint16_t>(scan[i + 2]);
-                    size_t frameLen = 3 + payloadLen + 3;
-                    if (i + frameLen > scan.size())
-                        break; // wait for more data
-
-                    if (auto pos = decodeRtcm1005(&scan[i], frameLen))
+                    std::lock_guard alock(analyzerMutex_);
+                    analyzer_.feed(readBuf, static_cast<size_t>(r));
+                    if (auto snap = analyzer_.snapshot(); snap.arp)
                     {
                         std::lock_guard plock(positionMutex_);
-                        latitude_  = pos->latitudeDeg;
-                        longitude_ = pos->longitudeDeg;
+                        latitude_  = snap.arp->latitudeDeg;
+                        longitude_ = snap.arp->longitudeDeg;
                     }
-                    i += frameLen;
                 }
-                if (i > 0)
-                    scan.erase(scan.begin(), scan.begin() + i);
-                // Cap scan buffer to avoid unbounded growth on garbage streams.
-                if (scan.size() > 16384)
-                    scan.erase(scan.begin(),
-                               scan.begin() + (scan.size() - 16384));
 
                 // Broadcast raw data to all GET clients
                 std::lock_guard lock(clientsMutex_);
@@ -519,6 +531,15 @@ namespace JimmyPaputto
                 sources_.erase(
                     std::remove(sources_.begin(), sources_.end(), clientFd),
                     sources_.end());
+            }
+            {
+                std::lock_guard lk(sourceInfoMutex_);
+                sourceInfo_.erase(
+                    std::remove_if(sourceInfo_.begin(), sourceInfo_.end(),
+                                   [clientFd](const SourceInfo& s) {
+                                       return s.fd == clientFd;
+                                   }),
+                    sourceInfo_.end());
             }
             {
                 std::lock_guard lock(mountMutex_);

@@ -24,10 +24,13 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <memory>
 #include <string>
 #include <thread>
 
 #include "NtripCaster.hpp"
+#include "CasterConfig.hpp"
+#include "HttpStatusServer.hpp"
 
 using namespace JimmyPaputto;
 
@@ -42,6 +45,7 @@ void printUsage(const char* prog)
     std::printf(
         "Usage: %s [options]\n"
         "\n"
+        "  --config <path>       Load TOML config file (CLI flags override)\n"
         "  --host <addr>         Bind address           (default 0.0.0.0)\n"
         "  --port <n>            Listen port            (default 2101)\n"
         "  --max-clients <n>     Max concurrent clients (default 64)\n"
@@ -51,21 +55,18 @@ void printUsage(const char* prog)
         "  --tls-key  <path>     PEM private key\n"
         "  --log-level <lvl>     error|warning|info|debug (default info)\n"
         "  --stats-interval <s>  Print stats every N seconds (0=off, default 30)\n"
+        "  --http                Enable HTTP status page (default off)\n"
+        "  --no-http             Disable HTTP status page (overrides config)\n"
+        "  --http-port <n>       HTTP status page port  (default 8080)\n"
+        "  --http-user <name>    HTTP Basic-auth user   (default rtk)\n"
+        "  --http-pass <pwd>     HTTP Basic-auth pass   (default rtkpassword)\n"
+        "  --http-web-root <p>   Override static-asset directory\n"
         "  -h, --help            Show this help\n"
         "\n"
         "The mountpoint name is claimed by the first source that POSTs.\n"
         "Lat/lon are auto-decoded from RTCM 1005/1006 messages in the\n"
         "source stream and advertised in the sourcetable.\n",
         prog);
-}
-
-ENtripLogLevel parseLogLevel(const std::string& s)
-{
-    if (s == "error")   return ENtripLogLevel::Error;
-    if (s == "warning") return ENtripLogLevel::Warning;
-    if (s == "info")    return ENtripLogLevel::Info;
-    if (s == "debug")   return ENtripLogLevel::Debug;
-    return ENtripLogLevel::Info;
 }
 
 const char* logLevelTag(ENtripLogLevel l)
@@ -110,17 +111,11 @@ void printStats(const NtripStats& s, size_t clients, const std::string& mount)
 
 int main(int argc, char** argv)
 {
-    // ── Defaults ───────────────────────────────────────────────────
-    std::string host = "0.0.0.0";
-    uint16_t    port = 2101;
-    size_t      maxClients = 64;
-    std::string user, pass;
-    std::string tlsCert, tlsKey;
-    ENtripLogLevel logLevel = ENtripLogLevel::Info;
-    int         statsIntervalSec = 30;
+    // ── Defaults via CasterConfig ─────────────────────────────────
+    CasterConfig cfg;
 
-    // ── Parse args ─────────────────────────────────────────────────
-    auto need = [&](int i, const char* opt) {
+    // First pass: pick up --config so subsequent CLI flags can override.
+    auto needRaw = [&](int i, const char* opt) {
         if (i + 1 >= argc)
         {
             std::fprintf(stderr, "Error: %s requires a value.\n", opt);
@@ -132,16 +127,42 @@ int main(int argc, char** argv)
     for (int i = 1; i < argc; ++i)
     {
         std::string a = argv[i];
-        if (a == "-h" || a == "--help")        { printUsage(argv[0]); return 0; }
-        else if (a == "--host")                { host = need(i, "--host"); ++i; }
-        else if (a == "--port")                { port = static_cast<uint16_t>(std::stoi(need(i, "--port"))); ++i; }
-        else if (a == "--max-clients")         { maxClients = static_cast<size_t>(std::stoul(need(i, "--max-clients"))); ++i; }
-        else if (a == "--user")                { user = need(i, "--user"); ++i; }
-        else if (a == "--pass")                { pass = need(i, "--pass"); ++i; }
-        else if (a == "--tls-cert")            { tlsCert = need(i, "--tls-cert"); ++i; }
-        else if (a == "--tls-key")             { tlsKey  = need(i, "--tls-key"); ++i; }
-        else if (a == "--log-level")           { logLevel = parseLogLevel(need(i, "--log-level")); ++i; }
-        else if (a == "--stats-interval")      { statsIntervalSec = std::stoi(need(i, "--stats-interval")); ++i; }
+        if (a == "--config")
+        {
+            std::string path = needRaw(i, "--config");
+            try { cfg.loadFromToml(path); }
+            catch (const std::exception& e)
+            {
+                std::fprintf(stderr, "Error: %s\n", e.what());
+                return 2;
+            }
+            ++i;
+        }
+    }
+
+    // Second pass: CLI flags override TOML.
+    auto need = needRaw;
+
+    for (int i = 1; i < argc; ++i)
+    {
+        std::string a = argv[i];
+        if      (a == "-h" || a == "--help")   { printUsage(argv[0]); return 0; }
+        else if (a == "--config")              { ++i; /* already handled */ }
+        else if (a == "--host")                { cfg.host = need(i, "--host"); ++i; }
+        else if (a == "--port")                { cfg.port = static_cast<uint16_t>(std::stoi(need(i, "--port"))); ++i; }
+        else if (a == "--max-clients")         { cfg.maxClients = static_cast<size_t>(std::stoul(need(i, "--max-clients"))); ++i; }
+        else if (a == "--user")                { cfg.user = need(i, "--user"); ++i; }
+        else if (a == "--pass")                { cfg.pass = need(i, "--pass"); ++i; }
+        else if (a == "--tls-cert")            { cfg.tlsCert = need(i, "--tls-cert"); ++i; }
+        else if (a == "--tls-key")             { cfg.tlsKey  = need(i, "--tls-key"); ++i; }
+        else if (a == "--log-level")           { cfg.logLevel = need(i, "--log-level"); ++i; }
+        else if (a == "--stats-interval")      { cfg.statsInterval = std::stoi(need(i, "--stats-interval")); ++i; }
+        else if (a == "--http")                { cfg.httpEnabled = true; }
+        else if (a == "--no-http")             { cfg.httpEnabled = false; }
+        else if (a == "--http-port")           { cfg.httpPort = static_cast<uint16_t>(std::stoi(need(i, "--http-port"))); ++i; }
+        else if (a == "--http-user")           { cfg.httpUser = need(i, "--http-user"); ++i; }
+        else if (a == "--http-pass")           { cfg.httpPass = need(i, "--http-pass"); ++i; }
+        else if (a == "--http-web-root")       { cfg.httpWebRoot = need(i, "--http-web-root"); ++i; }
         else
         {
             std::fprintf(stderr, "Error: unknown option '%s'\n", a.c_str());
@@ -150,14 +171,16 @@ int main(int argc, char** argv)
         }
     }
 
-    if (!tlsCert.empty() != !tlsKey.empty())
+    if (!cfg.tlsCert.empty() != !cfg.tlsKey.empty())
     {
-        std::fprintf(stderr, "Error: --tls-cert and --tls-key must be specified together.\n");
+        std::fprintf(stderr, "Error: tls cert and key must be specified together.\n");
         return 2;
     }
 
-    if (!user.empty() && pass.empty())
-        std::fprintf(stderr, "Warning: --user given without --pass; password is empty.\n");
+    if (!cfg.user.empty() && cfg.pass.empty())
+        std::fprintf(stderr, "Warning: user given without pass; password is empty.\n");
+
+    ENtripLogLevel logLevel = parseLogLevelString(cfg.logLevel);
 
     // ── Signal handling ───────────────────────────────────────────
     std::signal(SIGINT,  signalHandler);
@@ -165,7 +188,7 @@ int main(int argc, char** argv)
     std::signal(SIGPIPE, SIG_IGN);
 
     // ── Build & start caster ──────────────────────────────────────
-    NtripCaster caster(host, port, maxClients);
+    NtripCaster caster(cfg.host, cfg.port, cfg.maxClients);
 
     caster.setLogLevel(logLevel);
     caster.setLogCallback([](ENtripLogLevel lvl, const std::string& msg) {
@@ -176,10 +199,10 @@ int main(int argc, char** argv)
         std::fflush(out);
     });
 
-    if (!user.empty())
-        caster.setCredentials(user, pass);
+    if (!cfg.user.empty())
+        caster.setCredentials(cfg.user, cfg.pass);
 
-    if (!tlsCert.empty())
+    if (!cfg.tlsCert.empty())
     {
         if (!NtripCaster::isTlsAvailable())
         {
@@ -188,13 +211,13 @@ int main(int argc, char** argv)
                 "OpenSSL support (-DNTRIP_CASTER_TLS=ON).\n");
             return 1;
         }
-        if (!caster.setTls(tlsCert, tlsKey))
+        if (!caster.setTls(cfg.tlsCert, cfg.tlsKey))
         {
             std::fprintf(stderr, "Error: failed to load TLS cert/key.\n");
             return 1;
         }
         std::printf("[%s] TLS enabled (cert=%s)\n",
-                    nowStamp().c_str(), tlsCert.c_str());
+                    nowStamp().c_str(), cfg.tlsCert.c_str());
     }
 
     if (!caster.start())
@@ -205,29 +228,53 @@ int main(int argc, char** argv)
 
     std::printf("[%s] ntrip-caster listening on %s:%u "
                 "(max %zu clients)%s\n",
-                nowStamp().c_str(), host.c_str(), port,
-                maxClients, user.empty() ? " [open]" : " [auth]");
+                nowStamp().c_str(), cfg.host.c_str(), cfg.port,
+                cfg.maxClients, cfg.user.empty() ? " [open]" : " [auth]");
     std::fflush(stdout);
+
+    // ── HTTP status server ────────────────────────────────────────
+    std::unique_ptr<HttpStatusServer> http;
+    if (cfg.httpEnabled)
+    {
+        http = std::make_unique<HttpStatusServer>(
+            caster, cfg.httpHost, cfg.httpPort,
+            cfg.httpUser, cfg.httpPass, cfg.httpRealm, cfg.httpWebRoot);
+        http->setLogLevel(logLevel);
+        http->setLogCallback([](ENtripLogLevel lvl, const std::string& msg) {
+            FILE* out = (lvl == ENtripLogLevel::Error || lvl == ENtripLogLevel::Warning)
+                        ? stderr : stdout;
+            std::fprintf(out, "[%s] %s %s\n",
+                         nowStamp().c_str(), logLevelTag(lvl), msg.c_str());
+            std::fflush(out);
+        });
+        if (!http->start())
+        {
+            std::fprintf(stderr,
+                "Warning: HTTP status server failed to start; continuing without it.\n");
+            http.reset();
+        }
+    }
 
     // ── Main loop ─────────────────────────────────────────────────
     auto nextStats = std::chrono::steady_clock::now() +
-                     std::chrono::seconds(statsIntervalSec);
+                     std::chrono::seconds(cfg.statsInterval);
 
     while (g_running.load())
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-        if (statsIntervalSec > 0 &&
+        if (cfg.statsInterval > 0 &&
             std::chrono::steady_clock::now() >= nextStats)
         {
             printStats(caster.getStats(), caster.clientCount(),
                        caster.mountpoint());
             nextStats = std::chrono::steady_clock::now() +
-                        std::chrono::seconds(statsIntervalSec);
+                        std::chrono::seconds(cfg.statsInterval);
         }
     }
 
     std::printf("[%s] Shutting down…\n", nowStamp().c_str());
+    if (http) http->stop();
     caster.stop();
     return 0;
 }

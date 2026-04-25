@@ -35,13 +35,18 @@ set(CASTER_HEADERS
     src/NtripTls.hpp
     src/Base64.hpp
     src/RtcmArp.hpp
+    src/CasterConfig.hpp
+    src/HttpStatusServer.hpp
 )
 
 # ── Library ────────────────────────────────────────────────────────────
 add_library(ntripcaster STATIC ${CASTER_SOURCES} ${CASTER_HEADERS})
 target_include_directories(ntripcaster PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>)
 target_link_libraries(ntripcaster PUBLIC Threads::Threads)
+target_compile_definitions(ntripcaster PUBLIC
+    NTRIP_CASTER_INSTALLED_WEB_ROOT="${CMAKE_INSTALL_FULL_DATADIR}/ntrip-caster/web")
 
 if(NTRIP_CASTER_TLS)
     find_package(OpenSSL REQUIRED)
@@ -66,6 +71,13 @@ include(GNUInstallDirs)
 
 install(TARGETS ntrip-caster
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+install(DIRECTORY web/
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/ntrip-caster/web)
+
+install(FILES ntrip-caster.toml.example
+        DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/ntrip-caster
+        OPTIONAL)
 
 install(FILES systemd/ntrip-caster.service
         DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/systemd/system

@@ -6,12 +6,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/ntrip-caster \
-    --host 0.0.0.0 \
-    --port 2101 \
-    --max-clients 64 \
-    --log-level info \
-    --stats-interval 60
+# Configuration is loaded from /etc/ntrip-caster/ntrip-caster.toml.
+# CLI flags (if any) override values from the config file.
+ExecStart=/usr/local/bin/ntrip-caster --config /etc/ntrip-caster/ntrip-caster.toml
 
 # Hardening
 DynamicUser=yes

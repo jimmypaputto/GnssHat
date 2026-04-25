@@ -75,9 +75,29 @@ install(TARGETS ntrip-caster
 install(DIRECTORY web/
         DESTINATION ${CMAKE_INSTALL_DATADIR}/ntrip-caster/web)
 
+# Config lives under /etc/ntrip-caster regardless of CMAKE_INSTALL_PREFIX,
+# so the systemd unit's hard-coded path stays valid.  The .example file is
+# always installed; the live ntrip-caster.toml is only dropped if no
+# existing config is present (never overwrites operator edits).
+set(NTRIP_CASTER_CONF_DIR "/etc/ntrip-caster"
+    CACHE PATH "Absolute path where ntrip-caster.toml is installed")
+
 install(FILES ntrip-caster.toml.example
-        DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/ntrip-caster
-        OPTIONAL)
+        DESTINATION ${NTRIP_CASTER_CONF_DIR})
+
+install(CODE "
+    set(_cfg \"\$ENV{DESTDIR}${NTRIP_CASTER_CONF_DIR}/ntrip-caster.toml\")
+    if(NOT EXISTS \"\${_cfg}\")
+        message(STATUS \"Installing default config: \${_cfg}\")
+        file(INSTALL
+             DESTINATION \"${NTRIP_CASTER_CONF_DIR}\"
+             TYPE FILE
+             RENAME ntrip-caster.toml
+             FILES \"${CMAKE_CURRENT_SOURCE_DIR}/ntrip-caster.toml.example\")
+    else()
+        message(STATUS \"Keeping existing config: \${_cfg}\")
+    endif()
+")
 
 install(FILES systemd/ntrip-caster.service
         DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/systemd/system

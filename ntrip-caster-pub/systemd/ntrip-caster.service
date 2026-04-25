@@ -1,0 +1,38 @@
+[Unit]
+Description=Standalone NTRIP v2.0 caster
+Documentation=https://github.com/jimmypaputto/GnssHat
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/ntrip-caster \
+    --host 0.0.0.0 \
+    --port 2101 \
+    --mount CASTER \
+    --max-clients 64 \
+    --log-level info \
+    --stats-interval 60
+
+# Hardening
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

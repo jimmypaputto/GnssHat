@@ -39,6 +39,13 @@ struct GnssConfig
     std::optional<TimingConfig> timing{};
 
     bool saveToFlash{false};
+
+    // F9P-only: when true, the F9P startup strategy disables every
+    // SPI-bound message except UBX-NAV-PVT, UBX-RXM-RAWX and
+    // UBX-RXM-SFRBX. Use it for raw-observation pipelines that do
+    // not consume NAV-SAT / NAV-DOP / MON-SPAN / MON-RF, to keep SPI
+    // traffic under the receiver's TX-Ready threshold.
+    bool rawObservationsOnly{false};
 };
 
 bool checkMeasurementRate(const uint16_t measurementRate);

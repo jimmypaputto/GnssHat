@@ -103,6 +103,21 @@ private:
     bool rover_{false};
 };
 
+// F9PRawStartup — same configuration as F9PStartup, but disables all
+// chatty SPI messages that the raw-observation pipeline does not need
+// (NAV-SAT, NAV-DOP, NAV-GEOFENCE, MON-SPAN, MON-RF). Only the
+// strict minimum is left enabled on SPI:
+//   UBX-NAV-PVT, UBX-RXM-RAWX, UBX-RXM-SFRBX
+// Goal: reduce SPI bus traffic to avoid receiver overruns / dropped
+// frames during long raw-data sessions on resource-constrained hosts.
+class F9PRawStartup: public F9PStartup
+{
+public:
+    F9PRawStartup(ICommDriver& commDriver, IUbloxConfigRegistry& configRegistry,
+        UbxParser& ubxParser);
+    ~F9PRawStartup() override = default;
+};
+
 }  // JimmyPaputto
 
 #endif // JIMMY_PAPUTTO_STARTUP_HPP_

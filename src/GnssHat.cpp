@@ -264,6 +264,8 @@ public:
     bool start(const GnssConfig& config) override
     {
         rtk_ = std::unique_ptr<IRtk>(RtkFactory::create(rtcm3Store_, config));
+        if (config.rawObservationsOnly)
+            return GnssHat::start<F9PRawStartup, F9PRun>(config);
         return GnssHat::start<F9PStartup, F9PRun>(config);
     }
 
@@ -348,7 +350,8 @@ bool validateConfig(const GnssConfig& config)
         return false;
 
     if constexpr (std::is_same_v<StartupStrategy, M9NStartup> ||
-        std::is_same_v<StartupStrategy, F9PStartup>)
+        std::is_same_v<StartupStrategy, F9PStartup> ||
+        std::is_same_v<StartupStrategy, F9PRawStartup>)
     {
         if (config.timing.has_value())
         {

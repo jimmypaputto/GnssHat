@@ -1016,6 +1016,18 @@ F9PStartup::F9PStartup(ICommDriver& commDriver,
 
     auto& ecv = StartupBase::expectedConfigValues_;
 
+    // L1 constellations + their primary L1 signals. Without these,
+    // a CFG-SIGNAL upset (e.g. interrupted prior session) leaves the
+    // receiver tracking an incomplete subset, breaking decoders.
+    ecv[UbxCfgKeys::CFG_SIGNAL_GPS_ENA]       = {0x01};
+    ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L1CA_ENA]  = {0x01};
+    ecv[UbxCfgKeys::CFG_SIGNAL_GAL_ENA]       = {0x01};
+    ecv[UbxCfgKeys::CFG_SIGNAL_GAL_E1_ENA]    = {0x01};
+    ecv[UbxCfgKeys::CFG_SIGNAL_BDS_ENA]       = {0x01};
+    ecv[UbxCfgKeys::CFG_SIGNAL_BDS_B1_ENA]    = {0x01};
+    ecv[UbxCfgKeys::CFG_SIGNAL_GLO_ENA]       = {0x01};
+    ecv[UbxCfgKeys::CFG_SIGNAL_GLO_L1_ENA]    = {0x01};
+
     ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {0x01};
     ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {0x01};
 
@@ -1043,6 +1055,28 @@ bool F9PStartup::execute()
         return false;
 
     configRegistry_.shouldSaveConfigToFlash(false);
+
+    constexpr std::array<uint32_t, 8> l1SignalKeys = {
+        UbxCfgKeys::CFG_SIGNAL_GPS_ENA,
+        UbxCfgKeys::CFG_SIGNAL_GPS_L1CA_ENA,
+        UbxCfgKeys::CFG_SIGNAL_GAL_ENA,
+        UbxCfgKeys::CFG_SIGNAL_GAL_E1_ENA,
+        UbxCfgKeys::CFG_SIGNAL_BDS_ENA,
+        UbxCfgKeys::CFG_SIGNAL_BDS_B1_ENA,
+        UbxCfgKeys::CFG_SIGNAL_GLO_ENA,
+        UbxCfgKeys::CFG_SIGNAL_GLO_L1_ENA
+    };
+    result = configure(l1SignalKeys);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] L1 signal configuration failed\r\n");
+        return false;
+    }
+
+    // CFG-SIGNAL changes trigger a GNSS subsystem reset; let it settle
+    // before the next VALSET batch.
+    if (configRegistry_.shouldSaveConfigToFlash())
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     constexpr std::array<uint32_t, 2> l5SignalKeys = {
         UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA,
@@ -1168,6 +1202,35 @@ bool F9PStartup::rtkRoverStartup()
         return false;
 
     return true;
+}
+
+// ── F9PRawStartup ───────────────────────────────────────────────────
+//
+// Inherits the full F9PStartup execute() flow but flips the expected
+// values for the SPI message-output keys so that everything except
+// the strict raw-observation minimum (NAV-PVT, RXM-RAWX, RXM-SFRBX)
+// is disabled.
+//
+// Note: expectedConfigValues_ is a static map shared across instances
+// of all StartupBase subclasses. Mutating it here is safe in practice
+// because GnssHat creates exactly one Startup strategy per session.
+F9PRawStartup::F9PRawStartup(ICommDriver& commDriver,
+    IUbloxConfigRegistry& configRegistry, UbxParser& ubxParser)
+:   F9PStartup(commDriver, configRegistry, ubxParser)
+{
+    auto& ecv = StartupBase::expectedConfigValues_;
+
+    // Disable chatty SPI messages we do not consume in raw-only mode.
+    ecv[UbxCfgKeys::CFG_MSGOUT_UBX_MON_SPAN_SPI]     = {0x00};
+    ecv[UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI]       = {0x00};
+    ecv[UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI]      = {0x00};
+    ecv[UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_SPI]      = {0x00};
+    ecv[UbxCfgKeys::CFG_MSGOUT_UBX_NAV_GEOFENCE_SPI] = {0x00};
+
+    // Keep enabled (already 0x01 by default in M9NStartup ctor):
+    //   CFG_MSGOUT_UBX_NAV_PVT_SPI
+    //   CFG_MSGOUT_UBX_RXM_RAWX_SPI
+    //   CFG_MSGOUT_UBX_RXM_SFRBX_SPI
 }
 
 }  // JimmyPaputto

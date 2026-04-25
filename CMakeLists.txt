@@ -202,6 +202,7 @@ if(BUILD_EXAMPLES)
         HotStart
         JammingDetector
         PositionFromRaw
+        EnableSignals
         PrintNavigationAdvanced
         PrintNavigationBasic
         PrintRawObservationsAdvanced
@@ -221,6 +222,7 @@ if(BUILD_EXAMPLES)
         hot-start
         jamming-detector
         position-from-raw
+        enable-signals
         print-navigation-advanced
         print-navigation-basic
         print-raw-observations-advanced

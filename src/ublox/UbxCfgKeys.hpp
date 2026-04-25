@@ -119,8 +119,16 @@ constexpr uint32_t CFG_GEOFENCE_FENCE4_LAT  = 0x40240051;
 constexpr uint32_t CFG_GEOFENCE_FENCE4_LON  = 0x40240052;
 constexpr uint32_t CFG_GEOFENCE_FENCE4_RAD  = 0x40240053;
 
+constexpr uint32_t CFG_SIGNAL_GPS_ENA         = 0x1031001F;
+constexpr uint32_t CFG_SIGNAL_GPS_L1CA_ENA    = 0x10310001;
 constexpr uint32_t CFG_SIGNAL_GPS_L5_ENA      = 0x10310004;
+constexpr uint32_t CFG_SIGNAL_GAL_ENA         = 0x10310021;
+constexpr uint32_t CFG_SIGNAL_GAL_E1_ENA      = 0x10310007;
 constexpr uint32_t CFG_SIGNAL_GAL_E5A_ENA     = 0x10310009;
+constexpr uint32_t CFG_SIGNAL_BDS_ENA         = 0x10310022;
+constexpr uint32_t CFG_SIGNAL_BDS_B1_ENA      = 0x1031000D;
+constexpr uint32_t CFG_SIGNAL_GLO_ENA         = 0x10310025;
+constexpr uint32_t CFG_SIGNAL_GLO_L1_ENA      = 0x10310018;
 constexpr uint32_t CFG_SIGNAL_QZSS_L5_ENA     = 0x10310017;
 constexpr uint32_t CFG_SIGNAL_L5_HEALTH_OVRD  = 0x10320001;
 

@@ -9,3 +9,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(PositionFromRaw src/PositionFromRaw.cpp)
 set_target_properties(PositionFromRaw PROPERTIES OUTPUT_NAME position-from-raw)
 target_link_libraries(PositionFromRaw GnssHat)
+
+# Standalone helper — restores CFG-SIGNAL keys via direct SPI (no
+# library dependency). Run before position-from-raw when the ZED-F9P
+# has dropped L1/E1/B1 tracking after a crashed session.
+add_executable(EnableSignals tools/enable-signals.cpp)
+set_target_properties(EnableSignals PROPERTIES OUTPUT_NAME enable-signals)

@@ -34,6 +34,7 @@ set(CASTER_HEADERS
     src/NtripStats.hpp
     src/NtripTls.hpp
     src/Base64.hpp
+    src/RtcmArp.hpp
 )
 
 # ── Library ────────────────────────────────────────────────────────────

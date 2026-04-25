@@ -12,10 +12,14 @@ hardware HAT dependencies**. Builds and runs anywhere with a C++20 compiler,
 ## Features
 
 - NTRIP v2.0 caster — `GET /mount` for rovers, `POST /mount` for the source
+- **Dynamic mountpoint**: name is claimed by the first source that POSTs;
+  released when it disconnects
+- **Auto-position**: lat/lon are decoded from RTCM 1005/1006 (Stationary RTK
+  Reference Station ARP) frames in the source stream and advertised in the
+  sourcetable
 - HTTP Basic auth (optional)
-- Sourcetable advertisement with configurable lat/lon
 - Optional TLS (server cert + key, PEM)
-- Live stats (bytes, frames, last-frame age, uptime, clients)
+- Live stats (bytes, frames, last-frame age, uptime, clients, mount)
 - Graceful shutdown on `SIGINT` / `SIGTERM`
 - Single static binary, no runtime config files required
 
@@ -48,31 +52,32 @@ ntrip-caster [options]
 
   --host <addr>         Bind address           (default 0.0.0.0)
   --port <n>            Listen port            (default 2101)
-  --mount <name>        Mountpoint name        (default CASTER)
   --max-clients <n>     Max concurrent clients (default 64)
   --user <name>         Basic-auth username    (default: open access)
   --pass <pwd>          Basic-auth password
-  --lat <deg>           Advertised latitude    (default 0.0)
-  --lon <deg>           Advertised longitude   (default 0.0)
   --tls-cert <path>     PEM certificate (enables TLS)
   --tls-key  <path>     PEM private key
   --log-level <lvl>     error|warning|info|debug (default info)
   --stats-interval <s>  Print stats every N seconds (0=off, default 30)
 ```
 
+The mountpoint name is whatever the first source POSTs to (e.g. POSTing
+to `/BASE1` makes `BASE1` the active mountpoint). Lat/lon are auto-decoded
+from RTCM 1005/1006 ARP messages within the source stream.
+
 ### Example
 
 Plain TCP, open access:
 
 ```bash
-ntrip-caster --port 2101 --mount BASE1 --lat 50.0647 --lon 19.9450
+ntrip-caster --port 2101
 ```
 
 With auth + TLS:
 
 ```bash
 ntrip-caster \
-    --port 2102 --mount BASE1 \
+    --port 2102 \
     --user rover --pass s3cret \
     --tls-cert /etc/letsencrypt/live/example.com/fullchain.pem \
     --tls-key  /etc/letsencrypt/live/example.com/privkey.pem
@@ -123,7 +128,8 @@ ntrip-caster-pub/
 │   ├── NtripCaster.hpp/.cpp # caster core
 │   ├── NtripLog.hpp         # log mixin
 │   ├── NtripStats.hpp       # stats mixin
-│   └── NtripTls.hpp         # OpenSSL wrapper (optional)
+│   ├── NtripTls.hpp         # OpenSSL wrapper (optional)
+│   └── RtcmArp.hpp          # RTCM 1005/1006 ARP → lat/lon decoder
 └── systemd/
     └── ntrip-caster.service
 ```

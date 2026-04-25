@@ -29,7 +29,7 @@ namespace JimmyPaputto
     {
     public:
         NtripCaster(std::string host, uint16_t port,
-                    std::string mountpoint, size_t maxClients = 10);
+                    size_t maxClients = 64);
         ~NtripCaster();
 
         NtripCaster(const NtripCaster &) = delete;
@@ -41,6 +41,14 @@ namespace JimmyPaputto
         void feed(const std::vector<std::vector<uint8_t>> &frames);
 
         size_t clientCount() const;
+
+        /// Currently advertised mountpoint name, or empty string if no
+        /// source is connected.
+        std::string mountpoint() const;
+
+        /// Manually override the advertised position.  Normally the
+        /// caster auto-updates this by decoding RTCM 1005/1006 frames
+        /// from the source stream.
         void updatePosition(double lat, double lon);
 
         /// Set credentials for Basic auth.  Empty = accept all (default).
@@ -68,8 +76,13 @@ namespace JimmyPaputto
 
         std::string host_;
         uint16_t port_;
-        std::string mountpoint_;
         size_t maxClients_;
+
+        // Active mountpoint claimed by the connected source (empty when
+        // no source is connected).
+        mutable std::mutex mountMutex_;
+        std::string activeMountpoint_;
+        int activeSourceFd_ = -1;
 
         int serverFd_ = -1;
         std::atomic<bool> running_{false};

@@ -9,7 +9,6 @@ Type=simple
 ExecStart=/usr/local/bin/ntrip-caster \
     --host 0.0.0.0 \
     --port 2101 \
-    --mount CASTER \
     --max-clients 64 \
     --log-level info \
     --stats-interval 60

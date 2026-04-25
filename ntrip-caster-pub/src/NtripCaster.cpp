@@ -15,12 +15,13 @@
 #include <sstream>
 
 #include "Base64.hpp"
+#include "RtcmArp.hpp"
 
 namespace JimmyPaputto
 {
     NtripCaster::NtripCaster(std::string host, uint16_t port,
-                             std::string mountpoint, size_t maxClients)
-        : host_(std::move(host)), port_(port), mountpoint_(std::move(mountpoint)), maxClients_(maxClients)
+                             size_t maxClients)
+        : host_(std::move(host)), port_(port), maxClients_(maxClients)
     {
     }
 
@@ -73,8 +74,8 @@ namespace JimmyPaputto
         acceptThread_ = std::jthread([this](std::stop_token st)
                                      { acceptLoop(st); });
 
-        log(ENtripLogLevel::Info, "[NtripCaster] Listening on %s:%u/%s (max %zu clients)",
-            host_.c_str(), port_, mountpoint_.c_str(), maxClients_);
+        log(ENtripLogLevel::Info, "[NtripCaster] Listening on %s:%u (max %zu clients, mountpoint claimed by source)",
+            host_.c_str(), port_, maxClients_);
         return true;
     }
 
@@ -176,6 +177,12 @@ namespace JimmyPaputto
     {
         std::lock_guard lock(clientsMutex_);
         return clients_.size();
+    }
+
+    std::string NtripCaster::mountpoint() const
+    {
+        std::lock_guard lock(mountMutex_);
+        return activeMountpoint_;
     }
 
     void NtripCaster::updatePosition(double lat, double lon)
@@ -325,14 +332,38 @@ namespace JimmyPaputto
             return;
         }
 
-        // Wrong mountpoint -> 404
-        if (mount != mountpoint_)
+        if (method == "GET")
         {
-            std::string body = "Mountpoint '" + mount + "' not found.\r\n";
-            sendResponse(clientFd, "404 Not Found", body.c_str());
-            closeClientTls(clientFd);
-            ::close(clientFd);
-            return;
+            // Rovers may only join the mountpoint currently claimed by a source.
+            std::string current;
+            {
+                std::lock_guard lock(mountMutex_);
+                current = activeMountpoint_;
+            }
+            if (current.empty() || mount != current)
+            {
+                std::string body = "Mountpoint '" + mount + "' not found.\r\n";
+                sendResponse(clientFd, "404 Not Found", body.c_str());
+                closeClientTls(clientFd);
+                ::close(clientFd);
+                return;
+            }
+        }
+        else // POST
+        {
+            // Refuse a second source while one is already connected.
+            std::lock_guard lock(mountMutex_);
+            if (activeSourceFd_ >= 0)
+            {
+                sendResponse(clientFd, "409 Conflict",
+                             "A source is already connected.\r\n");
+                closeClientTls(clientFd);
+                ::close(clientFd);
+                log(ENtripLogLevel::Warning,
+                    "[NtripCaster] Rejected source %s — mountpoint '%s' busy",
+                    clientAddr.c_str(), activeMountpoint_.c_str());
+                return;
+            }
         }
 
         // Check authentication (if credentials are set)
@@ -403,13 +434,26 @@ namespace JimmyPaputto
 
         if (method == "POST")
         {
+            // Claim the mountpoint for this source.
+            {
+                std::lock_guard lock(mountMutex_);
+                activeMountpoint_ = mount;
+                activeSourceFd_   = clientFd;
+            }
+
             // Source/server push: read RTCM3 data and broadcast to clients
             {
                 std::lock_guard lock(clientsMutex_);
                 sources_.push_back(clientFd);
             }
-            log(ENtripLogLevel::Info, "[NtripCaster] Source %s connected (POST)",
-                clientAddr.c_str());
+            log(ENtripLogLevel::Info,
+                "[NtripCaster] Source %s connected, claimed mountpoint '%s'",
+                clientAddr.c_str(), mount.c_str());
+
+            // Sliding-window buffer used to scan for RTCM 1005/1006 frames
+            // across socket-read boundaries.
+            std::vector<uint8_t> scan;
+            scan.reserve(8192);
 
             uint8_t readBuf[8192];
             while (running_)
@@ -420,6 +464,38 @@ namespace JimmyPaputto
 
                 // Track relay statistics and extract RTCM3 message types
                 statsRecordTxRaw(readBuf, static_cast<size_t>(r));
+
+                // Scan stream for RTCM 1005/1006 to update advertised position.
+                scan.insert(scan.end(), readBuf, readBuf + r);
+                size_t i = 0;
+                while (i + 6 <= scan.size())
+                {
+                    if (scan[i] != 0xD3)
+                    {
+                        ++i;
+                        continue;
+                    }
+                    uint16_t payloadLen =
+                        (static_cast<uint16_t>(scan[i + 1] & 0x03) << 8) |
+                        static_cast<uint16_t>(scan[i + 2]);
+                    size_t frameLen = 3 + payloadLen + 3;
+                    if (i + frameLen > scan.size())
+                        break; // wait for more data
+
+                    if (auto pos = decodeRtcm1005(&scan[i], frameLen))
+                    {
+                        std::lock_guard plock(positionMutex_);
+                        latitude_  = pos->latitudeDeg;
+                        longitude_ = pos->longitudeDeg;
+                    }
+                    i += frameLen;
+                }
+                if (i > 0)
+                    scan.erase(scan.begin(), scan.begin() + i);
+                // Cap scan buffer to avoid unbounded growth on garbage streams.
+                if (scan.size() > 16384)
+                    scan.erase(scan.begin(),
+                               scan.begin() + (scan.size() - 16384));
 
                 // Broadcast raw data to all GET clients
                 std::lock_guard lock(clientsMutex_);
@@ -443,6 +519,14 @@ namespace JimmyPaputto
                 sources_.erase(
                     std::remove(sources_.begin(), sources_.end(), clientFd),
                     sources_.end());
+            }
+            {
+                std::lock_guard lock(mountMutex_);
+                if (activeSourceFd_ == clientFd)
+                {
+                    activeSourceFd_ = -1;
+                    activeMountpoint_.clear();
+                }
             }
             log(ENtripLogLevel::Info, "[NtripCaster] Source %s disconnected",
                 clientAddr.c_str());
@@ -487,6 +571,12 @@ namespace JimmyPaputto
 
     void NtripCaster::sendSourcetable(int fd)
     {
+        std::string mount;
+        {
+            std::lock_guard lock(mountMutex_);
+            mount = activeMountpoint_;
+        }
+
         double lat, lon;
         {
             std::lock_guard lock(positionMutex_);
@@ -494,15 +584,19 @@ namespace JimmyPaputto
             lon = longitude_;
         }
 
-        char entry[512];
-        snprintf(entry, sizeof(entry),
-                 "STR;%s;%s;RTCM 3.3;"
-                 "1005(31),1077(1),1087(1),1097(1),1127(1),1230(10);"
-                 "2;GPS+GLO+GAL+BDS;NONE;POL;%.6f;%.6f;"
-                 "0;0;GnssHat NEO-F9P;none;N;N;0;\r\n",
-                 mountpoint_.c_str(), mountpoint_.c_str(), lat, lon);
-
-        std::string body = std::string(entry) + "ENDSOURCETABLE\r\n";
+        std::string body;
+        if (!mount.empty())
+        {
+            char entry[512];
+            snprintf(entry, sizeof(entry),
+                     "STR;%s;%s;RTCM 3.3;"
+                     "1005(31),1077(1),1087(1),1097(1),1127(1),1230(10);"
+                     "2;GPS+GLO+GAL+BDS;NONE;XXX;%.6f;%.6f;"
+                     "0;0;NTRIP Caster;none;N;N;0;\r\n",
+                     mount.c_str(), mount.c_str(), lat, lon);
+            body = entry;
+        }
+        body += "ENDSOURCETABLE\r\n";
 
         char header[256];
         snprintf(header, sizeof(header),

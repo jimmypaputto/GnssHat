@@ -8,9 +8,13 @@
  * to receive the relayed stream.
  *
  * Run:
- *   ntrip-caster --port 2101 --mount GNSS_HAT \
+ *   ntrip-caster --port 2101 \
  *                --user rover --pass secret \
  *                [--tls-cert /etc/ssl/cert.pem --tls-key /etc/ssl/key.pem]
+ *
+ * The mountpoint name is claimed by the first source that POSTs to the
+ * caster; lat/lon are auto-decoded from RTCM 1005/1006 messages in the
+ * source stream and advertised in the sourcetable.
  */
 
 #include <atomic>
@@ -40,20 +44,18 @@ void printUsage(const char* prog)
         "\n"
         "  --host <addr>         Bind address           (default 0.0.0.0)\n"
         "  --port <n>            Listen port            (default 2101)\n"
-        "  --mount <name>        Mountpoint name        (default CASTER)\n"
         "  --max-clients <n>     Max concurrent clients (default 64)\n"
         "  --user <name>         Basic-auth username    (default: open access)\n"
         "  --pass <pwd>          Basic-auth password\n"
-        "  --lat <deg>           Advertised latitude    (default 0.0)\n"
-        "  --lon <deg>           Advertised longitude   (default 0.0)\n"
         "  --tls-cert <path>     PEM certificate (enables TLS)\n"
         "  --tls-key  <path>     PEM private key\n"
         "  --log-level <lvl>     error|warning|info|debug (default info)\n"
         "  --stats-interval <s>  Print stats every N seconds (0=off, default 30)\n"
         "  -h, --help            Show this help\n"
         "\n"
-        "The caster expects exactly one base station to POST RTCM3 to the\n"
-        "mountpoint; all GET clients receive the relayed stream.\n",
+        "The mountpoint name is claimed by the first source that POSTs.\n"
+        "Lat/lon are auto-decoded from RTCM 1005/1006 messages in the\n"
+        "source stream and advertised in the sourcetable.\n",
         prog);
 }
 
@@ -88,12 +90,13 @@ std::string nowStamp()
     return buf;
 }
 
-void printStats(const NtripStats& s, size_t clients)
+void printStats(const NtripStats& s, size_t clients, const std::string& mount)
 {
     std::printf(
-        "[%s] STATS  clients=%zu  rxBytes=%llu  txBytes=%llu  "
+        "[%s] STATS  mount=%s  clients=%zu  rxBytes=%llu  txBytes=%llu  "
         "frames=%llu  lastFrame=%llums  uptime=%llus\n",
         nowStamp().c_str(),
+        mount.empty() ? "(none)" : mount.c_str(),
         clients,
         (unsigned long long)s.bytesRx,
         (unsigned long long)s.bytesTx,
@@ -110,10 +113,8 @@ int main(int argc, char** argv)
     // ── Defaults ───────────────────────────────────────────────────
     std::string host = "0.0.0.0";
     uint16_t    port = 2101;
-    std::string mount = "CASTER";
     size_t      maxClients = 64;
     std::string user, pass;
-    double      lat = 0.0, lon = 0.0;
     std::string tlsCert, tlsKey;
     ENtripLogLevel logLevel = ENtripLogLevel::Info;
     int         statsIntervalSec = 30;
@@ -134,12 +135,9 @@ int main(int argc, char** argv)
         if (a == "-h" || a == "--help")        { printUsage(argv[0]); return 0; }
         else if (a == "--host")                { host = need(i, "--host"); ++i; }
         else if (a == "--port")                { port = static_cast<uint16_t>(std::stoi(need(i, "--port"))); ++i; }
-        else if (a == "--mount")               { mount = need(i, "--mount"); ++i; }
         else if (a == "--max-clients")         { maxClients = static_cast<size_t>(std::stoul(need(i, "--max-clients"))); ++i; }
         else if (a == "--user")                { user = need(i, "--user"); ++i; }
         else if (a == "--pass")                { pass = need(i, "--pass"); ++i; }
-        else if (a == "--lat")                 { lat = std::stod(need(i, "--lat")); ++i; }
-        else if (a == "--lon")                 { lon = std::stod(need(i, "--lon")); ++i; }
         else if (a == "--tls-cert")            { tlsCert = need(i, "--tls-cert"); ++i; }
         else if (a == "--tls-key")             { tlsKey  = need(i, "--tls-key"); ++i; }
         else if (a == "--log-level")           { logLevel = parseLogLevel(need(i, "--log-level")); ++i; }
@@ -167,7 +165,7 @@ int main(int argc, char** argv)
     std::signal(SIGPIPE, SIG_IGN);
 
     // ── Build & start caster ──────────────────────────────────────
-    NtripCaster caster(host, port, mount, maxClients);
+    NtripCaster caster(host, port, maxClients);
 
     caster.setLogLevel(logLevel);
     caster.setLogCallback([](ENtripLogLevel lvl, const std::string& msg) {
@@ -180,8 +178,6 @@ int main(int argc, char** argv)
 
     if (!user.empty())
         caster.setCredentials(user, pass);
-
-    caster.updatePosition(lat, lon);
 
     if (!tlsCert.empty())
     {
@@ -207,9 +203,9 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    std::printf("[%s] ntrip-caster listening on %s:%u/%s "
+    std::printf("[%s] ntrip-caster listening on %s:%u "
                 "(max %zu clients)%s\n",
-                nowStamp().c_str(), host.c_str(), port, mount.c_str(),
+                nowStamp().c_str(), host.c_str(), port,
                 maxClients, user.empty() ? " [open]" : " [auth]");
     std::fflush(stdout);
 
@@ -224,7 +220,8 @@ int main(int argc, char** argv)
         if (statsIntervalSec > 0 &&
             std::chrono::steady_clock::now() >= nextStats)
         {
-            printStats(caster.getStats(), caster.clientCount());
+            printStats(caster.getStats(), caster.clientCount(),
+                       caster.mountpoint());
             nextStats = std::chrono::steady_clock::now() +
                         std::chrono::seconds(statsIntervalSec);
         }

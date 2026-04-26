@@ -9,6 +9,7 @@ import argparse
 import threading
 import time
 import json
+import logging
 
 # Ensure GnssHat Python bindings are findable when running as root (sudo)
 # The module is installed in the pi user's site-packages
@@ -22,7 +23,43 @@ from geopy.distance import geodesic
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'gnss-visualization-secret'
+# Disable static-file caching: this is a development/demo dashboard, and
+# stale CSS/JS in the browser cache routinely confuses users after edits.
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+@app.after_request
+def _no_cache(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+# ─── Quieten werkzeug access log for high-frequency polling endpoints ──────
+# The dashboard polls /api/ntrip/* /api/caster/* /api/ntrip-server/* every
+# 1.5 s, which would otherwise drown the terminal in 200-OK lines. Drop
+# successful (2xx) accesses to those paths; keep errors and other routes.
+class _NtripPollLogFilter(logging.Filter):
+    _NOISY_PREFIXES = (
+        '/api/ntrip/',
+        '/api/caster/',
+        '/api/ntrip-server/',
+    )
+    def filter(self, record):
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return True
+        # Werkzeug access lines look like:
+        #   127.0.0.1 - - [..] "GET /api/ntrip/status HTTP/1.1" 200 -
+        if any(p in msg for p in self._NOISY_PREFIXES):
+            # Suppress only successful GETs; let 4xx/5xx through.
+            if '" 2' in msg or '" 304' in msg:
+                return False
+        return True
+
+logging.getLogger('werkzeug').addFilter(_NtripPollLogFilter())
 
 # Serial port configuration (external_tty mode)
 SERIAL_PORT = '/dev/jimmypaputto/gnss'

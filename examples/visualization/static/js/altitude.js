@@ -9,15 +9,27 @@ class AltitudeTape {
         this.ctx = this.canvas.getContext('2d');
 
         // State
-        this.scale = 20;               // ± meters shown on the tape
+        // Discrete, exponentially-spaced range presets (in metres). The slider,
+        // wheel and ± buttons all step through these positions — predictable
+        // snap points from RTK-grade centimetres up to a wide overview.
+        this.scaleLadder = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100];
+        this.scaleIndex = 8;                  // default = 20 m
+        this.scale = this.scaleLadder[this.scaleIndex];
+        this._wheelAccum = 0;
         this.source = 'msl';           // 'msl' | 'wgs84'
         this.referenceAltitude = null; // locked on first valid sample
         this.originSet = false;
         this.currentAlt = 0;           // absolute (raw) altitude in meters
         this.currentAccuracy = 0;      // vertical accuracy in meters (0 if unknown)
         this.hasAccuracy = false;
-        this.trail = [];               // array of delta-altitudes (relative to ref), capped
-        this.maxTrail = 600;
+        // Trail is a fixed time window of recent samples: array of
+        // {t: epoch-ms, d: delta-from-reference-m}. Newest sample sits
+        // at the right edge of the trace strip; older samples scroll
+        // left at a constant pixels-per-second rate and fall off when
+        // they pass the left edge. Memory bounded by update-rate ×
+        // window, not by uptime.
+        this.trail = [];
+        this.trailWindowMs = 60_000;   // 60 s of scrollback
 
         this.animationFrame = null;
 
@@ -47,38 +59,65 @@ class AltitudeTape {
     }
 
     setupScaleSlider() {
+        // Slider value is an integer index into `scaleLadder` so clicks on
+        // the track snap cleanly to a preset.
         const slider = document.getElementById('altitude-scale-slider');
         if (slider) {
+            slider.min = '0';
+            slider.max = String(this.scaleLadder.length - 1);
+            slider.step = '1';
+            slider.value = String(this.scaleIndex);
             slider.addEventListener('input', (e) => {
-                this.setScale(parseFloat(e.target.value));
+                this.setScaleIndex(parseInt(e.target.value, 10));
             });
         }
-        // Mouse wheel zoom while hovering the canvas wrapper
+        // Mouse wheel zoom: accumulate deltas so high-resolution touchpads
+        // don't fly through the ladder.
         const wrapper = this.canvas.parentElement;
         if (wrapper) {
             wrapper.addEventListener('wheel', (e) => {
                 e.preventDefault();
-                const factor = e.deltaY > 0 ? 1.125 : 1 / 1.125;
-                this.setScale(this.scale * factor);
+                this._wheelAccum += e.deltaY;
+                const threshold = 40;
+                while (this._wheelAccum >= threshold) {
+                    this.setScaleIndex(this.scaleIndex + 1);
+                    this._wheelAccum -= threshold;
+                }
+                while (this._wheelAccum <= -threshold) {
+                    this.setScaleIndex(this.scaleIndex - 1);
+                    this._wheelAccum += threshold;
+                }
             }, { passive: false });
+            // Pinch-to-zoom on touch devices (helper defined in map.js).
+            if (typeof attachPinchZoom === 'function') {
+                attachPinchZoom(wrapper, this);
+            }
         }
+        this.setScaleIndex(this.scaleIndex);
+    }
+
+    setScaleIndex(idx) {
+        const max = this.scaleLadder.length - 1;
+        const clamped = Math.max(0, Math.min(max, idx | 0));
+        this.scaleIndex = clamped;
+        this.scale = this.scaleLadder[clamped];
+        const slider = document.getElementById('altitude-scale-slider');
+        if (slider && parseInt(slider.value, 10) !== clamped) slider.value = String(clamped);
+        const valueEl = document.getElementById('altitude-scale-value');
+        if (valueEl) valueEl.textContent = `±${formatMeters(this.scale)}`;
         this.updateScaleDisplay();
     }
 
     setScale(value) {
-        const slider = document.getElementById('altitude-scale-slider');
-        const min = slider ? parseFloat(slider.min) : 0.05;
-        const max = slider ? parseFloat(slider.max) : 100;
-        const clamped = Math.max(min, Math.min(max, value));
-        this.scale = Math.round(clamped * 100) / 100;
-        if (slider) slider.value = this.scale;
-        const valueEl = document.getElementById('altitude-scale-value');
-        if (valueEl) {
-            valueEl.textContent = this.scale < 1
-                ? `${(this.scale * 100).toFixed(0)}cm`
-                : `${this.scale.toFixed(this.scale < 10 ? 1 : 0)}m`;
+        // Snap an arbitrary metre value to the nearest ladder rung in log-space.
+        let bestIdx = 0;
+        let bestDist = Infinity;
+        const target = Math.log(Math.max(value, 1e-6));
+        for (let i = 0; i < this.scaleLadder.length; i++) {
+            const d = Math.abs(Math.log(this.scaleLadder[i]) - target);
+            if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
-        this.updateScaleDisplay();
+        this.setScaleIndex(bestIdx);
     }
 
     getGridSpacing() {
@@ -100,10 +139,10 @@ class AltitudeTape {
         if (scaleInfo) {
             const grid = this.getGridSpacing();
             const gridLabel = grid < 1 ? `${(grid * 100).toFixed(grid < 0.1 ? 1 : 0)}cm` : `${grid}m`;
-            const scaleLabel = this.scale < 1
-                ? `±${(this.scale * 100).toFixed(0)}cm`
-                : `±${this.scale.toFixed(this.scale < 10 ? 1 : 0)}m`;
-            scaleInfo.textContent = `Scale: ${scaleLabel}  |  Grid: ${gridLabel}`;
+            // Grid only — the slider readout shows the range.
+            scaleInfo.innerHTML =
+                `<span class="si-key">Grid:</span>` +
+                `<span class="si-val si-val-grid">${gridLabel}</span>`;
         }
     }
 
@@ -173,10 +212,13 @@ class AltitudeTape {
         }
 
         const delta = alt - this.referenceAltitude;
-        this.trail.push(delta);
-        if (this.trail.length > this.maxTrail) {
-            this.trail.splice(0, this.trail.length - this.maxTrail);
-        }
+        const now = performance.now();
+        this.trail.push({ t: now, d: delta });
+        // Drop everything older than the visible window.
+        const cutoff = now - this.trailWindowMs;
+        let i = 0;
+        while (i < this.trail.length && this.trail[i].t < cutoff) i++;
+        if (i > 0) this.trail.splice(0, i);
 
         return { delta, absolute: alt, accuracy: this.currentAccuracy };
     }
@@ -195,7 +237,7 @@ class AltitudeTape {
             this.referenceAltitude = null;
         }
         this.originSet = this.referenceAltitude !== null;
-        this.trail = this.originSet ? [0] : [];
+        this.trail = this.originSet ? [{ t: performance.now(), d: 0 }] : [];
     }
 
     draw() {
@@ -344,13 +386,18 @@ class AltitudeTape {
         ctx.lineJoin = 'round';
         ctx.beginPath();
 
+        const now = performance.now();
+        const win = this.trailWindowMs;
         const n = this.trail.length;
+        let started = false;
         for (let i = 0; i < n; i++) {
-            const t = (n - 1 - i) / (n - 1 || 1); // 0 = newest, 1 = oldest
+            const sample = this.trail[i];
+            const age = now - sample.t;
+            if (age > win) continue;             // safety: skip stale
+            const t = age / win;                 // 0 = now, 1 = window edge
             const px = traceX1 - t * (traceX1 - traceX0);
-            const delta = this.trail[i];
-            const py = centerY - this.metersToPixels(delta);
-            if (i === 0) ctx.moveTo(px, py);
+            const py = centerY - this.metersToPixels(sample.d);
+            if (!started) { ctx.moveTo(px, py); started = true; }
             else ctx.lineTo(px, py);
         }
         ctx.stroke();
@@ -435,11 +482,22 @@ class AltitudeTape {
     }
 
     startAnimation() {
-        const animate = () => {
-            this.draw();
+        if (this.animationFrame) return;     // already running
+        // The trail scrolls smoothly with time, so we have to redraw
+        // continuously — but 60 fps is overkill for a slow-scrolling
+        // line. Throttle to ~15 fps; that's still imperceptibly smooth
+        // for a strip moving at a few px/s and cuts GPU load ~4x.
+        const targetFps = 15;
+        const minFrameMs = 1000 / targetFps;
+        let lastDraw = 0;
+        const animate = (ts) => {
+            if (ts - lastDraw >= minFrameMs) {
+                this.draw();
+                lastDraw = ts;
+            }
             this.animationFrame = requestAnimationFrame(animate);
         };
-        animate();
+        this.animationFrame = requestAnimationFrame(animate);
     }
 
     stopAnimation() {

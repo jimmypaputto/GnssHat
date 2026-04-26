@@ -39,6 +39,7 @@
             <!-- Left side: Maps with Tabs -->
             <div class="map-container">
                 <div class="map-header">
+                    <button type="button" class="map-tab-nav" id="map-tab-prev" aria-label="Previous tab">‹</button>
                     <div class="map-tabs">
                         <button class="map-tab active" data-tab="relative">📐 Relative Map</button>
                         <button class="map-tab" data-tab="altitude">📏 Altitude</button>
@@ -50,6 +51,7 @@
                         <button class="map-tab" data-tab="rfanalyzer">📊 RF Analyzer</button>
                         {% endif %}
                     </div>
+                    <button type="button" class="map-tab-nav" id="map-tab-next" aria-label="Next tab">›</button>
                 </div>
                 
                 <!-- Relative Canvas Map -->
@@ -58,9 +60,12 @@
                         <span id="scale-info">Scale: ±20.0m</span>
                         <div class="scale-slider-container">
                             <label for="scale-slider">Range:</label>
-                            <button type="button" class="btn-zoom" data-zoom="relative" data-dir="out" title="Zoom out">−</button>
-                            <input type="range" id="scale-slider" class="scale-slider" min="0.05" max="30" value="20" step="0.05">
-                            <button type="button" class="btn-zoom" data-zoom="relative" data-dir="in" title="Zoom in">+</button>
+                            <button type="button" class="btn-zoom" data-zoom="relative" data-dir="down" title="Decrease range (zoom in)" aria-label="Decrease range">−</button>
+                            <input type="range" id="scale-slider" class="scale-slider" min="0" max="11" value="8" step="1" list="scale-slider-ticks">
+                            <datalist id="scale-slider-ticks">
+                                <option value="0"></option><option value="1"></option><option value="2"></option><option value="3"></option><option value="4"></option><option value="5"></option><option value="6"></option><option value="7"></option><option value="8"></option><option value="9"></option><option value="10"></option><option value="11"></option>
+                            </datalist>
+                            <button type="button" class="btn-zoom" data-zoom="relative" data-dir="up" title="Increase range (zoom out)" aria-label="Increase range">+</button>
                             <span id="scale-value">20m</span>
                         </div>
                         <button id="reset-btn" class="btn-reset" title="Reset reference position">
@@ -69,6 +74,7 @@
                         <button class="btn-theme" data-chart-theme="relative" title="Toggle light / dark">
                             🌙
                         </button>
+                        <button class="btn-fullscreen" data-fullscreen="#relative-map" title="Toggle fullscreen" aria-label="Toggle fullscreen">⛶</button>
                     </div>
                     <div class="canvas-wrapper">
                         <canvas id="gps-map"></canvas>
@@ -97,9 +103,12 @@
                         <span id="altitude-scale-info">Scale: ±20.0m</span>
                         <div class="scale-slider-container">
                             <label for="altitude-scale-slider">Range:</label>
-                            <button type="button" class="btn-zoom" data-zoom="altitude" data-dir="out" title="Zoom out">−</button>
-                            <input type="range" id="altitude-scale-slider" class="scale-slider" min="0.05" max="100" value="20" step="0.05">
-                            <button type="button" class="btn-zoom" data-zoom="altitude" data-dir="in" title="Zoom in">+</button>
+                            <button type="button" class="btn-zoom" data-zoom="altitude" data-dir="down" title="Decrease range (zoom in)" aria-label="Decrease range">−</button>
+                            <input type="range" id="altitude-scale-slider" class="scale-slider" min="0" max="10" value="8" step="1" list="altitude-scale-slider-ticks">
+                            <datalist id="altitude-scale-slider-ticks">
+                                <option value="0"></option><option value="1"></option><option value="2"></option><option value="3"></option><option value="4"></option><option value="5"></option><option value="6"></option><option value="7"></option><option value="8"></option><option value="9"></option><option value="10"></option>
+                            </datalist>
+                            <button type="button" class="btn-zoom" data-zoom="altitude" data-dir="up" title="Increase range (zoom out)" aria-label="Increase range">+</button>
                             <span id="altitude-scale-value">20m</span>
                         </div>
                         <div class="alt-source-toggle" role="group" aria-label="Altitude source">
@@ -114,6 +123,7 @@
                         <button class="btn-theme" data-chart-theme="altitude" title="Toggle light / dark">
                             🌙
                         </button>
+                        <button class="btn-fullscreen" data-fullscreen="#altitude-map" title="Toggle fullscreen" aria-label="Toggle fullscreen">⛶</button>
                     </div>
                     <div class="canvas-wrapper">
                         <canvas id="altitude-tape"></canvas>
@@ -234,6 +244,7 @@
             <div class="data-container">
                 <div class="data-header">
                     {% if mode in ['native', 'ros2'] %}
+                    <button type="button" class="data-tab-nav" id="data-tab-prev" aria-label="Previous tab">‹</button>
                     <div class="data-tabs">
                         <button class="data-tab active" data-dtab="navdata">📊 Navigation Data</button>
                         <button class="data-tab" data-dtab="config">⚙️ Configuration</button>
@@ -241,6 +252,7 @@
                         <button class="data-tab" data-dtab="ntrip">📡 NTRIP</button>
                         {% endif %}
                     </div>
+                    <button type="button" class="data-tab-nav" id="data-tab-next" aria-label="Next tab">›</button>
                     {% else %}
                     <h2>GPS Data (PVT)</h2>
                     {% endif %}
@@ -410,7 +422,7 @@
                             </tr>
                             <tr>
                                 <td class="data-label">Fence States</td>
-                                <td class="data-value" id="data-geo-fences">-</td>
+                                <td class="data-value data-value-wrap" id="data-geo-fences" style="white-space:pre-line;overflow:visible;text-overflow:clip;word-break:break-word;">-</td>
                             </tr>
                             {% endif %}
 
@@ -529,7 +541,7 @@
 
                         <!-- Navigation Filters (CFG-NAVSPG-INFIL_*) -->
                         <fieldset class="cfg-section">
-                            <legend>🛰️ Navigation Filters</legend>
+                            <legend>🛰️ Navigation Filters <span class="cfg-experimental" title="This feature is experimental and may change or behave unexpectedly.">experimental</span></legend>
                             <div class="cfg-row">
                                 <label for="cfg-navfilt-minelev">Elevation Mask</label>
                                 <input type="range" id="cfg-navfilt-minelev"

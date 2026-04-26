@@ -225,6 +225,26 @@ header h1 {
     gap: 10px;
 }
 
+/* Mobile prev/next tab arrows. Hidden on desktop — the full tab strip is
+   visible there. */
+.map-tab-nav {
+    display: none;
+    width: 32px;
+    height: 36px;
+    padding: 0;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 22px;
+    line-height: 1;
+    user-select: none;
+    flex: 0 0 auto;
+}
+.map-tab-nav:hover { background: var(--accent-cyan); color: var(--bg-primary); border-color: var(--accent-cyan); }
+.map-tab-nav:disabled { opacity: 0.35; cursor: not-allowed; background: var(--bg-card); color: var(--text-secondary); border-color: var(--border-color); }
+
 .map-tab {
     padding: 10px 20px;
     background: var(--bg-card);
@@ -269,15 +289,59 @@ header h1 {
     margin-bottom: 8px;
 }
 
+/* Make every chip in the map-info row the same height so the toolbar reads
+   as a single horizontal band. Children opt in via box-sizing + height. */
+.map-info > *,
+.map-info > .btn-reset,
+.map-info > .btn-theme {
+    height: 36px;
+    box-sizing: border-box;
+}
+.map-info > .btn-theme {
+    /* Emoji glyphs have large intrinsic ascent/descent — centre via flex
+       so the height rule above isn't fought by the glyph's own metrics. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+.map-info > .alt-source-toggle .alt-source-btn,
+.map-info > button {
+    height: 100%;
+}
+
 #scale-info {
     color: var(--text-secondary);
     font-family: monospace;
+    font-variant-numeric: tabular-nums;
     font-size: 14px;
     padding: 5px 12px;
     background: var(--bg-card);
     border-radius: 6px;
     border: 1px solid var(--border-color);
+    width: 110px;
+    flex: 0 0 110px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
+
+#scale-info .si-key,
+#altitude-scale-info .si-key { flex: 0 0 auto; opacity: 0.85; }
+#scale-info .si-sep,
+#altitude-scale-info .si-sep { flex: 0 0 auto; opacity: 0.5; padding: 0 2px; margin-left: -2px; }
+#scale-info .si-val,
+#altitude-scale-info .si-val { text-align: left; white-space: nowrap; }
+#scale-info .si-val-scale,
+#altitude-scale-info .si-val-scale { flex: 0 0 48px; }
+#scale-info .si-val-grid,
+#altitude-scale-info .si-val-grid { flex: 0 0 auto; }
 
 .scale-slider-container {
     display: flex;
@@ -287,6 +351,7 @@ header h1 {
     background: var(--bg-card);
     border-radius: 6px;
     border: 1px solid var(--border-color);
+    flex: 0 0 auto;
 }
 
 .scale-slider-container label {
@@ -297,14 +362,53 @@ header h1 {
 }
 
 .scale-slider {
-    width: 120px;
-    height: 6px;
-    border-radius: 3px;
-    background: var(--border-color);
+    width: 140px;
+    flex: 0 0 140px;
+    height: 18px;                /* match thumb height so the runnable
+                                    track sits in the vertical centre on
+                                    every engine (Chromium/Edge/Firefox) */
+    background: transparent;
     outline: none;
     -webkit-appearance: none;
     appearance: none;
     cursor: pointer;
+    /* Discrete ladder ticks. --ticks is set per slider id below. */
+    --ticks: 10;
+    padding: 0;
+    margin: 0;
+}
+
+/* Paint the track + ticks on the actual runnable track element so the
+   ticks line up with the thumb on every engine (the slider element
+   itself is taller than the track and a background-image on it would
+   anchor to the wrong vertical position in Chromium/Edge). */
+.scale-slider::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 3px;
+    background-color: var(--border-color);
+    background-image:
+        linear-gradient(to right, var(--text-secondary) 1px, transparent 1px);
+    background-size: calc(100% / (var(--ticks) - 1)) 100%;
+    background-repeat: repeat-x;
+    background-position: 0 50%;
+}
+.scale-slider::-moz-range-track {
+    height: 6px;
+    border-radius: 3px;
+    background-color: var(--border-color);
+    background-image:
+        linear-gradient(to right, var(--text-secondary) 1px, transparent 1px);
+    background-size: calc(100% / (var(--ticks) - 1)) 100%;
+    background-repeat: repeat-x;
+    background-position: 0 50%;
+    border: none;
+}
+
+#scale-slider          { --ticks: 12; }
+#altitude-scale-slider { --ticks: 11; }
+
+.scale-slider:focus-visible {
+    box-shadow: 0 0 0 2px var(--accent-cyan);
 }
 
 .scale-slider::-webkit-slider-thumb {
@@ -317,6 +421,8 @@ header h1 {
     cursor: pointer;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
     transition: background 0.2s ease;
+    /* Centre the 18 px thumb on the 6 px runnable track in Chromium/Edge. */
+    margin-top: -6px;
 }
 
 .scale-slider::-webkit-slider-thumb:hover {
@@ -338,18 +444,17 @@ header h1 {
     background: var(--accent-green);
 }
 
-.scale-slider::-moz-range-track {
-    background: none;
-    border: none;
-}
-
 #scale-value {
     color: var(--text-primary);
     font-family: monospace;
+    font-variant-numeric: tabular-nums;
     font-weight: 600;
     font-size: 13px;
-    min-width: 35px;
+    width: 64px;
+    flex: 0 0 64px;
     text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
 }
 
 .btn-reset {
@@ -438,24 +543,56 @@ header h1 {
     display: flex;
     gap: 20px;
     flex-wrap: wrap;
+    justify-content: center;
 }
 
 .coord-item {
     display: flex;
     gap: 8px;
-    align-items: center;
+    align-items: baseline;
+    /* Reserve a stable slot regardless of value text width so the row
+       layout doesn't reflow as live values stream in. */
+    flex: 0 0 auto;
 }
 
 .coord-label {
     color: var(--text-secondary);
     font-size: 13px;
     font-weight: 500;
+    white-space: nowrap;
 }
 
 .coord-value {
     color: var(--text-primary);
     font-family: 'Courier New', monospace;
     font-weight: 600;
+    /* Fixed-advance digits + minimum width so a leading minus sign or
+       extra digit doesn't push neighbouring chips around. */
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    min-width: 7ch;
+    display: inline-block;
+    text-align: right;
+}
+
+/* Below ~620 px wide, the X / Y / Distance chips can't reliably sit on
+   one line without text getting pushed around as digits change. Stack
+   them as a 2-column grid (label | value) so labels left-align and
+   values right-align in their own column — robust at any value width. */
+@media (max-width: 620px) {
+    .position-display {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        column-gap: 12px;
+        row-gap: 6px;
+    }
+    .coord-item {
+        display: contents;
+    }
+    .coord-value {
+        min-width: 0;
+        text-align: left;
+    }
 }
 
 .legend-item {
@@ -496,7 +633,29 @@ header h1 {
 
 .data-header {
     margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
+
+/* Mobile prev/next tab arrows for the data panel — hidden on desktop. */
+.data-tab-nav {
+    display: none;
+    width: 32px;
+    height: 36px;
+    padding: 0;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 22px;
+    line-height: 1;
+    user-select: none;
+    flex: 0 0 auto;
+}
+.data-tab-nav:hover { background: var(--accent-green); color: var(--bg-primary); border-color: var(--accent-green); }
+.data-tab-nav:disabled { opacity: 0.35; cursor: not-allowed; background: var(--bg-card); color: var(--text-secondary); border-color: var(--border-color); }
 
 /* Two-column layout for native mode */
 .data-content.two-columns {
@@ -680,8 +839,35 @@ header h1 {
     flex: 1;
 }
 
-.sat-table {
+.sat-table.sat-table {
     font-size: 12px;
+    /* The lat/lon data tables use table-layout:fixed to keep columns
+       stable as values stream in; the satellite table doesn't want that
+       — it has 6 columns of varying width (incl. the C/N0 bar) and
+       fixed layout squeezes the bar column until the bar + number wraps
+       onto two lines, making each row twice as tall.
+       NB: doubled selector boosts specificity above the generic
+       `.data-table` rule that lives later in this file. */
+    table-layout: auto;
+    border-collapse: collapse;
+}
+
+/* Per-cell horizontal padding gives the inter-column gap. We keep
+   border-collapse:collapse so the row-highlight (tr.sat-used) stays
+   one continuous strip instead of being split into per-cell chunks. */
+.sat-table.sat-table th,
+.sat-table.sat-table td {
+    padding-left: 6px;
+    padding-right: 6px;
+}
+.sat-table.sat-table th:first-child,
+.sat-table.sat-table td:first-child { padding-left: 4px; }
+.sat-table.sat-table th:last-child,
+.sat-table.sat-table td:last-child  { padding-right: 4px; text-align: center; }
+
+.sat-table tbody td {
+    padding: 4px 0;
+    white-space: nowrap;
 }
 
 .sat-table thead th {
@@ -690,14 +876,10 @@ header h1 {
     background: var(--bg-secondary);
     color: var(--accent-cyan);
     font-weight: 600;
-    padding: 6px 5px;
+    padding: 6px 0;
     text-align: left;
     border-bottom: 2px solid var(--border-color);
     z-index: 1;
-}
-
-.sat-table tbody td {
-    padding: 4px 5px;
 }
 
 .sat-table tbody tr.sat-used {
@@ -717,7 +899,39 @@ header h1 {
     height: 10px;
     border-radius: 2px;
     vertical-align: middle;
-    margin-right: 4px;
+    margin-right: 8px;
+}
+
+/* Layout for the C/N0 cell:
+   [ 40px bar slot ][ number, right-aligned in its own slot ]
+   The slot widths are constant so the number's position never
+   shifts as the bar grows, and the cell's overall width also
+   stays constant — the El° column next door stops getting nudged. */
+.sat-cno-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.sat-cno-track {
+    display: inline-block;
+    width: 40px;
+    height: 10px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+    flex: 0 0 40px;
+}
+.sat-cno-cell .sat-cno-bar {
+    display: block;
+    height: 100%;
+    margin-right: 0;
+    border-radius: 2px;
+}
+.sat-cno-num {
+    display: inline-block;
+    min-width: 2ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 }
 
 /* ─── RF Analyzer ──────────────────────────────────────── */
@@ -879,6 +1093,26 @@ header h1 {
     font-weight: 600;
     font-size: 13px;
     padding: 0 6px;
+}
+
+/* "experimental" pill shown next to a legend label. Visually muted so it
+   reads as a caveat, not a primary action. */
+.cfg-experimental {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    background: rgba(255, 170, 0, 0.18);
+    color: #ffb84d;
+    border: 1px solid rgba(255, 170, 0, 0.6);
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    vertical-align: middle;
+    cursor: help;
+    line-height: 1.4;
+    white-space: nowrap;
 }
 
 /* Collapsible cfg-section — the legend acts as the toggle */
@@ -1333,6 +1567,10 @@ header h1 {
 .data-table {
     width: 100%;
     border-collapse: collapse;
+    /* Lock the column widths so the value column doesn't reflow every time
+       a digit/sign/unit changes — prevents the whole panel from twitching
+       sideways as live values update. */
+    table-layout: fixed;
 }
 
 .data-table tr {
@@ -1369,6 +1607,22 @@ header h1 {
     font-family: 'Courier New', monospace;
     font-weight: 600;
     text-align: right;
+    /* Keep every digit the same advance width so values like
+       "-12.345678°" don't make the column wider than "0.000000°". */
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Opt-in modifier for cells whose content can be longer than the
+   column (e.g. "Fence States: #1: Inside, #2: Outside"). Lets the
+   text wrap onto multiple lines instead of being clipped with an
+   ellipsis. */
+.data-table td.data-value.data-value-wrap {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    word-break: break-word;
 }
 
 .fix-status.good {
@@ -1419,13 +1673,173 @@ footer {
     }
     
     .map-header {
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: nowrap;
+    }
+
+    /* Show the prev/next arrows on phones and let the tab strip scroll
+       horizontally between them so it never overflows the card. */
+    .map-tab-nav {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .map-tabs {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow-x: auto;
+        scroll-behavior: smooth;
+        scrollbar-width: none;          /* Firefox */
+        -ms-overflow-style: none;       /* IE/old Edge */
+        gap: 8px;
+    }
+    .map-tabs::-webkit-scrollbar { display: none; }
+    .map-tab {
+        padding: 8px 14px;
+        font-size: 13px;
+        white-space: nowrap;
+        flex: 0 0 auto;
+    }
+
+    /* Same treatment for the data panel tabs (Navigation Data /
+       Configuration / NTRIP). */
+    .data-tab-nav {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .data-tabs {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow-x: auto;
+        scroll-behavior: smooth;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        gap: 8px;
+    }
+    .data-tabs::-webkit-scrollbar { display: none; }
+    .data-tab {
+        padding: 8px 12px;
+        font-size: 13px;
+        white-space: nowrap;
+        flex: 0 0 auto;
+    }
+    .data-container {
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: hidden;
+        box-sizing: border-box;
+    }
+    /* Collapse the two-column native data layout to a single column on
+       phones — the side-by-side tables become unreadable below ~600 px. */
+    .data-content.two-columns {
+        grid-template-columns: 1fr;
+    }
+
+    /* Stack every Configuration / NTRIP row vertically: label on top,
+       control filling the row width below. This gives a single, predictable
+       left edge on mobile (instead of inputs floating at random offsets
+       depending on label length). */
+    .cfg-row {
         flex-direction: column;
-        align-items: flex-start;
+        align-items: stretch;
+        gap: 4px;
+    }
+    .cfg-row > label {
+        white-space: normal;        /* allow long labels to wrap */
+    }
+    .cfg-row > .cfg-input,
+    .cfg-row > select.cfg-input,
+    .cfg-row > input[type="text"],
+    .cfg-row > input[type="number"],
+    .cfg-row > input[type="password"] {
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .cfg-input-sm { width: 100%; }
+    /* Inline rows inside NTRIP that mix an input with a small button
+       (mountpoint fetch, local-source dropdown, etc.) — written with inline
+       flex styles in the template. Make them span the full row too. */
+    .cfg-row > div[style*="flex"] {
+        width: 100%;
+    }
+    /* Action button row: full-width buttons stack neatly on narrow screens. */
+    .cfg-actions {
+        flex-wrap: wrap;
+    }
+    .cfg-actions > .cfg-btn { flex: 1 1 140px; }
+    /* Stats grid: keep the label/value pair on one line per row. */
+    .ntrip-stats-grid .cfg-row {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
         gap: 10px;
     }
+    .ntrip-stats-grid .cfg-row > label { white-space: nowrap; }
     
     .canvas-container {
         aspect-ratio: 1 / 1;
+    }
+
+    /* Toolbar above the canvas: on phones, give the slider its own full-width
+       row so it can never overflow the card. The Grid chip + Reset/theme
+       buttons sit on a separate row above. */
+    .map-info {
+        gap: 8px;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+    .map-info > #scale-info,
+    .map-info > #altitude-scale-info {
+        width: 92px;
+        flex: 0 0 92px;
+        padding-left: 8px;
+        padding-right: 8px;
+        font-size: 13px;
+    }
+    .map-info > .scale-slider-container {
+        /* Force the slider chip onto its own row at full width so internal
+           contents (− button, track, + button, ±value) always fit. */
+        flex: 1 0 100%;
+        order: 10;             /* push below the small chips */
+        min-width: 0;
+        width: 100%;
+        padding-left: 8px;
+        padding-right: 8px;
+        gap: 6px;
+        box-sizing: border-box;
+    }
+    .map-info > .scale-slider-container .scale-slider {
+        width: auto;
+        flex: 1 1 auto;
+        min-width: 0;          /* let the track shrink with the row */
+    }
+    .map-info > .scale-slider-container label {
+        display: none;         /* "Range:" label is redundant on mobile */
+    }
+    #scale-value,
+    #altitude-scale-value {
+        width: 56px;
+        flex: 0 0 56px;
+        font-size: 12px;
+    }
+    .btn-reset {
+        padding: 6px 10px;
+        font-size: 13px;
+    }
+
+    /* Belt-and-braces: the map-view and its inner wrapper must clip rather
+       than scroll horizontally if anything inside them tries to overflow. */
+    .map-view,
+    .map-container {
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: hidden;
+        box-sizing: border-box;
     }
     
     .map-legend {
@@ -1456,20 +1870,33 @@ footer {
 #altitude-scale-info {
     color: var(--text-secondary);
     font-family: monospace;
+    font-variant-numeric: tabular-nums;
     font-size: 14px;
     padding: 5px 12px;
     background: var(--bg-card);
     border-radius: 6px;
     border: 1px solid var(--border-color);
+    width: 110px;
+    flex: 0 0 110px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
 }
 
 #altitude-scale-value {
     color: var(--text-primary);
     font-family: monospace;
+    font-variant-numeric: tabular-nums;
     font-weight: 600;
     font-size: 13px;
-    min-width: 35px;
+    /* Fixed width — see #scale-value. Fits "±100m" / "±50cm". */
+    width: 64px;
+    flex: 0 0 64px;
     text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
 }
 
 .alt-source-toggle {
@@ -1509,6 +1936,9 @@ footer {
 
 /* Theme toggle button (per-chart light/dark) */
 .btn-theme {
+    /* Same padding/font as .btn-reset so it intrinsically lands at the
+       same height as its toolbar siblings (the parent .map-info > * rule
+       is not always honoured on <button> by every browser). */
     padding: 8px 12px;
     background: var(--bg-card);
     color: var(--text-primary);
@@ -1568,10 +1998,84 @@ footer {
     transform: translateY(1px);
 }
 
+/* ─── Fullscreen toggle (relative + altitude) ─────────────────────── */
+.btn-fullscreen {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    box-sizing: border-box;
+    /* Flex centring keeps the glyph centred regardless of its own
+       ascent/descent, same trick as .btn-theme. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+/* Higher-specificity override to win over `.map-info > button { height:100% }`
+   ambiguity and ensure the button matches the 36 px chip height exactly. */
+.map-info > .btn-fullscreen {
+    height: 36px;
+    padding: 0;
+}
+.btn-fullscreen:hover {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+    border-color: var(--accent-cyan);
+}
+
+/* CSS-pinned fullscreen fallback for browsers (or contexts) where the
+   native Fullscreen API isn't available — e.g. iOS Safari. The card
+   covers the viewport at z-index 9999; toolbar and footer stay visible
+   overlaid on the canvas because they're already part of the card. */
+.map-view.is-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--bg-primary);
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+.map-view.is-fullscreen .canvas-wrapper {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.map-view.is-fullscreen .map-footer {
+    flex: 0 0 auto;
+}
+/* When the browser engages real Fullscreen API on the card, give the
+   same generous padding so toolbar/footer aren't glued to the bezel. */
+.map-view:fullscreen,
+.map-view:-webkit-full-screen {
+    background: var(--bg-primary);
+    padding: 12px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+}
+.map-view:fullscreen .canvas-wrapper,
+.map-view:-webkit-full-screen .canvas-wrapper {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
 /* Show that the canvas is scroll-zoomable */
 #relative-map .canvas-wrapper,
 #altitude-map .canvas-wrapper {
     cursor: ns-resize;
+    /* Prevent the browser from interpreting two-finger gestures as
+       page pinch-zoom or pan — we handle them ourselves to drive the
+       chart's scale ladder (see attachPinchZoom in map.js). */
+    touch-action: none;
 }
 
 /* ================================

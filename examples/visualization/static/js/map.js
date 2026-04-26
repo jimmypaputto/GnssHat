@@ -100,15 +100,79 @@ function getChartPalette(name) {
     return themes[theme] || themes.dark;
 }
 
+// Pretty-print a metre value as either "NN cm" (sub-metre) or "N m" (≥1 m).
+// Shared between the relative map and the altitude tape.
+function formatMeters(m) {
+    if (m < 1) return `${Math.round(m * 100)}cm`;
+    if (m < 10) return Number.isInteger(m) ? `${m}m` : `${m.toFixed(1)}m`;
+    return `${Math.round(m)}m`;
+}
+
+// Wire up two-finger pinch-to-zoom on `el`, stepping through the
+// ladder of `target` (a GPSMap or AltitudeTape — anything with
+// .scaleIndex + setScaleIndex()). Used for both charts on phones /
+// touch laptops; mirrors the desktop wheel behaviour. The gesture
+// is captured to suppress the page's own browser pinch-zoom while
+// the user is interacting with the chart.
+function attachPinchZoom(el, target) {
+    let startDist = 0;
+    let startIdx = 0;
+    // One ladder rung per √2 ratio change (≈41 % zoom). Picked to
+    // feel like one "snap" per noticeable pinch on a phone.
+    const STEP_RATIO = Math.SQRT2;
+    const dist = (t1, t2) => {
+        const dx = t1.clientX - t2.clientX;
+        const dy = t1.clientY - t2.clientY;
+        return Math.hypot(dx, dy);
+    };
+    el.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            startDist = dist(e.touches[0], e.touches[1]);
+            startIdx = target.scaleIndex;
+            e.preventDefault();
+        }
+    }, { passive: false });
+    el.addEventListener('touchmove', (e) => {
+        if (e.touches.length !== 2 || startDist <= 0) return;
+        e.preventDefault();
+        const d = dist(e.touches[0], e.touches[1]);
+        // Pinching inward (smaller distance) = zoom out = larger range.
+        // Pinching outward = zoom in = smaller range.
+        const ratio = d / startDist;
+        const steps = Math.round(-Math.log(ratio) / Math.log(STEP_RATIO));
+        target.setScaleIndex(startIdx + steps);
+    }, { passive: false });
+    el.addEventListener('touchend', () => { startDist = 0; }, { passive: true });
+    el.addEventListener('touchcancel', () => { startDist = 0; }, { passive: true });
+}
+
 class GPSMap {
     constructor(canvasId) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
-        
+
+        // Discrete, exponentially-spaced range presets (in metres). The slider,
+        // wheel and ± buttons all step through these positions — this gives
+        // predictable snap points from RTK-grade centimetres up to a wide
+        // overview, instead of a noisy continuous slider.
+        this.scaleLadder = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100, 250];
+        this.scaleIndex = 8; // default = 20 m
+        this.scale = this.scaleLadder[this.scaleIndex];
+        this._wheelAccum = 0;
+
         // Map state
-        this.scale = 20; // Default ±20 meters, can be changed by slider
         this.position = { x: 0, y: 0 }; // Current position in meters
-        this.trail = []; // Complete position history (never clears except on reset)
+        // Trail is a polyline of past positions. Two bounds:
+        //   - distance gate: only append when the device has moved at
+        //     least `trailMinStepM` from the previous appended point
+        //     (standing still adds nothing — saves both memory and the
+        //     redraw cost of overlapping points).
+        //   - hard cap: at most `trailMaxPoints` entries; oldest are
+        //     dropped first, so the trail behaves like a fixed-length
+        //     snake of recent travel.
+        this.trail = [];
+        this.trailMinStepM = 0.005;   // 5 mm
+        this.trailMaxPoints = 5000;
         this.originSet = false; // Whether reference position has been set
         this.geofences = []; // Array of {offsetX, offsetY, radius} in meters
         this.referencePosition = null; // {lat, lon} — set on first valid fix
@@ -126,41 +190,72 @@ class GPSMap {
     }
     
     setupScaleSlider() {
-        // Setup slider event listener
+        // Slider value is an integer index into `scaleLadder`. Clicking
+        // anywhere on the track therefore snaps cleanly to a preset and
+        // every step covers the same visual distance.
         const slider = document.getElementById('scale-slider');
         if (slider) {
+            slider.min = '0';
+            slider.max = String(this.scaleLadder.length - 1);
+            slider.step = '1';
+            slider.value = String(this.scaleIndex);
             slider.addEventListener('input', (e) => {
-                this.setScale(parseFloat(e.target.value));
+                this.setScaleIndex(parseInt(e.target.value, 10));
             });
         }
 
-        // Mouse wheel zoom while hovering the canvas (map.js handles relative)
+        // Mouse wheel zoom: accumulate deltas so high-resolution touchpads
+        // don't fly through the ladder in one swipe.
         const wrapper = this.canvas.parentElement;
         if (wrapper) {
             wrapper.addEventListener('wheel', (e) => {
                 e.preventDefault();
-                // Multiplicative zoom: each wheel notch = 12.5% change
-                const factor = e.deltaY > 0 ? 1.125 : 1 / 1.125;
-                this.setScale(this.scale * factor);
+                this._wheelAccum += e.deltaY;
+                const threshold = 40;
+                while (this._wheelAccum >= threshold) {
+                    this.setScaleIndex(this.scaleIndex + 1);
+                    this._wheelAccum -= threshold;
+                }
+                while (this._wheelAccum <= -threshold) {
+                    this.setScaleIndex(this.scaleIndex - 1);
+                    this._wheelAccum += threshold;
+                }
             }, { passive: false });
+
+            // Pinch-to-zoom on touch devices. We track the distance
+            // between the two fingers when the gesture starts and the
+            // ladder index at that moment; while the user pinches we
+            // step through the ladder logarithmically (each √2 ratio
+            // = one rung). Mirrors the desktop wheel UX.
+            attachPinchZoom(wrapper, this);
         }
+        this.setScaleIndex(this.scaleIndex);
+    }
+
+    setScaleIndex(idx) {
+        const max = this.scaleLadder.length - 1;
+        const clamped = Math.max(0, Math.min(max, idx | 0));
+        this.scaleIndex = clamped;
+        this.scale = this.scaleLadder[clamped];
+        const slider = document.getElementById('scale-slider');
+        if (slider && parseInt(slider.value, 10) !== clamped) slider.value = String(clamped);
+        const valEl = document.getElementById('scale-value');
+        if (valEl) valEl.textContent = `±${formatMeters(this.scale)}`;
+        this.updateScaleDisplay();
+        this.requestRedraw();
     }
 
     setScale(value) {
-        const slider = document.getElementById('scale-slider');
-        const min = slider ? parseFloat(slider.min) : 0.05;
-        const max = slider ? parseFloat(slider.max) : 30;
-        const clamped = Math.max(min, Math.min(max, value));
-        // Round to slider step precision
-        this.scale = Math.round(clamped * 100) / 100;
-        if (slider) slider.value = this.scale;
-        const valEl = document.getElementById('scale-value');
-        if (valEl) {
-            valEl.textContent = this.scale < 1
-                ? `${(this.scale * 100).toFixed(0)}cm`
-                : `${this.scale.toFixed(this.scale < 10 ? 1 : 0)}m`;
+        // Snap an arbitrary metre value to the nearest ladder rung in
+        // log-space (so 0.5 m is 'closer' to 1 m than to 0.05 m).
+        let bestIdx = 0;
+        let bestDist = Infinity;
+        const target = Math.log(Math.max(value, 1e-6));
+        for (let i = 0; i < this.scaleLadder.length; i++) {
+            const d = Math.abs(Math.log(this.scaleLadder[i]) - target);
+            if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
-        this.updateScaleDisplay();
+        this.setScaleIndex(bestIdx);
     }
     
     setupCanvas() {
@@ -186,6 +281,7 @@ class GPSMap {
         // Store logical dimensions
         this.width = rect.width;
         this.height = rect.height;
+        this.requestRedraw();
     }
     
     calculateOffset(lat, lon) {
@@ -222,18 +318,36 @@ class GPSMap {
         }
 
         this.position = offset;
-        this.trail.push(offset);
+        const last = this.trail.length ? this.trail[this.trail.length - 1] : null;
+        if (!last) {
+            this.trail.push(offset);
+        } else {
+            const dx = offset.x - last.x;
+            const dy = offset.y - last.y;
+            if ((dx * dx + dy * dy) >= (this.trailMinStepM * this.trailMinStepM)) {
+                this.trail.push(offset);
+                if (this.trail.length > this.trailMaxPoints) {
+                    // Drop the oldest excess in one shot. At 5000 entries
+                    // splice is sub-millisecond and only happens once per
+                    // new point past the cap.
+                    this.trail.splice(0, this.trail.length - this.trailMaxPoints);
+                }
+            }
+        }
 
         if (this._pendingGeofences) {
             this._computeGeofenceOffsetsFromRef(this._pendingGeofences);
             this._pendingGeofences = null;
         }
 
+        this.requestRedraw();
         return offset;
     }
     
     getGridSpacing() {
-        // Extended ladder for RTK-grade centimetre ranges.
+        // Grid step picked so the visible map shows ~10 lines per axis at
+        // each ladder rung — from RTK-grade centimetres up to a wide
+        // overview.
         if (this.scale <= 0.05)      return 0.01;  // 1 cm
         else if (this.scale <= 0.1)  return 0.02;  // 2 cm
         else if (this.scale <= 0.25) return 0.05;  // 5 cm
@@ -242,7 +356,10 @@ class GPSMap {
         else if (this.scale <= 2)    return 0.5;
         else if (this.scale <= 5)    return 1;
         else if (this.scale <= 10)   return 2;
-        else                         return 5;
+        else if (this.scale <= 20)   return 5;
+        else if (this.scale <= 50)   return 10;
+        else if (this.scale <= 100)  return 25;
+        else                         return 50;
     }
     
     updateScaleDisplay() {
@@ -250,10 +367,11 @@ class GPSMap {
         if (scaleInfo) {
             const grid = this.getGridSpacing();
             const gridLabel = grid < 1 ? `${(grid * 100).toFixed(grid < 0.1 ? 1 : 0)}cm` : `${grid}m`;
-            const scaleLabel = this.scale < 1
-                ? `±${(this.scale * 100).toFixed(0)}cm`
-                : `±${this.scale.toFixed(this.scale < 10 ? 1 : 0)}m`;
-            scaleInfo.textContent = `Scale: ${scaleLabel}  |  Grid: ${gridLabel}`;
+            // Box now only shows the grid step — the slider readout already
+            // displays the range, no need to repeat it here.
+            scaleInfo.innerHTML =
+                `<span class="si-key">Grid:</span>` +
+                `<span class="si-val si-val-grid">${gridLabel}</span>`;
         }
     }
     
@@ -385,19 +503,45 @@ class GPSMap {
         this.ctx.rect(0, 0, this.width, this.height);
         this.ctx.clip();
         
-        // Draw continuous trail
+        // Cohen–Sutherland-style trail culling.
+        // At small scales (5–50 cm) most of the 5000-point trail is far
+        // off-screen, but Canvas still has to walk every lineTo and
+        // resolve round joins/caps at extreme pixel coordinates — that
+        // tanks performance during slider drags. We keep only points
+        // inside a buffered bounding box (1 segment of slack each side
+        // so the segment that crosses the edge still draws correctly).
+        const halfSize = Math.min(this.width, this.height) / 2;
+        const pxPerM = (halfSize * 0.9) / this.scale;
+        // World-space bounds in meters (a bit larger than viewport).
+        const buffer = this.scale * 0.1;
+        const xMin = -this.scale - buffer;
+        const xMax =  this.scale + buffer;
+        const yMin = -this.scale - buffer;
+        const yMax =  this.scale + buffer;
+        const inBox = (pt) =>
+            pt.x >= xMin && pt.x <= xMax && pt.y >= yMin && pt.y <= yMax;
+        
         this.ctx.beginPath();
+        let prevIn = false;
         for (let i = 0; i < this.trail.length; i++) {
             const point = this.trail[i];
-            const px = centerX + this.metersToPixels(point.x);
-            const py = centerY - this.metersToPixels(point.y); // Invert Y for screen coords
-            
-            // Skip points outside canvas (but continue line)
-            if (i === 0) {
+            const curIn = inBox(point);
+            // Skip segments where both endpoints are outside the box —
+            // they couldn't possibly contribute pixels (the canvas clip
+            // would discard them anyway, but skipping the lineTo saves
+            // path construction time, which is the actual bottleneck).
+            if (!curIn && !prevIn && i > 0) {
+                prevIn = false;
+                continue;
+            }
+            const px = centerX + point.x * pxPerM;
+            const py = centerY - point.y * pxPerM;
+            if (i === 0 || (!prevIn && curIn)) {
                 this.ctx.moveTo(px, py);
             } else {
                 this.ctx.lineTo(px, py);
             }
+            prevIn = curIn;
         }
         this.ctx.stroke();
         
@@ -407,8 +551,9 @@ class GPSMap {
         this.ctx.fillStyle = p.trailDot;
         for (let i = 0; i < this.trail.length; i += Math.max(1, Math.floor(this.trail.length / 20))) {
             const point = this.trail[i];
-            const px = centerX + this.metersToPixels(point.x);
-            const py = centerY - this.metersToPixels(point.y);
+            if (!inBox(point)) continue;
+            const px = centerX + point.x * pxPerM;
+            const py = centerY - point.y * pxPerM;
             
             if (this.isPointInCanvas(px, py)) {
                 this.ctx.beginPath();
@@ -456,13 +601,36 @@ class GPSMap {
     drawGeofences(centerX, centerY, p) {
         if (this.geofences.length === 0) return;
 
+        // Bound the maximum pixel radius we'll feed to arc(): when the
+        // user zooms to 5 cm scale and a fence is 50 m wide, a naive
+        // conversion produces hundreds of thousands of pixels — some
+        // browsers stall or crash on arc() with such radii, and even
+        // when they don't, dashed strokes (setLineDash) walk the entire
+        // circumference, freezing the UI thread for hundreds of ms per
+        // frame. Cap at a few times the canvas diagonal: visually
+        // equivalent (the ring is fully off-screen anyway) but cheap.
+        const diag = Math.hypot(this.width, this.height);
+        const maxRPx = diag * 4;
+
+        const halfSize = Math.min(this.width, this.height) / 2;
+        const pxPerM = (halfSize * 0.9) / this.scale;
+
         for (let i = 0; i < this.geofences.length; i++) {
             const gf = this.geofences[i];
-            const px = centerX + this.metersToPixels(gf.offsetX);
-            const py = centerY - this.metersToPixels(gf.offsetY);
-            const rPx = this.metersToPixels(gf.radius);
+            const px = centerX + gf.offsetX * pxPerM;
+            const py = centerY - gf.offsetY * pxPerM;
+            const rPxRaw = gf.radius * pxPerM;
 
-            // Fill
+            // Cull: if the ring lies entirely outside the canvas (centre
+            // distance from any canvas edge exceeds the radius), skip.
+            const dx = Math.max(0, Math.max(-px, px - this.width));
+            const dy = Math.max(0, Math.max(-py, py - this.height));
+            const distToBox = Math.hypot(dx, dy);
+            if (distToBox > rPxRaw + 4) continue;            // ring is far outside
+            const rPx = Math.min(rPxRaw, maxRPx);
+
+            // Fill (only meaningful if centre is roughly on-canvas;
+            // otherwise the fill paints far outside and gets clipped).
             this.ctx.fillStyle = p.geofenceFill;
             this.ctx.beginPath();
             this.ctx.arc(px, py, rPx, 0, Math.PI * 2);
@@ -477,12 +645,15 @@ class GPSMap {
             this.ctx.stroke();
             this.ctx.setLineDash([]);
 
-            // Label
-            this.ctx.fillStyle = p.geofenceLabel;
-            this.ctx.font = 'bold 12px sans-serif';
-            this.ctx.textAlign = 'center';
-            this.ctx.textBaseline = 'bottom';
-            this.ctx.fillText(`GF${i + 1} (${gf.radius}m)`, px, py - rPx - 4);
+            // Label — only when label position is on the canvas.
+            const labelY = py - rPx - 4;
+            if (px > -100 && px < this.width + 100 && labelY > -20 && labelY < this.height + 20) {
+                this.ctx.fillStyle = p.geofenceLabel;
+                this.ctx.font = 'bold 12px sans-serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'bottom';
+                this.ctx.fillText(`GF${i + 1} (${gf.radius}m)`, px, labelY);
+            }
         }
     }
 
@@ -496,6 +667,7 @@ class GPSMap {
         }
         this._pendingGeofences = null;
         this._computeGeofenceOffsetsFromRef(geofences);
+        this.requestRedraw();
     }
 
     _computeGeofenceOffsetsFromRef(geofences) {
@@ -511,14 +683,29 @@ class GPSMap {
     }
 
     startAnimation() {
-        const animate = () => {
+        if (this.animationFrame) return;     // already running
+        // The relative map only changes when:
+        //   - new GPS data arrives (push handlers call requestRedraw)
+        //   - scale / theme / geofences / origin change
+        //   - canvas is resized
+        // So instead of burning a 60 fps rAF loop forever, we run a
+        // coalesced "dirty flag" loop: each requestRedraw() schedules
+        // exactly one rAF if none is pending. Idle = zero GPU cost.
+        this._animating = true;
+        this.requestRedraw();
+    }
+
+    requestRedraw() {
+        if (!this._animating) return;
+        if (this.animationFrame) return;
+        this.animationFrame = requestAnimationFrame(() => {
+            this.animationFrame = null;
             this.draw();
-            this.animationFrame = requestAnimationFrame(animate);
-        };
-        animate();
+        });
     }
     
     stopAnimation() {
+        this._animating = false;
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);
             this.animationFrame = null;
@@ -541,12 +728,36 @@ class GPSMap {
             this._pendingGeofences = this._rawGeofences;
             this.geofences = [];
         }
+        this.requestRedraw();
     }
 }
 
 // Application state
 let map = null;
 let socket = null;
+
+// ─── Active map tab tracking ───────────────────────────────────────────────
+// Heavy per-frame work (animation loops on the relative map and altitude
+// tape, plus sky-plot / spectrum redraws on every GPS update) is gated by
+// these so we only do work for the visible tab. Saves a lot of CPU when
+// the user is on, e.g., the Terrain tab.
+window.activeMapTab = 'relative';
+function isTabActive(name) { return window.activeMapTab === name; }
+
+function applyMapTabActivity() {
+    const docVisible = (document.visibilityState !== 'hidden');
+    const relActive = docVisible && isTabActive('relative');
+    const altActive = docVisible && isTabActive('altitude');
+    if (map) {
+        if (relActive) map.startAnimation(); else map.stopAnimation();
+    }
+    if (window.altitudeTape) {
+        if (altActive) window.altitudeTape.startAnimation();
+        else            window.altitudeTape.stopAnimation();
+    }
+}
+
+document.addEventListener('visibilitychange', applyMapTabActivity);
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -728,21 +939,80 @@ function setupUIHandlers() {
                 updateRfAnalyzer(window.lastGPSData);
             } else if (chart === 'skyview' && window.lastGPSData && window.lastGPSData.satellites) {
                 updateSkyView(window.lastGPSData.satellites);
+            } else if (chart === 'relative' && map) {
+                map.requestRedraw();
             }
         });
     });
 
-    // Zoom +/- buttons next to the range sliders
+    // Zoom +/− buttons next to the range sliders. Semantics match the slider
+    // direction: − lowers the range value (zooms in), + raises it (zooms
+    // out). One press = one ladder step.
     document.querySelectorAll('.btn-zoom').forEach(function (btn) {
         btn.addEventListener('click', function () {
             const which = btn.dataset.zoom;
             const dir = btn.dataset.dir;
-            const factor = dir === 'in' ? 1 / 1.25 : 1.25;
+            const delta = (dir === 'up' || dir === 'in') ? +1 : -1;
             if (which === 'relative' && map) {
-                map.setScale(map.scale * factor);
+                map.setScaleIndex(map.scaleIndex + delta);
             } else if (which === 'altitude' && window.altitudeTape) {
-                window.altitudeTape.setScale(window.altitudeTape.scale * factor);
+                window.altitudeTape.setScaleIndex(window.altitudeTape.scaleIndex + delta);
             }
+        });
+    });
+
+    // ─── Fullscreen toggle (relative map + altitude tape) ─────────────
+    // Hybrid strategy:
+    //   1. Try the native Fullscreen API (browser hides chrome, ESC exits).
+    //   2. If that's unavailable or rejected (e.g. iOS Safari), fall back
+    //      to a CSS class that pins the card to the viewport.
+    // After every state change we re-run the canvas resize + a redraw so
+    // the chart fills the new dimensions immediately.
+    function notifyFullscreenChanged(target) {
+        if (target === document.getElementById('relative-map') && map) {
+            map.setupCanvas();
+            map.requestRedraw();
+        } else if (target === document.getElementById('altitude-map') && window.altitudeTape) {
+            window.altitudeTape.setupCanvas();
+        }
+    }
+    document.querySelectorAll('.btn-fullscreen').forEach(function (btn) {
+        const target = document.querySelector(btn.dataset.fullscreen);
+        if (!target) return;
+        btn.addEventListener('click', function () {
+            const cssActive = target.classList.contains('is-fullscreen');
+            const nativeActive = (document.fullscreenElement === target) ||
+                                 (document.webkitFullscreenElement === target);
+            if (cssActive || nativeActive) {
+                if (nativeActive) {
+                    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+                } else {
+                    target.classList.remove('is-fullscreen');
+                    notifyFullscreenChanged(target);
+                }
+                return;
+            }
+            const req = target.requestFullscreen || target.webkitRequestFullscreen;
+            if (req) {
+                req.call(target).catch(function () {
+                    // Permission denied or unsupported — use CSS fallback.
+                    target.classList.add('is-fullscreen');
+                    notifyFullscreenChanged(target);
+                });
+            } else {
+                target.classList.add('is-fullscreen');
+                notifyFullscreenChanged(target);
+            }
+        });
+    });
+    // Keep the chart sized correctly when the user enters/exits native
+    // fullscreen via ESC or the browser's own UI.
+    ['fullscreenchange', 'webkitfullscreenchange'].forEach(function (ev) {
+        document.addEventListener(ev, function () {
+            ['relative-map', 'altitude-map'].forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) notifyFullscreenChanged(el);
+            });
         });
     });
 }
@@ -828,7 +1098,16 @@ function updateGPSData(data) {
             updateDataField('data-geo-count', data.geofencing.number_of_geofences);
             updateDataField('data-geo-combined', data.geofencing.combined_state || '-');
             if (data.geofencing.geofences && data.geofencing.geofences.length > 0) {
-                updateDataField('data-geo-fences', data.geofencing.geofences.map((s, i) => `#${i+1}: ${s}`).join(', '));
+                // One fence state per line so each row reads cleanly.
+                // Use innerHTML with <br> instead of textContent + \n: it
+                // works regardless of the cell's white-space CSS, so we
+                // can't be defeated by a stale stylesheet.
+                const el = document.getElementById('data-geo-fences');
+                if (el) {
+                    el.innerHTML = data.geofencing.geofences
+                        .map((s, i) => `#${i+1}: ${escapeHtml(String(s))}`)
+                        .join('<br>');
+                }
             } else {
                 updateDataField('data-geo-fences', '-');
             }
@@ -845,12 +1124,12 @@ function updateGPSData(data) {
         }
 
         // Satellites → sky view
-        if (data.satellites) {
+        if (data.satellites && isTabActive('skyview')) {
             updateSkyView(data.satellites);
         }
 
         // RF Analyzer → spectrum chart + RF status
-        if (data.spectrum || data.rf_blocks) {
+        if ((data.spectrum || data.rf_blocks) && isTabActive('rfanalyzer')) {
             updateRfAnalyzer(data);
         }
     } else {
@@ -860,7 +1139,9 @@ function updateGPSData(data) {
 
     // Satellites → sky view (all modes that provide satellite data)
     if (data.satellites) {
-        updateSkyView(data.satellites);
+        if (isTabActive('skyview')) {
+            updateSkyView(data.satellites);
+        }
         if (window.elevationMaskPreview) {
             window.elevationMaskPreview.setSatellites(data.satellites);
         }
@@ -948,6 +1229,12 @@ function updateDataField(id, value) {
     if (element) {
         element.textContent = value;
     }
+}
+
+function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
 }
 
 // =======================
@@ -1363,7 +1650,7 @@ function updateSatTable(satellites) {
         html += `<tr class="${rowCls}">
             <td class="${cls}">${sat.gnss_id}</td>
             <td>${sat.sv_id}</td>
-            <td><span class="sat-cno-bar" style="width:${cnoWidth}px;background:${cnoColor}"></span>${sat.cno}</td>
+            <td><span class="sat-cno-cell"><span class="sat-cno-track"><span class="sat-cno-bar" style="width:${cnoWidth}px;background:${cnoColor}"></span></span><span class="sat-cno-num">${sat.cno}</span></span></td>
             <td>${sat.elevation}°</td>
             <td>${sat.azimuth}°</td>
             <td>${sat.used_in_fix ? '✓' : ''}</td>
@@ -1590,13 +1877,46 @@ function applyGeofencesToMaps(config) {
 
 function setupTabs() {
     const tabs = document.querySelectorAll('.map-tab');
+    const prevBtn = document.getElementById('map-tab-prev');
+    const nextBtn = document.getElementById('map-tab-next');
+
+    function activeIndex() {
+        for (let i = 0; i < tabs.length; i++) {
+            if (tabs[i].classList.contains('active')) return i;
+        }
+        return 0;
+    }
+
+    function syncNavState() {
+        const i = activeIndex();
+        if (prevBtn) prevBtn.disabled = (i <= 0);
+        if (nextBtn) nextBtn.disabled = (i >= tabs.length - 1);
+        // Keep the active tab visible inside the horizontally-scrolling strip
+        // (mobile layout).
+        const t = tabs[i];
+        if (t && typeof t.scrollIntoView === 'function') {
+            t.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+    }
+
+    if (prevBtn) prevBtn.addEventListener('click', () => {
+        const i = activeIndex();
+        if (i > 0) tabs[i - 1].click();
+    });
+    if (nextBtn) nextBtn.addEventListener('click', () => {
+        const i = activeIndex();
+        if (i < tabs.length - 1) tabs[i + 1].click();
+    });
+
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
             const tabName = tab.dataset.tab;
+            window.activeMapTab = tabName;
             
             // Update active tab
             tabs.forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
+            syncNavState();
             
             // Update active map view
             document.querySelectorAll('.map-view').forEach(view => {
@@ -1608,6 +1928,9 @@ function setupTabs() {
             if (activeView) {
                 activeView.classList.add('active');
                 activeView.style.display = tabName === 'skyview' ? 'flex' : 'block';
+
+                // Pause/resume per-tab animation loops based on the new selection.
+                applyMapTabActivity();
                 
                 // Re-setup relative map canvas when switching back
                 if (tabName === 'relative' && map) {
@@ -1649,6 +1972,8 @@ function setupTabs() {
             }
         });
     });
+
+    syncNavState();
 }
 
 
@@ -1658,12 +1983,40 @@ function setupDataTabs() {
     const tabs = document.querySelectorAll('.data-tab');
     if (!tabs.length) return;
 
+    const prevBtn = document.getElementById('data-tab-prev');
+    const nextBtn = document.getElementById('data-tab-next');
+
+    function activeIndex() {
+        for (let i = 0; i < tabs.length; i++) {
+            if (tabs[i].classList.contains('active')) return i;
+        }
+        return 0;
+    }
+    function syncNavState() {
+        const i = activeIndex();
+        if (prevBtn) prevBtn.disabled = (i <= 0);
+        if (nextBtn) nextBtn.disabled = (i >= tabs.length - 1);
+        const t = tabs[i];
+        if (t && typeof t.scrollIntoView === 'function') {
+            t.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+    }
+    if (prevBtn) prevBtn.addEventListener('click', () => {
+        const i = activeIndex();
+        if (i > 0) tabs[i - 1].click();
+    });
+    if (nextBtn) nextBtn.addEventListener('click', () => {
+        const i = activeIndex();
+        if (i < tabs.length - 1) tabs[i + 1].click();
+    });
+
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
             const tabName = tab.dataset.dtab;
 
             tabs.forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
+            syncNavState();
 
             document.querySelectorAll('.data-pane').forEach(p => {
                 p.classList.remove('active');
@@ -1677,6 +2030,8 @@ function setupDataTabs() {
             }
         });
     });
+
+    syncNavState();
 }
 
 

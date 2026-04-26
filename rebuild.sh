@@ -64,7 +64,7 @@ cmake .. \
     -DBUILD_PYTHON=ON \
     "${CMAKE_EXTRA_ARGS[@]}"
 
-make -j"$(nproc)"
+make -j1
 
 if $DO_INSTALL; then
     make install

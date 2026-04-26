@@ -38,6 +38,11 @@ protected:
     void rate2Registers(const uint16_t measurementRate_Hz);
     void timepulsePinConfig2Registers(const TimepulsePinConfig& tpc);
     void baseConfig2Registers(const BaseConfig& baseConfig);
+    // Populates expectedConfigValues_ for every CFG-NAVSPG-INFIL_* key
+    // present in the filters struct. Returns the list of keys that were
+    // populated so the caller can hand them to configure().
+    std::vector<uint32_t> navigationFilters2Registers(
+        const std::optional<GnssConfig::NavigationFilters>& filters);
     bool saveCurrentConfigToFlash();
 
     bool configure(std::span<const uint32_t> keys);
@@ -50,6 +55,7 @@ protected:
     IUbloxConfigRegistry& configRegistry_;
     UbxParser& ubxParser_;
     std::vector<uint32_t> timepulsePinConfigKeys_;
+    std::vector<uint32_t> navigationFilterKeys_;
     static constexpr uint32_t rxBuffSize = 1024;
     std::vector<uint8_t> rxBuff_;
     static std::unordered_map<uint32_t, std::vector<uint8_t>>

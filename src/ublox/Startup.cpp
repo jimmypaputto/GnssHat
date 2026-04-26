@@ -135,6 +135,82 @@ void StartupBase::rate2Registers(const uint16_t measurementRate_Hz)
     ecv[CFG_RATE_TIMEREF] = {to_underlying(E_CFG_RATE_TIMEREF::UTC)};
 }
 
+std::vector<uint32_t> StartupBase::navigationFilters2Registers(
+    const std::optional<GnssConfig::NavigationFilters>& filters)
+{
+    std::vector<uint32_t> keys;
+    if (!filters.has_value())
+        return keys;
+
+    using namespace UbxCfgKeys;
+    auto& ecv = StartupBase::expectedConfigValues_;
+
+    if (filters->minSvs.has_value())
+    {
+        ecv[CFG_NAVSPG_INFIL_MINSVS] = {*filters->minSvs};
+        keys.push_back(CFG_NAVSPG_INFIL_MINSVS);
+    }
+    if (filters->maxSvs.has_value())
+    {
+        ecv[CFG_NAVSPG_INFIL_MAXSVS] = {*filters->maxSvs};
+        keys.push_back(CFG_NAVSPG_INFIL_MAXSVS);
+    }
+    if (filters->minCno_dBHz.has_value())
+    {
+        ecv[CFG_NAVSPG_INFIL_MINCNO] = {*filters->minCno_dBHz};
+        keys.push_back(CFG_NAVSPG_INFIL_MINCNO);
+    }
+    if (filters->minElev_deg.has_value())
+    {
+        // I1 (signed byte) — store the two's-complement byte so the VALGET
+        // verification cycle compares byte-for-byte against the receiver.
+        ecv[CFG_NAVSPG_INFIL_MINELEV] =
+            {static_cast<uint8_t>(*filters->minElev_deg)};
+        keys.push_back(CFG_NAVSPG_INFIL_MINELEV);
+    }
+    if (filters->nCnoThrs.has_value())
+    {
+        ecv[CFG_NAVSPG_INFIL_NCNOTHRS] = {*filters->nCnoThrs};
+        keys.push_back(CFG_NAVSPG_INFIL_NCNOTHRS);
+    }
+    if (filters->cnoThrs_dBHz.has_value())
+    {
+        ecv[CFG_NAVSPG_INFIL_CNOTHRS] = {*filters->cnoThrs_dBHz};
+        keys.push_back(CFG_NAVSPG_INFIL_CNOTHRS);
+    }
+    if (filters->fixMode.has_value())
+    {
+        ecv[CFG_NAVSPG_FIXMODE] =
+            {static_cast<uint8_t>(*filters->fixMode)};
+        keys.push_back(CFG_NAVSPG_FIXMODE);
+    }
+    if (filters->pdopMask_x10.has_value())
+    {
+        ecv[CFG_NAVSPG_OUTFIL_PDOP] =
+            serializeInt2LittleEndian<uint16_t>(*filters->pdopMask_x10);
+        keys.push_back(CFG_NAVSPG_OUTFIL_PDOP);
+    }
+    if (filters->tdopMask_x10.has_value())
+    {
+        ecv[CFG_NAVSPG_OUTFIL_TDOP] =
+            serializeInt2LittleEndian<uint16_t>(*filters->tdopMask_x10);
+        keys.push_back(CFG_NAVSPG_OUTFIL_TDOP);
+    }
+    if (filters->pAccMask_m.has_value())
+    {
+        ecv[CFG_NAVSPG_OUTFIL_PACC] =
+            serializeInt2LittleEndian<uint16_t>(*filters->pAccMask_m);
+        keys.push_back(CFG_NAVSPG_OUTFIL_PACC);
+    }
+    if (filters->tAccMask_m.has_value())
+    {
+        ecv[CFG_NAVSPG_OUTFIL_TACC] =
+            serializeInt2LittleEndian<uint16_t>(*filters->tAccMask_m);
+        keys.push_back(CFG_NAVSPG_OUTFIL_TACC);
+    }
+    return keys;
+}
+
 enum class CFG_UART1_DATABITS : uint8_t
 {
     EIGHT = 0,
@@ -258,6 +334,8 @@ M9NStartup::M9NStartup(ICommDriver& commDriver,
     ecv[UbxCfgKeys::CFG_NAVSPG_DYNMODEL] = {to_underlying(config.dynamicModel)};
     rate2Registers(config.measurementRate_Hz);
     timepulsePinConfig2Registers(config.timepulsePinConfig);
+    navigationFilterKeys_ =
+        navigationFilters2Registers(config.navigationFilters);
 
     constexpr uint32_t fenceUseKeys[4] = {
         UbxCfgKeys::CFG_GEOFENCE_USE_FENCE1,
@@ -422,6 +500,13 @@ bool M9NStartup::execute()
     if (!result)
     {
         fprintf(stderr, "[Startup] Dynamic model configuration failed\r\n");
+        return false;
+    }
+
+    result = configure(navigationFilterKeys_);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] Navigation filter configuration failed\r\n");
         return false;
     }
 
@@ -843,6 +928,8 @@ F10TStartup::F10TStartup(ICommDriver& commDriver,
 
     rate2Registers(config.measurementRate_Hz);
     timepulsePinConfig2Registers(config.timepulsePinConfig);
+    navigationFilterKeys_ =
+        navigationFilters2Registers(config.navigationFilters);
 
     ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {0x01};
     ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {0x01};
@@ -900,6 +987,13 @@ bool F10TStartup::execute()
     if (!result)
     {
         fprintf(stderr, "[Startup] L5 signal configuration failed\r\n");
+        return false;
+    }
+
+    result = configure(navigationFilterKeys_);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] Navigation filter configuration failed\r\n");
         return false;
     }
 

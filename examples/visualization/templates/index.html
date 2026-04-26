@@ -41,6 +41,7 @@
                 <div class="map-header">
                     <div class="map-tabs">
                         <button class="map-tab active" data-tab="relative">📐 Relative Map</button>
+                        <button class="map-tab" data-tab="altitude">📏 Altitude</button>
                         <button class="map-tab" data-tab="terrain">🗺️ Terrain Map</button>
                         {% if hat_name != 'L1/L5 GNSS TIME HAT' %}
                         <button class="map-tab" data-tab="skyview">🛰️ Sky View</button>
@@ -57,11 +58,16 @@
                         <span id="scale-info">Scale: ±20.0m</span>
                         <div class="scale-slider-container">
                             <label for="scale-slider">Range:</label>
-                            <input type="range" id="scale-slider" class="scale-slider" min="0.5" max="30" value="20" step="0.5">
+                            <button type="button" class="btn-zoom" data-zoom="relative" data-dir="out" title="Zoom out">−</button>
+                            <input type="range" id="scale-slider" class="scale-slider" min="0.05" max="30" value="20" step="0.05">
+                            <button type="button" class="btn-zoom" data-zoom="relative" data-dir="in" title="Zoom in">+</button>
                             <span id="scale-value">20m</span>
                         </div>
                         <button id="reset-btn" class="btn-reset" title="Reset reference position">
                             🎯 Reset Origin
+                        </button>
+                        <button class="btn-theme" data-chart-theme="relative" title="Toggle light / dark">
+                            🌙
                         </button>
                     </div>
                     <div class="canvas-wrapper">
@@ -84,10 +90,60 @@
                         </div>
                     </div>
                 </div>
-                
+
+                <!-- Altitude Tape - one-axis altimeter relative to a reference -->
+                <div id="altitude-map" class="map-view" style="display: none;">
+                    <div class="map-info">
+                        <span id="altitude-scale-info">Scale: ±20.0m</span>
+                        <div class="scale-slider-container">
+                            <label for="altitude-scale-slider">Range:</label>
+                            <button type="button" class="btn-zoom" data-zoom="altitude" data-dir="out" title="Zoom out">−</button>
+                            <input type="range" id="altitude-scale-slider" class="scale-slider" min="0.05" max="100" value="20" step="0.05">
+                            <button type="button" class="btn-zoom" data-zoom="altitude" data-dir="in" title="Zoom in">+</button>
+                            <span id="altitude-scale-value">20m</span>
+                        </div>
+                        <div class="alt-source-toggle" role="group" aria-label="Altitude source">
+                            <button type="button" class="alt-source-btn active" data-alt-source="msl">MSL</button>
+                            {% if mode in ['native', 'ros2'] %}
+                            <button type="button" class="alt-source-btn" data-alt-source="wgs84">WGS84</button>
+                            {% endif %}
+                        </div>
+                        <button id="alt-reset-btn" class="btn-reset" title="Reset reference altitude">
+                            🎯 Reset Origin
+                        </button>
+                        <button class="btn-theme" data-chart-theme="altitude" title="Toggle light / dark">
+                            🌙
+                        </button>
+                    </div>
+                    <div class="canvas-wrapper">
+                        <canvas id="altitude-tape"></canvas>
+                    </div>
+                    <div class="map-footer">
+                        <div class="position-display">
+                            <div class="coord-item">
+                                <span class="coord-label">Δ Altitude:</span>
+                                <span id="alt-delta" class="coord-value">0.00 m</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Absolute:</span>
+                                <span id="alt-absolute" class="coord-value">0.00 m</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Vert. accuracy:</span>
+                                <span id="alt-vacc" class="coord-value">—</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 {% if hat_name != 'L1/L5 GNSS TIME HAT' %}
                 <!-- Sky View - Satellite polar plot -->
                 <div id="skyview-map" class="map-view" style="display: none;">
+                    <div class="map-info">
+                        <button class="btn-theme" data-chart-theme="skyview" title="Toggle light / dark">
+                            🌙
+                        </button>
+                    </div>
                     <div class="skyview-layout">
                         <div class="skyview-plot-wrap">
                             <canvas id="sky-canvas"></canvas>
@@ -134,6 +190,11 @@
                 {% if mode in ['native', 'ros2'] %}
                 <!-- RF Analyzer - Spectrum from MON-SPAN + RF status from MON-RF -->
                 <div id="rfanalyzer-map" class="map-view" style="display: none;">
+                    <div class="map-info">
+                        <button class="btn-theme" data-chart-theme="spectrum" title="Toggle light / dark">
+                            🌙
+                        </button>
+                    </div>
                     <div class="rfanalyzer-layout">
                         <div class="rfanalyzer-chart-wrap">
                             <div id="spectrum-charts-container"></div>
@@ -463,6 +524,116 @@
                                     <option value="11">Mower</option>
                                     <option value="12">E-Scooter</option>
                                 </select>
+                            </div>
+                        </fieldset>
+
+                        <!-- Navigation Filters (CFG-NAVSPG-INFIL_*) -->
+                        <fieldset class="cfg-section">
+                            <legend>🛰️ Navigation Filters</legend>
+                            <div class="cfg-row">
+                                <label for="cfg-navfilt-minelev">Elevation Mask</label>
+                                <input type="range" id="cfg-navfilt-minelev"
+                                       min="0" max="60" step="1" value="5"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-minelev-num"
+                                       min="-90" max="90" step="1" value="5"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">deg</span>
+                                <button type="button" id="cfg-navfilt-minelev-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (5°)">↺ Default</button>
+                            </div>
+                            <p class="cfg-help">
+                                Satellites below this elevation angle are
+                                excluded from the navigation solution. For
+                                RTK a moderate mask (10°–15°) reduces
+                                multipath from low-elevation signals.
+                            </p>
+                            <div class="cfg-navfilt-preview-wrap">
+                                <canvas id="cfg-navfilt-preview"></canvas>
+                            </div>
+
+                            <!-- Fix Mode (CFG-NAVSPG-FIXMODE) -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-fixmode"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-FIXMODE — dimensionality of the position fix.&#10;&#10;• Auto 2D/3D (default): receiver picks a 3D fix when enough SVs are available, falls back to 2D otherwise.&#10;• 3D only: rejects fixes without vertical observability.&#10;• 2D only: clamps altitude, for fixed-height platforms.">Fix Mode <span class="cfg-tip-icon">&#9432;</span></label>
+                                <select id="cfg-navfilt-fixmode" class="cfg-input">
+                                    <option value="3" selected>Auto 2D/3D</option>
+                                    <option value="2">3D only</option>
+                                    <option value="1">2D only</option>
+                                </select>
+                                <button type="button" id="cfg-navfilt-fixmode-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (Auto)">↺ Default</button>
+                            </div>
+
+                            <!-- OUTFIL_PDOP -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-pdop"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-OUTFIL_PDOP — maximum Position DOP allowed in a valid fix.&#10;&#10;PDOP reflects satellite-geometry quality (lower is better). Fixes exceeding this threshold are flagged invalid.&#10;&#10;Unit: DOP (unitless, 0.1 steps).&#10;Default: 25.0 DOP. Set 0 to disable.">PDOP Mask <span class="cfg-tip-icon">&#9432;</span></label>
+                                <input type="range" id="cfg-navfilt-pdop"
+                                       min="1" max="99.9" step="0.1" value="25"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-pdop-num"
+                                       min="1" max="99.9" step="0.1" value="25"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">DOP</span>
+                                <button type="button" id="cfg-navfilt-pdop-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (25.0)">↺ Default</button>
+                            </div>
+
+                            <!-- OUTFIL_TDOP -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-tdop"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-OUTFIL_TDOP — maximum Time DOP allowed in a valid fix.&#10;&#10;TDOP captures how well the satellite geometry constrains the receiver clock, mainly affecting time-transfer and timepulse accuracy.&#10;&#10;Unit: DOP (unitless).&#10;Default: 25.0 DOP. Set 0 to disable.">TDOP Mask <span class="cfg-tip-icon">&#9432;</span></label>
+                                <input type="range" id="cfg-navfilt-tdop"
+                                       min="1" max="99.9" step="0.1" value="25"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-tdop-num"
+                                       min="1" max="99.9" step="0.1" value="25"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">DOP</span>
+                                <button type="button" id="cfg-navfilt-tdop-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (25.0)">↺ Default</button>
+                            </div>
+
+                            <!-- OUTFIL_PACC -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-pacc"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-OUTFIL_PACC — maximum estimated horizontal position error (1-sigma) allowed in a valid fix.&#10;&#10;Fixes whose computed position accuracy is worse than this are flagged invalid.&#10;&#10;Unit: metres.&#10;Default: 100 m. Set 0 to disable.">Position Accuracy Mask <span class="cfg-tip-icon">&#9432;</span></label>
+                                <input type="range" id="cfg-navfilt-pacc"
+                                       min="1" max="500" step="1" value="100"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-pacc-num"
+                                       min="0" max="65535" step="1" value="100"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">m</span>
+                                <button type="button" id="cfg-navfilt-pacc-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (100 m)">↺ Default</button>
+                            </div>
+
+                            <!-- OUTFIL_TACC -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-tacc"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-OUTFIL_TACC — maximum estimated time-solution error (1-sigma) allowed in a valid fix.&#10;&#10;Caps how much timing jitter is tolerated before the PVT / timepulse output is flagged invalid.&#10;&#10;Unit: metres (light-travel equivalent, as u-blox encodes it).&#10;Default: 300 m. Set 0 to disable.">Time Accuracy Mask <span class="cfg-tip-icon">&#9432;</span></label>
+                                <input type="range" id="cfg-navfilt-tacc"
+                                       min="1" max="1000" step="1" value="300"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-tacc-num"
+                                       min="0" max="65535" step="1" value="300"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">m</span>
+                                <button type="button" id="cfg-navfilt-tacc-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (300 m)">↺ Default</button>
                             </div>
                         </fieldset>
 
@@ -1047,5 +1218,7 @@
         window.HAT_NAME = '{{ hat_name or '' }}';
     </script>
     <script src="{{ url_for('static', filename='js/map.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/altitude.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav-filter-preview.js') }}"></script>
 </body>
 </html>

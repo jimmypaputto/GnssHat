@@ -2039,6 +2039,36 @@ static bool validate_config(PyObject* config_dict)
         return false;
     }
 
+    /* ── navigation_filters validation ─────────────────────────────── */
+    PyObject* nf_dict = PyDict_GetItemString(config_dict, "navigation_filters");
+    if (nf_dict && nf_dict != Py_None)
+    {
+        if (!PyDict_Check(nf_dict))
+        {
+            PyErr_SetString(PyExc_TypeError,
+                "navigation_filters must be a dictionary or None");
+            return false;
+        }
+        static const char* int_keys[] = {
+            "min_svs", "max_svs", "min_cno_dbhz",
+            "min_elev_deg", "n_cno_thrs", "cno_thrs_dbhz",
+            "fix_mode",
+            "pdop_mask_x10", "tdop_mask_x10",
+            "p_acc_mask_m", "t_acc_mask_m",
+        };
+        for (size_t i = 0; i < sizeof(int_keys) / sizeof(int_keys[0]); ++i)
+        {
+            PyObject* v = PyDict_GetItemString(nf_dict, int_keys[i]);
+            if (v && v != Py_None && !PyLong_Check(v))
+            {
+                PyErr_Format(PyExc_TypeError,
+                    "navigation_filters.%s must be an integer or None",
+                    int_keys[i]);
+                return false;
+            }
+        }
+    }
+
     return true;
 }
 
@@ -2348,6 +2378,73 @@ static void populate_config_from_dict(PyObject* config_dict, jp_gnss_gnss_config
         }
     }
  
+    /* ── Navigation filters (CFG-NAVSPG-INFIL_*) ─────────────────── */
+    config->has_navigation_filters = false;
+    memset(&config->navigation_filters, 0, sizeof(config->navigation_filters));
+    PyObject* nf_dict = PyDict_GetItemString(config_dict, "navigation_filters");
+    if (nf_dict && nf_dict != Py_None)
+    {
+        config->has_navigation_filters = true;
+        jp_gnss_navigation_filters_t* nf = &config->navigation_filters;
+
+        PyObject* v;
+        if ((v = PyDict_GetItemString(nf_dict, "min_svs")) && v != Py_None)
+        {
+            nf->has_min_svs = true;
+            nf->min_svs = (uint8_t)PyLong_AsLong(v);
+        }
+        if ((v = PyDict_GetItemString(nf_dict, "max_svs")) && v != Py_None)
+        {
+            nf->has_max_svs = true;
+            nf->max_svs = (uint8_t)PyLong_AsLong(v);
+        }
+        if ((v = PyDict_GetItemString(nf_dict, "min_cno_dbhz")) && v != Py_None)
+        {
+            nf->has_min_cno_dbhz = true;
+            nf->min_cno_dbhz = (uint8_t)PyLong_AsLong(v);
+        }
+        if ((v = PyDict_GetItemString(nf_dict, "min_elev_deg")) && v != Py_None)
+        {
+            nf->has_min_elev_deg = true;
+            nf->min_elev_deg = (int8_t)PyLong_AsLong(v);
+        }
+        if ((v = PyDict_GetItemString(nf_dict, "n_cno_thrs")) && v != Py_None)
+        {
+            nf->has_n_cno_thrs = true;
+            nf->n_cno_thrs = (uint8_t)PyLong_AsLong(v);
+        }
+        if ((v = PyDict_GetItemString(nf_dict, "cno_thrs_dbhz")) && v != Py_None)
+        {
+            nf->has_cno_thrs_dbhz = true;
+            nf->cno_thrs_dbhz = (uint8_t)PyLong_AsLong(v);
+        }
+        if ((v = PyDict_GetItemString(nf_dict, "fix_mode")) && v != Py_None)
+        {
+            nf->has_fix_mode = true;
+            nf->fix_mode = (jp_gnss_fix_mode_t)PyLong_AsLong(v);
+        }
+        if ((v = PyDict_GetItemString(nf_dict, "pdop_mask_x10")) && v != Py_None)
+        {
+            nf->has_pdop_mask_x10 = true;
+            nf->pdop_mask_x10 = (uint16_t)PyLong_AsLong(v);
+        }
+        if ((v = PyDict_GetItemString(nf_dict, "tdop_mask_x10")) && v != Py_None)
+        {
+            nf->has_tdop_mask_x10 = true;
+            nf->tdop_mask_x10 = (uint16_t)PyLong_AsLong(v);
+        }
+        if ((v = PyDict_GetItemString(nf_dict, "p_acc_mask_m")) && v != Py_None)
+        {
+            nf->has_p_acc_mask_m = true;
+            nf->p_acc_mask_m = (uint16_t)PyLong_AsLong(v);
+        }
+        if ((v = PyDict_GetItemString(nf_dict, "t_acc_mask_m")) && v != Py_None)
+        {
+            nf->has_t_acc_mask_m = true;
+            nf->t_acc_mask_m = (uint16_t)PyLong_AsLong(v);
+        }
+    }
+
     /* ── save_to_flash config ──────────────────────────────────────── */
     config->save_to_flash = false;
     PyObject* save_flash = PyDict_GetItemString(config_dict, "save_to_flash");

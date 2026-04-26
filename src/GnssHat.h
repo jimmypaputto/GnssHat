@@ -377,6 +377,49 @@ typedef struct
     jp_gnss_base_config_t time_base;
 } jp_gnss_timing_config_t;
 
+/*
+ * Navigation input filters — wrapper around u-blox CFG-NAVSPG-INFIL_*.
+ * Each field is gated by a `has_*` flag to emulate std::optional<> across
+ * the C boundary. An unset field (has_* == false) means "leave at the
+ * receiver's current value".
+ */
+typedef enum
+{
+    JP_GNSS_FIX_MODE_2D_ONLY = 1,
+    JP_GNSS_FIX_MODE_3D_ONLY = 2,
+    JP_GNSS_FIX_MODE_AUTO    = 3,
+} jp_gnss_fix_mode_t;
+
+typedef struct
+{
+    bool has_min_svs;
+    uint8_t min_svs;          /* 3 - 32 */
+    bool has_max_svs;
+    uint8_t max_svs;          /* 3 - 32, must be >= min_svs when both set */
+    bool has_min_cno_dbhz;
+    uint8_t min_cno_dbhz;     /* 0 - 63 */
+    bool has_min_elev_deg;
+    int8_t min_elev_deg;      /* -90 - 90 */
+    bool has_n_cno_thrs;
+    uint8_t n_cno_thrs;
+    bool has_cno_thrs_dbhz;
+    uint8_t cno_thrs_dbhz;    /* 0 - 63 */
+
+    /* CFG-NAVSPG-FIXMODE */
+    bool has_fix_mode;
+    jp_gnss_fix_mode_t fix_mode;
+
+    /* CFG-NAVSPG-OUTFIL_* — solution-output masks. */
+    bool has_pdop_mask_x10;
+    uint16_t pdop_mask_x10;   /* 0.1 DOP units, 0 disables (e.g. 250 = 25.0) */
+    bool has_tdop_mask_x10;
+    uint16_t tdop_mask_x10;   /* 0.1 DOP units, 0 disables */
+    bool has_p_acc_mask_m;
+    uint16_t p_acc_mask_m;    /* metres, 0 disables */
+    bool has_t_acc_mask_m;
+    uint16_t t_acc_mask_m;    /* metres, 0 disables */
+} jp_gnss_navigation_filters_t;
+
 typedef struct
 {
     uint16_t measurement_rate_hz;
@@ -388,6 +431,8 @@ typedef struct
     jp_gnss_rtk_config_t rtk;
     bool has_timing;
     jp_gnss_timing_config_t timing;
+    bool has_navigation_filters;
+    jp_gnss_navigation_filters_t navigation_filters;
     bool save_to_flash;
 } jp_gnss_gnss_config_t;
 

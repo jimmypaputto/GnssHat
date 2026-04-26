@@ -156,6 +156,7 @@ if(NTRIP_TLS_SUPPORT)
 endif()
 
 if(BUILD_TOOLS)
+    find_package(toml11 REQUIRED)
     add_subdirectory(tools)
 endif()
 

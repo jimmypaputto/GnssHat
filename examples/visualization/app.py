@@ -779,6 +779,7 @@ def create_default_config():
         'geofencing': None,
         'rtk': None,
         'timing': None,
+        'navigation_filters': None,
         'save_to_flash': False,
     }
 
@@ -2027,6 +2028,27 @@ def json_to_native_config(data):
         config['timing'] = timing_cfg
     else:
         config['timing'] = None
+
+    # Navigation filters (CFG-NAVSPG-INFIL_*). Only keys that are not None
+    # are forwarded to the library — unset keys leave the receiver's
+    # existing value untouched.
+    nf_data = data.get('navigation_filters')
+    if isinstance(nf_data, dict):
+        nf_keys = (
+            'min_svs', 'max_svs', 'min_cno_dbhz',
+            'min_elev_deg', 'n_cno_thrs', 'cno_thrs_dbhz',
+            'fix_mode',
+            'pdop_mask_x10', 'tdop_mask_x10',
+            'p_acc_mask_m', 't_acc_mask_m',
+        )
+        nf_cfg = {}
+        for k in nf_keys:
+            v = nf_data.get(k)
+            if v is not None:
+                nf_cfg[k] = int(v)
+        config['navigation_filters'] = nf_cfg if nf_cfg else None
+    else:
+        config['navigation_filters'] = None
 
     config['save_to_flash'] = bool(data.get('save_to_flash', False))
 

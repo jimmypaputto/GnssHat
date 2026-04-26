@@ -26,6 +26,19 @@ For Python bindings you also need:
 sudo apt-get install python3-dev
 ```
 
+For CLI tools (`gnsshat-rtk-base`) you also need **toml11** (TOML config parser):
+
+```sh
+# If packaged on your distro:
+sudo apt-get install libtoml11-dev
+
+# Or install from source:
+git clone https://github.com/ToruNiina/toml11.git -b v4.2.0
+cd toml11
+cmake -B build
+sudo cmake --install build
+```
+
 ### Build & install
 
 ```sh
@@ -41,7 +54,7 @@ sudo make install
 |------|---------|-------------|
 | `BUILD_PYTHON` | OFF | Build and install the Python CPython extension module |
 | `BUILD_EXAMPLES` | OFF | Build all C and C++ examples. Binaries are symlinked into `examples/bin/` for convenience |
-| `BUILD_TOOLS` | ON | Build CLI tools (`gnsshat-info`, `gnsshat-probe`) |
+| `BUILD_TOOLS` | ON | Build CLI tools (`gnsshat-info`, `gnsshat-probe`, `gnsshat-rtk-base`). Requires toml11 |
 | `BUILD_TESTS` | OFF | Build unit tests (requires GTest). Run with `ctest` |
 
 All flags are optional.
@@ -206,6 +219,8 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 
 Utility functions in `JimmyPaputto::Utils`: `eFixQuality2string()`, `jammingState2string()`, `utcTimeFromGnss_ISO8601()`, etc.
 
+HAT detection helpers in `JimmyPaputto::Hat`: `detectProduct()` (returns the HAT product name from the device-tree EEPROM without instantiating `IGnssHat`) and `readEepromField(field)` (generic EEPROM field reader).
+
 ### C
 
 Include `<jimmypaputto/GnssHat.h>`. All functions are prefixed with `jp_gnss_hat_` (lifecycle/navigation) or `jp_gnss_` (config helpers, string converters). See the C example above and the header for the full list.
@@ -352,6 +367,16 @@ See [`examples/gpsd-integration/`](examples/gpsd-integration/) for a ready-to-us
 ### Time Server
 
 A complete guide for setting up a PPS-disciplined time server using chrony + gpsd is available in [`examples/time-server/`](examples/time-server/).
+
+### RTK Base Station service
+
+The `gnsshat-rtk-base` CLI tool ([`tools/gnsshat-rtk-base.cpp`](tools/gnsshat-rtk-base.cpp)) runs a full RTK base station with a local NTRIP caster or a remote NTRIP server. It takes a TOML config file (see [`tools/example-rtk-base.toml`](tools/example-rtk-base.toml)) with CLI overrides. Install as a systemd service with:
+
+```bash
+sudo tools/scripts/install-rtk-base-service.sh
+sudo systemctl start gnsshat-rtk-base
+journalctl -u gnsshat-rtk-base -f
+```
 
 ## Examples
 

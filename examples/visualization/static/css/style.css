@@ -405,6 +405,12 @@ header h1 {
     display: block;
 }
 
+#altitude-tape {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
 #map-canvas {
     width: 100%;
     height: 100%;
@@ -873,6 +879,66 @@ header h1 {
     font-weight: 600;
     font-size: 13px;
     padding: 0 6px;
+}
+
+/* Collapsible cfg-section — the legend acts as the toggle */
+.cfg-section.cfg-collapsible > legend {
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    transition: background 0.15s ease;
+}
+
+.cfg-section.cfg-collapsible > legend:hover {
+    background: color-mix(in srgb, var(--accent-cyan) 15%, transparent);
+}
+
+.cfg-section.cfg-collapsible > legend::before {
+    content: '▾';
+    display: inline-block;
+    font-size: 12px;
+    width: 12px;
+    transition: transform 0.15s ease;
+    color: var(--text-secondary);
+}
+
+/* Collapsed state: fieldset becomes a single full-width header row.
+   We kill the native fieldset chrome and let the legend fill the row. */
+.cfg-section.cfg-collapsible.cfg-section-collapsed {
+    padding: 0;
+    border: none;
+    background: transparent;
+    margin-bottom: 6px;
+    display: block;
+}
+
+.cfg-section.cfg-collapsible.cfg-section-collapsed > legend {
+    display: flex;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 14px;
+    font-size: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-card);
+    float: none;
+}
+
+.cfg-section.cfg-collapsible.cfg-section-collapsed > legend:hover {
+    border-color: var(--accent-cyan);
+}
+
+.cfg-section.cfg-collapsible.cfg-section-collapsed > legend::before {
+    transform: rotate(-90deg);
+}
+
+.cfg-section.cfg-collapsible.cfg-section-collapsed > *:not(legend) {
+    display: none !important;
 }
 
 /* ─── Collapsible details/summary ──────────────────────── */
@@ -1385,3 +1451,244 @@ footer {
 ::-webkit-scrollbar-thumb:hover {
     background: var(--accent-cyan);
 }
+
+/* Altitude tape view */
+#altitude-scale-info {
+    color: var(--text-secondary);
+    font-family: monospace;
+    font-size: 14px;
+    padding: 5px 12px;
+    background: var(--bg-card);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+#altitude-scale-value {
+    color: var(--text-primary);
+    font-family: monospace;
+    font-weight: 600;
+    font-size: 13px;
+    min-width: 35px;
+    text-align: right;
+}
+
+.alt-source-toggle {
+    display: inline-flex;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.alt-source-btn {
+    padding: 6px 14px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    border-right: 1px solid var(--border-color);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: monospace;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.alt-source-btn:last-child {
+    border-right: none;
+}
+
+.alt-source-btn:hover {
+    background: rgba(0, 180, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.alt-source-btn.active {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+}
+
+/* Theme toggle button (per-chart light/dark) */
+.btn-theme {
+    padding: 8px 12px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.btn-theme:hover {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+    border-color: var(--accent-cyan);
+    transform: translateY(-1px);
+}
+
+.btn-theme-floating {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    z-index: 10;
+}
+
+/* Ensure parents of floating buttons are positioned */
+#skyview-map,
+#rfanalyzer-map {
+    position: relative;
+}
+
+/* Zoom +/- buttons next to range sliders */
+.btn-zoom {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+    user-select: none;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-zoom:hover {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+    border-color: var(--accent-cyan);
+}
+
+.btn-zoom:active {
+    transform: translateY(1px);
+}
+
+/* Show that the canvas is scroll-zoomable */
+#relative-map .canvas-wrapper,
+#altitude-map .canvas-wrapper {
+    cursor: ns-resize;
+}
+
+/* ================================
+   Navigation Filters (Elevation Mask)
+   ================================ */
+.cfg-slider {
+    flex: 1 1 auto;
+    min-width: 120px;
+    accent-color: var(--accent-cyan);
+    padding: 0;
+}
+
+.cfg-num-narrow {
+    width: 70px;
+    text-align: right;
+}
+
+.cfg-unit {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-family: monospace;
+    min-width: 24px;
+}
+
+.cfg-help {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.4;
+    margin: 4px 2px 10px 2px;
+    opacity: 0.8;
+}
+
+.cfg-btn-inline {
+    padding: 4px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+    /* Override .cfg-btn-secondary { flex: 1 } so the ↺ Default button
+       sits at its natural width next to a slider + number input instead
+       of stretching across the remainder of the row. */
+    flex: 0 0 auto;
+}
+
+/* Extra vertical breathing room for rows that replaced a verbose help
+   paragraph with a label-hover tooltip. */
+.cfg-row-spaced {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border-color);
+    /* Table-like grid so label / slider / number / unit / default
+       button line up across rows regardless of which control sits in
+       the "slider" slot. */
+    display: grid;
+    grid-template-columns:
+        180px          /* label column */
+        1fr            /* slider / select */
+        70px           /* number input */
+        32px           /* unit */
+        96px;          /* ↺ Default button */
+    column-gap: 10px;
+    align-items: center;
+}
+
+/* Rows whose control is a <select> (e.g. Fix Mode) don't have a
+   number/unit input — let the select span those tracks so the Default
+   button still lines up with the others. */
+.cfg-row-spaced > select.cfg-input {
+    grid-column: 2 / span 3;
+    justify-self: start;
+    min-width: 160px;
+}
+
+/* Slider fills its grid cell. */
+.cfg-row-spaced > .cfg-slider {
+    width: 100%;
+    min-width: 0;
+}
+.cfg-row-spaced > .cfg-num-narrow {
+    width: 100%;
+}
+.cfg-row-spaced > .cfg-unit {
+    min-width: 0;
+    text-align: left;
+}
+.cfg-row-spaced > .cfg-btn-inline {
+    width: 100%;
+}
+
+/* Label with a hover tooltip (uses the native `title` attribute). The
+   dotted underline + help cursor hint that more info is available. */
+.cfg-label-tip {
+    cursor: help;
+    border-bottom: 1px dotted var(--border-color);
+    padding-bottom: 1px;
+}
+.cfg-tip-icon {
+    color: var(--accent-cyan);
+    font-size: 11px;
+    margin-left: 4px;
+    opacity: 0.75;
+}
+.cfg-label-tip:hover .cfg-tip-icon {
+    opacity: 1;
+}
+
+.cfg-navfilt-preview-wrap {
+    margin-top: 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    overflow: hidden;
+    aspect-ratio: 2 / 1;
+    width: 100%;
+}
+
+#cfg-navfilt-preview {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+

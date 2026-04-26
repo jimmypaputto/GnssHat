@@ -101,9 +101,14 @@ After startup, the server listens on port **5000**:
 
 | Tab | Description |
 |-----|-------------|
-| **Relative Map** | Canvas map — current position relative to a reference point (offset in meters N/E). Adjustable scale range. |
+| **Relative Map** | Canvas map — current position relative to a reference point (offset in meters N/E). Adjustable range (0.05 m – 30 m) with mouse-wheel zoom on hover and +/- buttons; grid auto-adapts from 1 cm (RTK fixed) up to 5 m. |
+| **Altitude** | One-axis vertical tape altimeter showing Δ altitude relative to a reference. MSL / WGS84 source toggle (origin is preserved across conversions). Same zoom controls and 1 cm grid as the Relative Map, up to ±100 m. |
 | **Terrain Map** | OpenStreetMap (Leaflet) — real-time position on a terrain map. |
 | **Sky View** | Polar sky plot with satellites (elevation/azimuth), color-coded by constellation (GPS, Galileo, GLONASS, BeiDou, SBAS, QZSS). Includes a table of tracked satellites. Available in `native` and `ros2` modes. |
+| **RF Analyzer** | Live spectrum (MON-SPAN) plus RF status (MON-RF): jamming, AGC, noise per band. Available in `native` and `ros2` modes. |
+
+Every chart has a light / dark theme toggle (🌙 / ☀️) in its toolbar; the
+choice is persisted per-chart in `localStorage`. Dark is the default.
 
 ### Navigation Data Panel
 
@@ -150,7 +155,8 @@ Visualization/
 │   ├── css/
 │   │   └── style.css      # UI styles
 │   └── js/
-│       └── map.js         # Front-end logic (maps, charts, Socket.IO, configuration)
+│       ├── map.js         # Relative map, sky view, RF analyzer, app wiring
+│       └── altitude.js    # Altitude tape (vertical one-axis altimeter)
 └── templates/
     └── index.html          # HTML template (Jinja2, conditional rendering by mode)
 ```

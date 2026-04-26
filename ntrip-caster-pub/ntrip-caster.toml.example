@@ -1,0 +1,31 @@
+# ntrip-caster configuration
+#
+# All keys are optional; defaults match the historical CLI defaults.
+# Command-line flags override values set here.
+
+[ntrip]
+host           = "0.0.0.0"
+port           = 2101
+max_clients    = 64
+# Basic-auth credentials for NTRIP rovers (leave empty for open access).
+user           = ""
+pass           = ""
+# TLS (requires building with -DNTRIP_CASTER_TLS=ON)
+tls_cert       = ""
+tls_key        = ""
+log_level      = "info"        # error | warning | info | debug
+stats_interval = 30            # seconds; 0 = off
+
+[http]
+# Built-in HTTP status page.
+enabled        = true
+host           = "0.0.0.0"
+port           = 8080
+# Basic-auth credentials for the status page.
+user           = "rtk"
+pass           = "rtkpassword"
+realm          = "ntrip-caster"
+# Static-asset directory.  Leave empty to use the install default
+# (${CMAKE_INSTALL_DATADIR}/ntrip-caster/web).  Useful for development:
+# web_root     = "/home/pi/GnssHat/ntrip-caster-pub/web"
+web_root       = ""

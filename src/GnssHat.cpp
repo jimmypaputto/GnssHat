@@ -289,15 +289,27 @@ private:
 
 static std::string readHatProduct()
 {
-    const std::string productPath = "/proc/device-tree/hat/product";
-    std::ifstream file(productPath);
-    if (!file.is_open())
-        return "";
-
-    std::string product;
-    std::getline(file, product, '\0');
-    return product;
+    return Hat::detectProduct();
 }
+
+namespace Hat
+{
+    std::string readEepromField(const std::string& field)
+    {
+        const std::string path = "/proc/device-tree/hat/" + field;
+        std::ifstream file(path);
+        if (!file.is_open())
+            return {};
+        std::string value;
+        std::getline(file, value, '\0');
+        return value;
+    }
+
+    std::string detectProduct()
+    {
+        return readEepromField("product");
+    }
+}  // namespace Hat
 
 IGnssHat* IGnssHat::create()
 {
@@ -345,6 +357,8 @@ bool validateConfig(const GnssConfig& config)
     if (!checkMeasurementRate(config.measurementRate_Hz))
         return false;
     if (!checkTimepulsePinConfig(config.timepulsePinConfig))
+        return false;
+    if (!checkNavigationFilters(config.navigationFilters))
         return false;
 
     if constexpr (std::is_same_v<StartupStrategy, M9NStartup> ||

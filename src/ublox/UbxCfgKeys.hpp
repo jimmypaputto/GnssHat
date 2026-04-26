@@ -58,6 +58,23 @@ constexpr uint32_t CFG_RATE_NAV     = 0x30210002;
 constexpr uint32_t CFG_RATE_TIMEREF = 0x20210003;
 
 constexpr uint32_t CFG_NAVSPG_DYNMODEL = 0x20110021;
+constexpr uint32_t CFG_NAVSPG_FIXMODE  = 0x20110011;  // U1, enum (1=2D,2=3D,3=Auto)
+
+// CFG-NAVSPG-INFIL_* — navigation input filters (per-SV gates + fix-start
+// thresholds). See u-blox interface description, "CFG-NAVSPG" group.
+constexpr uint32_t CFG_NAVSPG_INFIL_MINSVS   = 0x201100a1;  // U1, count
+constexpr uint32_t CFG_NAVSPG_INFIL_MAXSVS   = 0x201100a2;  // U1, count
+constexpr uint32_t CFG_NAVSPG_INFIL_MINCNO   = 0x201100a3;  // U1, dBHz
+constexpr uint32_t CFG_NAVSPG_INFIL_MINELEV  = 0x201100a4;  // I1, deg (signed)
+constexpr uint32_t CFG_NAVSPG_INFIL_NCNOTHRS = 0x201100aa;  // U1, count
+constexpr uint32_t CFG_NAVSPG_INFIL_CNOTHRS  = 0x201100ab;  // U1, dBHz
+
+// CFG-NAVSPG-OUTFIL_* — output solution masks. A candidate fix is only
+// reported as valid when all enabled thresholds are satisfied.
+constexpr uint32_t CFG_NAVSPG_OUTFIL_PDOP = 0x301100b1;  // U2, 0.1 DOP
+constexpr uint32_t CFG_NAVSPG_OUTFIL_TDOP = 0x301100b2;  // U2, 0.1 DOP
+constexpr uint32_t CFG_NAVSPG_OUTFIL_PACC = 0x301100b3;  // U2, metres
+constexpr uint32_t CFG_NAVSPG_OUTFIL_TACC = 0x301100b4;  // U2, metres
 
 constexpr uint32_t CFG_TP_TP1_ENA          = 0x10050007;
 constexpr uint32_t CFG_TP_PULSE_DEF        = 0x20050023;

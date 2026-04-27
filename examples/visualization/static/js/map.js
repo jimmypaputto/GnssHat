@@ -1969,6 +1969,11 @@ function setupTabs() {
                 if (tabName === 'rfanalyzer' && window.lastGPSData) {
                     setTimeout(() => updateRfAnalyzer(window.lastGPSData), 50);
                 }
+
+                // Re-render System panel when switching to it (uses cached data)
+                if (tabName === 'system' && window.systemPanel) {
+                    setTimeout(() => window.systemPanel.render(), 50);
+                }
             }
         });
     });

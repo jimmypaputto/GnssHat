@@ -7,6 +7,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
 #include <new>
 #include <optional>
 
@@ -97,6 +98,19 @@ static_assert(static_cast<int>(ESvQuality::CodeAndCarrierLocked2) == JP_GNSS_SV_
 static_assert(static_cast<int>(ESvQuality::CodeAndCarrierLocked3) == JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_3);
 
 static_assert(SatelliteInfo::maxNumberOfSatellites == UBLOX_MAX_SATELLITES);
+
+static_assert(static_cast<int>(EBootType::Unknown)        == JP_GNSS_BOOT_TYPE_UNKNOWN);
+static_assert(static_cast<int>(EBootType::ColdStart)      == JP_GNSS_BOOT_TYPE_COLD_START);
+static_assert(static_cast<int>(EBootType::Watchdog)       == JP_GNSS_BOOT_TYPE_WATCHDOG);
+static_assert(static_cast<int>(EBootType::HardwareReset)  == JP_GNSS_BOOT_TYPE_HARDWARE_RESET);
+static_assert(static_cast<int>(EBootType::HardwareBackup) == JP_GNSS_BOOT_TYPE_HARDWARE_BACKUP);
+static_assert(static_cast<int>(EBootType::SoftwareBackup) == JP_GNSS_BOOT_TYPE_SOFTWARE_BACKUP);
+static_assert(static_cast<int>(EBootType::SoftwareReset)  == JP_GNSS_BOOT_TYPE_SOFTWARE_RESET);
+static_assert(static_cast<int>(EBootType::VioFail)        == JP_GNSS_BOOT_TYPE_VIO_FAIL);
+static_assert(static_cast<int>(EBootType::VddXFail)       == JP_GNSS_BOOT_TYPE_VDD_X_FAIL);
+static_assert(static_cast<int>(EBootType::VddRfFail)      == JP_GNSS_BOOT_TYPE_VDD_RF_FAIL);
+static_assert(static_cast<int>(EBootType::VCoreHighFail)  == JP_GNSS_BOOT_TYPE_V_CORE_HIGH_FAIL);
+static_assert(static_cast<int>(EBootType::SystemReset)    == JP_GNSS_BOOT_TYPE_SYSTEM_RESET);
 
 static_assert(static_cast<int>(ERtkMode::Base) == JP_GNSS_RTK_MODE_BASE);
 static_assert(static_cast<int>(ERtkMode::Rover) == JP_GNSS_RTK_MODE_ROVER);
@@ -676,6 +690,65 @@ bool jp_gnss_hat_get_navigation(jp_gnss_hat_t* hat,
         return false;
 
     *navigation = convert_navigation(hat->instance->navigation());
+    return true;
+}
+
+bool jp_gnss_hat_get_system_health(jp_gnss_hat_t* hat,
+    jp_gnss_system_health_t* system_health)
+{
+    if (!hat || !system_health || !hat->instance)
+        return false;
+
+    const SystemHealth s = hat->instance->systemHealth();
+    system_health->valid          = s.valid;
+    system_health->msg_version    = s.msgVersion;
+    system_health->boot_type      =
+        static_cast<jp_gnss_boot_type_t>(s.bootType);
+    system_health->cpu_load       = s.cpuLoad;
+    system_health->cpu_load_max   = s.cpuLoadMax;
+    system_health->mem_usage      = s.memUsage;
+    system_health->mem_usage_max  = s.memUsageMax;
+    system_health->io_usage       = s.ioUsage;
+    system_health->io_usage_max   = s.ioUsageMax;
+    system_health->run_time_s     = s.runTime;
+    system_health->notice_count   = s.noticeCount;
+    system_health->warn_count     = s.warnCount;
+    system_health->error_count    = s.errorCount;
+    system_health->temperature_c  = s.temperatureC;
+    return true;
+}
+
+bool jp_gnss_hat_get_mon_ver(jp_gnss_hat_t* hat,
+    jp_gnss_mon_ver_t* mon_ver)
+{
+    if (!hat || !mon_ver || !hat->instance)
+        return false;
+
+    const std::string sw = hat->instance->swVersion();
+    const std::string hw = hat->instance->hwVersion();
+    const auto exts = hat->instance->monVerExtensions();
+
+    std::memset(mon_ver, 0, sizeof(*mon_ver));
+    mon_ver->valid = !sw.empty() || !hw.empty() || !exts.empty();
+
+    auto copy_truncated = [](char* dst, size_t dstSize, const std::string& src)
+    {
+        const size_t n = std::min(src.size(), dstSize - 1);
+        std::memcpy(dst, src.data(), n);
+        dst[n] = '\0';
+    };
+
+    copy_truncated(mon_ver->sw_version, JP_GNSS_MON_VER_STR_MAX, sw);
+    copy_truncated(mon_ver->hw_version, JP_GNSS_MON_VER_STR_MAX, hw);
+
+    const size_t nExt = std::min<size_t>(
+        exts.size(), JP_GNSS_MON_VER_MAX_EXTENSIONS);
+    mon_ver->num_extensions = static_cast<uint8_t>(nExt);
+    for (size_t i = 0; i < nExt; ++i)
+    {
+        copy_truncated(
+            mon_ver->extensions[i], JP_GNSS_MON_VER_STR_MAX, exts[i]);
+    }
     return true;
 }
 

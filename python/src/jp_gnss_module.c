@@ -25,6 +25,8 @@ static PyTypeObject TimepulsePinConfigType;
 static PyTypeObject UtcTimeType;
 static PyTypeObject DateType;
 static PyTypeObject TimeMarkType;
+static PyTypeObject SystemHealthType;
+static PyTypeObject MonVerType;
 
 typedef struct
 {
@@ -121,6 +123,34 @@ typedef struct
     uint8_t mag_q;
     uint8_t gnss_band;
 } RfBlock;
+
+typedef struct
+{
+    PyObject_HEAD
+    int valid;
+    uint8_t msg_version;
+    int boot_type;
+    uint8_t cpu_load;
+    uint8_t cpu_load_max;
+    uint8_t mem_usage;
+    uint8_t mem_usage_max;
+    uint8_t io_usage;
+    uint8_t io_usage_max;
+    uint32_t run_time_s;
+    uint16_t notice_count;
+    uint16_t warn_count;
+    uint16_t error_count;
+    int8_t temperature_c;
+} SystemHealth;
+
+typedef struct
+{
+    PyObject_HEAD
+    int valid;
+    PyObject* sw_version;   /* str */
+    PyObject* hw_version;   /* str */
+    PyObject* extensions;   /* list[str] */
+} MonVer;
 
 typedef struct
 {
@@ -664,6 +694,143 @@ static PyTypeObject RfBlockType = {
     .tp_str = (reprfunc)RfBlock_str,
     .tp_repr = (reprfunc)RfBlock_str,
     .tp_members = RfBlock_members,
+};
+
+/* ---- SystemHealth (UBX-MON-SYS) ---- */
+
+static PyObject* SystemHealth_new(PyTypeObject* type, PyObject* args,
+    PyObject* kwds)
+{
+    SystemHealth* self = (SystemHealth*)type->tp_alloc(type, 0);
+    if (self)
+    {
+        self->valid = 0;
+        self->msg_version = 0;
+        self->boot_type = 0;
+        self->cpu_load = 0;
+        self->cpu_load_max = 0;
+        self->mem_usage = 0;
+        self->mem_usage_max = 0;
+        self->io_usage = 0;
+        self->io_usage_max = 0;
+        self->run_time_s = 0;
+        self->notice_count = 0;
+        self->warn_count = 0;
+        self->error_count = 0;
+        self->temperature_c = 0;
+    }
+    return (PyObject*)self;
+}
+
+static PyMemberDef SystemHealth_members[] = {
+    {"valid",          T_BOOL,   offsetof(SystemHealth, valid),          0,
+        "True if a MON-SYS frame has been received"},
+    {"msg_version",    T_UBYTE,  offsetof(SystemHealth, msg_version),    0,
+        "Message version"},
+    {"boot_type",      T_INT,    offsetof(SystemHealth, boot_type),      0,
+        "Boot type (BootType enum)"},
+    {"cpu_load",       T_UBYTE,  offsetof(SystemHealth, cpu_load),       0,
+        "Current CPU load [%]"},
+    {"cpu_load_max",   T_UBYTE,  offsetof(SystemHealth, cpu_load_max),   0,
+        "Peak CPU load since last MON-SYS [%]"},
+    {"mem_usage",      T_UBYTE,  offsetof(SystemHealth, mem_usage),      0,
+        "Current memory usage [%]"},
+    {"mem_usage_max",  T_UBYTE,  offsetof(SystemHealth, mem_usage_max),  0,
+        "Peak memory usage since last MON-SYS [%]"},
+    {"io_usage",       T_UBYTE,  offsetof(SystemHealth, io_usage),       0,
+        "Current I/O subsystem usage [%]"},
+    {"io_usage_max",   T_UBYTE,  offsetof(SystemHealth, io_usage_max),   0,
+        "Peak I/O subsystem usage since last MON-SYS [%]"},
+    {"run_time_s",     T_UINT,   offsetof(SystemHealth, run_time_s),     0,
+        "Run time since last restart [s]"},
+    {"notice_count",   T_USHORT, offsetof(SystemHealth, notice_count),   0,
+        "Notice count"},
+    {"warn_count",     T_USHORT, offsetof(SystemHealth, warn_count),     0,
+        "Warning count"},
+    {"error_count",    T_USHORT, offsetof(SystemHealth, error_count),    0,
+        "Error count"},
+    {"temperature_c",  T_BYTE,   offsetof(SystemHealth, temperature_c),  0,
+        "Internal temperature [\xc2\xb0""C]"},
+    {NULL}
+};
+
+static PyObject* SystemHealth_str(SystemHealth* self)
+{
+    char buffer[512];
+    snprintf(buffer, sizeof(buffer),
+        "SystemHealth(valid=%s, boot_type=%d, "
+        "cpu=%u%% (max %u%%), mem=%u%% (max %u%%), io=%u%% (max %u%%), "
+        "run_time=%us, temp=%d\xc2\xb0""C, "
+        "notices=%u, warns=%u, errors=%u)",
+        self->valid ? "True" : "False",
+        self->boot_type,
+        self->cpu_load, self->cpu_load_max,
+        self->mem_usage, self->mem_usage_max,
+        self->io_usage, self->io_usage_max,
+        self->run_time_s,
+        self->temperature_c,
+        self->notice_count, self->warn_count, self->error_count);
+    return PyUnicode_FromString(buffer);
+}
+
+static PyTypeObject SystemHealthType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "jimmypaputto.gnsshat.SystemHealth",
+    .tp_doc = "UBX-MON-SYS receiver health snapshot (1 Hz update)",
+    .tp_basicsize = sizeof(SystemHealth),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_new = SystemHealth_new,
+    .tp_str = (reprfunc)SystemHealth_str,
+    .tp_repr = (reprfunc)SystemHealth_str,
+    .tp_members = SystemHealth_members,
+};
+
+/* ---- MonVer (UBX-MON-VER) ---- */
+
+static PyObject* MonVer_new(PyTypeObject* type, PyObject* args, PyObject* kwds)
+{
+    MonVer* self = (MonVer*)type->tp_alloc(type, 0);
+    if (self)
+    {
+        self->valid = 0;
+        self->sw_version = PyUnicode_FromString("");
+        self->hw_version = PyUnicode_FromString("");
+        self->extensions = PyList_New(0);
+    }
+    return (PyObject*)self;
+}
+
+static void MonVer_dealloc(MonVer* self)
+{
+    Py_XDECREF(self->sw_version);
+    Py_XDECREF(self->hw_version);
+    Py_XDECREF(self->extensions);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyMemberDef MonVer_members[] = {
+    {"valid",       T_BOOL,      offsetof(MonVer, valid),       0,
+        "True once MON-VER reply has been received"},
+    {"sw_version",  T_OBJECT_EX, offsetof(MonVer, sw_version),  0,
+        "Firmware version string"},
+    {"hw_version",  T_OBJECT_EX, offsetof(MonVer, hw_version),  0,
+        "Hardware revision string"},
+    {"extensions",  T_OBJECT_EX, offsetof(MonVer, extensions),  0,
+        "List of extension strings"},
+    {NULL}
+};
+
+static PyTypeObject MonVerType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "jimmypaputto.gnsshat.MonVer",
+    .tp_doc = "UBX-MON-VER receiver / firmware identification",
+    .tp_basicsize = sizeof(MonVer),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_new = MonVer_new,
+    .tp_dealloc = (destructor)MonVer_dealloc,
+    .tp_members = MonVer_members,
 };
 
 /* ---- RfBlockSpectrumData ---- */
@@ -2964,6 +3131,81 @@ static PyObject* GnssHat_get_navigation(GnssHat* self, PyObject* args)
     return convert_navigation_to_python(&nav);
 }
 
+static PyObject* GnssHat_get_system_health(GnssHat* self, PyObject* args)
+{
+    CHECK_HAT(self);
+    jp_gnss_system_health_t sys;
+    bool result;
+
+    Py_BEGIN_ALLOW_THREADS
+    result = jp_gnss_hat_get_system_health(self->hat, &sys);
+    Py_END_ALLOW_THREADS
+
+    if (!result)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get system health");
+        return NULL;
+    }
+
+    SystemHealth* obj =
+        (SystemHealth*)SystemHealthType.tp_alloc(&SystemHealthType, 0);
+    if (!obj)
+        return NULL;
+
+    obj->valid          = sys.valid ? 1 : 0;
+    obj->msg_version    = sys.msg_version;
+    obj->boot_type      = (int)sys.boot_type;
+    obj->cpu_load       = sys.cpu_load;
+    obj->cpu_load_max   = sys.cpu_load_max;
+    obj->mem_usage      = sys.mem_usage;
+    obj->mem_usage_max  = sys.mem_usage_max;
+    obj->io_usage       = sys.io_usage;
+    obj->io_usage_max   = sys.io_usage_max;
+    obj->run_time_s     = sys.run_time_s;
+    obj->notice_count   = sys.notice_count;
+    obj->warn_count     = sys.warn_count;
+    obj->error_count    = sys.error_count;
+    obj->temperature_c  = sys.temperature_c;
+    return (PyObject*)obj;
+}
+
+static PyObject* GnssHat_get_mon_ver(GnssHat* self, PyObject* args)
+{
+    CHECK_HAT(self);
+    jp_gnss_mon_ver_t mv;
+    bool result;
+
+    Py_BEGIN_ALLOW_THREADS
+    result = jp_gnss_hat_get_mon_ver(self->hat, &mv);
+    Py_END_ALLOW_THREADS
+
+    if (!result)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get MON-VER data");
+        return NULL;
+    }
+
+    MonVer* obj = (MonVer*)MonVerType.tp_alloc(&MonVerType, 0);
+    if (!obj)
+        return NULL;
+
+    obj->valid = mv.valid ? 1 : 0;
+    obj->sw_version = PyUnicode_FromString(mv.sw_version);
+    obj->hw_version = PyUnicode_FromString(mv.hw_version);
+    obj->extensions = PyList_New(mv.num_extensions);
+    if (!obj->sw_version || !obj->hw_version || !obj->extensions)
+    {
+        Py_DECREF(obj);
+        return NULL;
+    }
+    for (uint8_t i = 0; i < mv.num_extensions; ++i)
+    {
+        PyList_SET_ITEM(obj->extensions, i,
+            PyUnicode_FromString(mv.extensions[i]));
+    }
+    return (PyObject*)obj;
+}
+
 static PyObject* GnssHat_wait_and_get_fresh_navigation(GnssHat* self, PyObject* args)
 {
     CHECK_HAT(self);
@@ -3364,6 +3606,20 @@ static PyMethodDef GnssHat_methods[] = {
         (PyCFunction)GnssHat_get_navigation,
         METH_NOARGS,
         "Get current navigation data"
+    },
+    {
+        "get_system_health",
+        (PyCFunction)GnssHat_get_system_health,
+        METH_NOARGS,
+        "Get UBX-MON-SYS receiver health snapshot (CPU/mem/I/O load, "
+        "temperature, run time, error counters). Returns SystemHealth."
+    },
+    {
+        "get_mon_ver",
+        (PyCFunction)GnssHat_get_mon_ver,
+        METH_NOARGS,
+        "Get UBX-MON-VER receiver/firmware identification (sw_version, "
+        "hw_version, extensions). Returns MonVer."
     },
     {
         "wait_and_get_fresh_navigation",
@@ -5220,6 +5476,10 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
         return NULL;
     if (PyType_Ready(&TimeMarkType) < 0)
         return NULL;
+    if (PyType_Ready(&SystemHealthType) < 0)
+        return NULL;
+    if (PyType_Ready(&MonVerType) < 0)
+        return NULL;
     if (PyType_Ready(&NtripCasterType) < 0)
         return NULL;
     if (PyType_Ready(&NtripClientType) < 0)
@@ -5247,6 +5507,12 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
 
     Py_INCREF(&RfBlockType);
     PyModule_AddObject(m, "RfBlock", (PyObject*)&RfBlockType);
+
+    Py_INCREF(&SystemHealthType);
+    PyModule_AddObject(m, "SystemHealth", (PyObject*)&SystemHealthType);
+
+    Py_INCREF(&MonVerType);
+    PyModule_AddObject(m, "MonVer", (PyObject*)&MonVerType);
 
     Py_INCREF(&RfBlockSpectrumDataType);
     PyModule_AddObject(m, "RfBlockSpectrumData",
@@ -5493,6 +5759,22 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
         {"WARNING", JP_NTRIP_LOG_WARNING},
         {"INFO",    JP_NTRIP_LOG_INFO},
         {"DEBUG",   JP_NTRIP_LOG_DEBUG}
+    );
+
+    /* ── BootType (UBX-MON-SYS) ─────────────────────────────────────── */
+    MAKE_ENUM("BootType",
+        {"UNKNOWN",          JP_GNSS_BOOT_TYPE_UNKNOWN},
+        {"COLD_START",       JP_GNSS_BOOT_TYPE_COLD_START},
+        {"WATCHDOG",         JP_GNSS_BOOT_TYPE_WATCHDOG},
+        {"HARDWARE_RESET",   JP_GNSS_BOOT_TYPE_HARDWARE_RESET},
+        {"HARDWARE_BACKUP",  JP_GNSS_BOOT_TYPE_HARDWARE_BACKUP},
+        {"SOFTWARE_BACKUP",  JP_GNSS_BOOT_TYPE_SOFTWARE_BACKUP},
+        {"SOFTWARE_RESET",   JP_GNSS_BOOT_TYPE_SOFTWARE_RESET},
+        {"VIO_FAIL",         JP_GNSS_BOOT_TYPE_VIO_FAIL},
+        {"VDD_X_FAIL",       JP_GNSS_BOOT_TYPE_VDD_X_FAIL},
+        {"VDD_RF_FAIL",      JP_GNSS_BOOT_TYPE_VDD_RF_FAIL},
+        {"V_CORE_HIGH_FAIL", JP_GNSS_BOOT_TYPE_V_CORE_HIGH_FAIL},
+        {"SYSTEM_RESET",     JP_GNSS_BOOT_TYPE_SYSTEM_RESET}
     );
 
     #undef MAKE_ENUM

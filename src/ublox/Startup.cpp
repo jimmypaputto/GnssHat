@@ -14,12 +14,14 @@
 
 #include "common/Utils.hpp"
 #include "ublox/Geofencing.hpp"
+#include "ublox/Gnss.hpp"
 #include "ublox/SpiDriver.hpp"
 #include "ublox/UartDriver.hpp"
 #include "ublox/UbxCfgKeys.hpp"
 #include "ublox/ubxmsg/UBX_CFG_CFG.hpp"
 #include "ublox/ubxmsg/UBX_CFG_VALGET.hpp"
 #include "ublox/ubxmsg/UBX_CFG_VALSET.hpp"
+#include "ublox/ubxmsg/UBX_MON_VER.hpp"
 
 
 namespace JimmyPaputto
@@ -567,9 +569,10 @@ bool M9NStartup::execute()
         return false;
     }
 
-    constexpr std::array<uint32_t, 6> msgoutKeys = {
+    constexpr std::array<uint32_t, 7> msgoutKeys = {
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_SPAN_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,
+        UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_SPI,
@@ -596,6 +599,7 @@ bool M9NStartup::execute()
         }
     }
 
+    pollMonVer();
     return true;
 }
 
@@ -730,6 +734,7 @@ std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigVa
     {UbxCfgKeys::CFG_TXREADY_INTERFACE, {to_underlying(E_CFG_TXREADY_INTERFACE::SPI)}},
 
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_UART1,  {0x01}},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_UART1, {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_UART1, {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_UART1, {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_UART1, {0x01}},
@@ -738,6 +743,7 @@ std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigVa
 
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_SPAN_SPI,     {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,       {0x01}},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_SPI,      {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI,      {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,      {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_SPI,      {0x01}},
@@ -807,6 +813,49 @@ int StartupBase::pollRxData(uint8_t* rxBuff, const uint32_t size,
 {
     commDriver_.getRxBuff(rxBuff, size);
     return size;
+}
+
+bool StartupBase::pollMonVer(int timeoutMs)
+{
+    // UBX-MON-VER is poll-only (not periodically emitted). Send the poll and
+    // feed any received bytes through the parser so the registered MON-VER
+    // callback updates Gnss::instance() with the receiver/firmware version.
+    const auto pollFrame = ubxmsg::UBX_MON_VER::poll();
+    std::ranges::fill(rxBuff_, 0);
+    commDriver_.transmitReceive(pollFrame, rxBuff_);
+    auto unfinished = ubxParser_.parse(rxBuff_);
+
+    if (!Gnss::instance().swVersion().empty())
+        return true;
+
+    const auto deadline = std::chrono::steady_clock::now()
+        + std::chrono::milliseconds(timeoutMs);
+    do
+    {
+        std::copy(unfinished.begin(), unfinished.end(), rxBuff_.begin());
+        const uint32_t offset = unfinished.size();
+        const int bytesRead = pollRxData(
+            rxBuff_.data() + offset,
+            rxBuff_.size() - offset,
+            timeoutMs
+        );
+
+        if (bytesRead <= 0)
+            continue;
+
+        unfinished = ubxParser_.parse(
+            std::span<const uint8_t>(rxBuff_.data(), offset + bytesRead)
+        );
+
+        if (!Gnss::instance().swVersion().empty())
+            return true;
+    }
+    while (std::chrono::steady_clock::now() < deadline);
+
+    fprintf(stderr,
+        "[Startup] MON-VER poll timed out after %d ms (non-fatal)\r\n",
+        timeoutMs);
+    return true;  // best-effort: do not abort startup
 }
 
 bool StartupBase::verifyConfig(std::span<const uint32_t> keys)
@@ -997,8 +1046,9 @@ bool F10TStartup::execute()
         return false;
     }
 
-    constexpr std::array<uint32_t, 4> msgCfgKeys = {
+    constexpr std::array<uint32_t, 5> msgCfgKeys = {
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_UART1,
+        UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_UART1,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_UART1,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_UART1,
         UbxCfgKeys::CFG_MSGOUT_UBX_TIM_TM2_UART1
@@ -1037,6 +1087,7 @@ bool F10TStartup::execute()
         }
     }
 
+    pollMonVer();
     return true;
 }
 

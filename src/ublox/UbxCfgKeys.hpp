@@ -89,6 +89,7 @@ constexpr uint32_t CFG_TP_POL_TP1          = 0x1005000b;
 constexpr uint32_t CFG_TP_TIMEGRID_TP1     = 0x2005000c;
 
 constexpr uint32_t CFG_MSGOUT_UBX_MON_RF_UART1  = 0x2091035a;
+constexpr uint32_t CFG_MSGOUT_UBX_MON_SYS_UART1 = 0x2091069e;
 constexpr uint32_t CFG_MSGOUT_UBX_NAV_DOP_UART1 = 0x20910039;
 constexpr uint32_t CFG_MSGOUT_UBX_NAV_PVT_UART1 = 0x20910007;
 constexpr uint32_t CFG_MSGOUT_UBX_NAV_SAT_UART1 = 0x20910016;
@@ -97,6 +98,7 @@ constexpr uint32_t CFG_MSGOUT_UBX_TIM_TM2_UART1 = 0x20910179;
 
 constexpr uint32_t CFG_MSGOUT_UBX_MON_SPAN_SPI     = 0x2091038f;
 constexpr uint32_t CFG_MSGOUT_UBX_MON_RF_SPI       = 0x2091035d;
+constexpr uint32_t CFG_MSGOUT_UBX_MON_SYS_SPI      = 0x209106a1;
 constexpr uint32_t CFG_MSGOUT_UBX_NAV_DOP_SPI      = 0x2091003c;
 constexpr uint32_t CFG_MSGOUT_UBX_NAV_PVT_SPI      = 0x2091000a;
 constexpr uint32_t CFG_MSGOUT_UBX_NAV_SAT_SPI      = 0x20910019;

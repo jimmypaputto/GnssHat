@@ -101,6 +101,23 @@ public:
     void disableTimeMarkTrigger() override;
     void triggerTimeMark(ETimeMarkTriggerEdge edge) override;
 
+    SystemHealth systemHealth() const override
+    {
+        return gnss_.systemHealth();
+    }
+    std::string swVersion() const override
+    {
+        return gnss_.swVersion();
+    }
+    std::string hwVersion() const override
+    {
+        return gnss_.hwVersion();
+    }
+    std::vector<std::string> monVerExtensions() const override
+    {
+        return gnss_.monVerExtensions();
+    }
+
 protected:
     void stopUbloxThread();
     virtual std::optional<std::reference_wrapper<Rtcm3Store>> rtcm3Store();
@@ -185,7 +202,6 @@ public:
     {
         return gnss_.timeMark();
     }
-
     TimeMark waitAndGetFreshTimeMark() override
     {
         timeMarkNotifier_.wait(stopSource_.get_token());

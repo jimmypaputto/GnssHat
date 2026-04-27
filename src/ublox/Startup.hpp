@@ -49,6 +49,12 @@ protected:
 
     bool awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType);
     bool verifyConfig(std::span<const uint32_t> keys);
+    // Sends UBX-MON-VER poll and feeds the reply (or any pending data) to the
+    // parser for up to `timeoutMs`. The MON-VER callback registered with
+    // UbxParser populates Gnss::instance().swVersion()/hwVersion()/extensions.
+    // Always returns true (best-effort: missing MON-VER must not abort
+    // startup).
+    bool pollMonVer(int timeoutMs = 500);
     std::vector<uint8_t> getExpectedValue(const uint32_t key);
 
     ICommDriver& commDriver_;

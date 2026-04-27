@@ -484,6 +484,56 @@ typedef struct
     jp_gnss_satellite_info_t satellites[UBLOX_MAX_SATELLITES];
 } jp_gnss_navigation_t;
 
+/* ── UBX-MON-SYS — Current system performance ─────────────────────── */
+
+typedef enum
+{
+    JP_GNSS_BOOT_TYPE_UNKNOWN         = 0,
+    JP_GNSS_BOOT_TYPE_COLD_START      = 1,
+    JP_GNSS_BOOT_TYPE_WATCHDOG        = 2,
+    JP_GNSS_BOOT_TYPE_HARDWARE_RESET  = 3,
+    JP_GNSS_BOOT_TYPE_HARDWARE_BACKUP = 4,
+    JP_GNSS_BOOT_TYPE_SOFTWARE_BACKUP = 5,
+    JP_GNSS_BOOT_TYPE_SOFTWARE_RESET  = 6,
+    JP_GNSS_BOOT_TYPE_VIO_FAIL        = 7,
+    JP_GNSS_BOOT_TYPE_VDD_X_FAIL      = 8,
+    JP_GNSS_BOOT_TYPE_VDD_RF_FAIL     = 9,
+    JP_GNSS_BOOT_TYPE_V_CORE_HIGH_FAIL = 10,
+    JP_GNSS_BOOT_TYPE_SYSTEM_RESET    = 11
+} jp_gnss_boot_type_t;
+
+typedef struct
+{
+    bool valid;            /* false until the first MON-SYS frame arrives */
+    uint8_t msg_version;
+    jp_gnss_boot_type_t boot_type;
+    uint8_t cpu_load;      /* % */
+    uint8_t cpu_load_max;  /* % since last MON-SYS report */
+    uint8_t mem_usage;     /* % */
+    uint8_t mem_usage_max; /* % since last MON-SYS report */
+    uint8_t io_usage;      /* % */
+    uint8_t io_usage_max;  /* % since last MON-SYS report */
+    uint32_t run_time_s;   /* seconds since last restart */
+    uint16_t notice_count;
+    uint16_t warn_count;
+    uint16_t error_count;
+    int8_t temperature_c;  /* °C, ±2°C accuracy */
+} jp_gnss_system_health_t;
+
+/* ── UBX-MON-VER — Receiver / firmware identification ──────────────── */
+
+#define JP_GNSS_MON_VER_STR_MAX 32
+#define JP_GNSS_MON_VER_MAX_EXTENSIONS 16
+
+typedef struct
+{
+    bool valid;
+    char sw_version[JP_GNSS_MON_VER_STR_MAX];
+    char hw_version[JP_GNSS_MON_VER_STR_MAX];
+    uint8_t num_extensions;
+    char extensions[JP_GNSS_MON_VER_MAX_EXTENSIONS][JP_GNSS_MON_VER_STR_MAX];
+} jp_gnss_mon_ver_t;
+
 typedef struct
 {
     uint8_t* data;
@@ -507,6 +557,10 @@ bool jp_gnss_hat_wait_and_get_fresh_navigation(jp_gnss_hat_t* hat,
     jp_gnss_navigation_t* navigation);
 bool jp_gnss_hat_get_navigation(jp_gnss_hat_t* hat,
     jp_gnss_navigation_t* navigation);
+bool jp_gnss_hat_get_system_health(jp_gnss_hat_t* hat,
+    jp_gnss_system_health_t* system_health);
+bool jp_gnss_hat_get_mon_ver(jp_gnss_hat_t* hat,
+    jp_gnss_mon_ver_t* mon_ver);
 bool jp_gnss_hat_enable_timepulse(jp_gnss_hat_t* hat);
 void jp_gnss_hat_disable_timepulse(jp_gnss_hat_t* hat);
 bool jp_gnss_hat_start_forward_for_gpsd(jp_gnss_hat_t* hat);

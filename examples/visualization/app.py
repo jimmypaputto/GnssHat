@@ -96,6 +96,7 @@ gps_state = {
     'current_config': None,  # Current GnssHat config dict
     'hat_name': None,  # HAT name string (native mode only)
     'config_lock': threading.Lock(),  # Lock for config changes
+    'system_data': None,  # Last system_update payload (MON-SYS + MON-VER)
 }
 
 # NTRIP client state (native mode, RTK HAT rover only)
@@ -1071,6 +1072,8 @@ def native_reader_thread():
 
     hat = gps_state['hat']
     last_rf_time = 0.0
+    last_sys_time = 0.0
+    cached_mon_ver = None  # MON-VER is essentially static after boot
 
     while gps_state['running']:
         try:
@@ -1097,6 +1100,51 @@ def native_reader_thread():
                     data['rf_blocks'] = nav_to_rf_data(nav)
                 except Exception as e:
                     print(f"Error serializing RF data: {e}")
+
+            # MON-SYS + MON-VER throttled to 1 Hz on a separate `system_update`
+            # event so the System tab can render independently of GPS data.
+            if now - last_sys_time >= 1.0:
+                last_sys_time = now
+                try:
+                    sh = hat.get_system_health()
+                    if cached_mon_ver is None:
+                        try:
+                            mv = hat.get_mon_ver()
+                            if mv.valid:
+                                cached_mon_ver = {
+                                    'sw_version': str(mv.sw_version),
+                                    'hw_version': str(mv.hw_version),
+                                    'extensions': [
+                                        str(e) for e in (mv.extensions or [])
+                                    ],
+                                }
+                        except Exception as e:
+                            print(f"Error reading MON-VER: {e}")
+
+                    if sh.valid:
+                        sys_payload = {
+                            'system': {
+                                'msg_version':    int(sh.msg_version),
+                                'boot_type':      int(sh.boot_type),
+                                'cpu_load':       int(sh.cpu_load),
+                                'cpu_load_max':   int(sh.cpu_load_max),
+                                'mem_usage':      int(sh.mem_usage),
+                                'mem_usage_max':  int(sh.mem_usage_max),
+                                'io_usage':       int(sh.io_usage),
+                                'io_usage_max':   int(sh.io_usage_max),
+                                'run_time_s':     int(sh.run_time_s),
+                                'notice_count':   int(sh.notice_count),
+                                'warn_count':     int(sh.warn_count),
+                                'error_count':    int(sh.error_count),
+                                'temperature_c':  int(sh.temperature_c),
+                            },
+                            'version': cached_mon_ver,
+                        }
+                        gps_state['system_data'] = sys_payload
+                        socketio.emit(
+                            'system_update', sys_payload, namespace='/')
+                except Exception as e:
+                    print(f"Error reading system health: {e}")
 
             # Check for time mark data (non-blocking)
             if gps_state.get('time_mark_enabled'):
@@ -1644,6 +1692,8 @@ def handle_connect():
     # Send current data if available
     if gps_state['current_data']:
         emit('gps_update', gps_state['current_data'])
+    if gps_state.get('system_data'):
+        emit('system_update', gps_state['system_data'])
 
 
 @socketio.on('disconnect')

@@ -50,6 +50,9 @@
                         {% if mode in ['native', 'ros2'] %}
                         <button class="map-tab" data-tab="rfanalyzer">📊 RF Analyzer</button>
                         {% endif %}
+                        {% if mode == 'native' %}
+                        <button class="map-tab" data-tab="system">🖥️ System</button>
+                        {% endif %}
                     </div>
                     <button type="button" class="map-tab-nav" id="map-tab-next" aria-label="Next tab">›</button>
                 </div>
@@ -213,6 +216,59 @@
                             <div id="rfanalyzer-rf-status">
                                 <p class="rf-no-data">Waiting for data...</p>
                             </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if mode == 'native' %}
+                <!-- System - UBX-MON-SYS health + UBX-MON-VER firmware -->
+                <div id="system-map" class="map-view" style="display: none;">
+                    <div class="system-layout">
+                        <div class="system-card" id="system-health-card">
+                            <h3>📈 Receiver Health <span class="system-card-sub" id="system-runtime">—</span></h3>
+                            <div class="system-stats-grid">
+                                <div class="system-stat" id="sys-cpu">
+                                    <div class="system-stat-label">CPU Load</div>
+                                    <div class="system-stat-value"><span class="sys-val">—</span><span class="sys-unit">%</span></div>
+                                    <div class="system-stat-bar"><div class="system-stat-bar-fill"></div></div>
+                                    <div class="system-stat-max">peak <span class="sys-max">—</span>%</div>
+                                </div>
+                                <div class="system-stat" id="sys-mem">
+                                    <div class="system-stat-label">Memory</div>
+                                    <div class="system-stat-value"><span class="sys-val">—</span><span class="sys-unit">%</span></div>
+                                    <div class="system-stat-bar"><div class="system-stat-bar-fill"></div></div>
+                                    <div class="system-stat-max">peak <span class="sys-max">—</span>%</div>
+                                </div>
+                                <div class="system-stat" id="sys-io">
+                                    <div class="system-stat-label">I/O</div>
+                                    <div class="system-stat-value"><span class="sys-val">—</span><span class="sys-unit">%</span></div>
+                                    <div class="system-stat-bar"><div class="system-stat-bar-fill"></div></div>
+                                    <div class="system-stat-max">peak <span class="sys-max">—</span>%</div>
+                                </div>
+                                <div class="system-stat" id="sys-temp">
+                                    <div class="system-stat-label">Temperature</div>
+                                    <div class="system-stat-value"><span class="sys-val">—</span><span class="sys-unit">°C</span></div>
+                                </div>
+                            </div>
+                            <table class="system-counters">
+                                <tr><td>Boot type</td><td id="sys-boot-type">—</td></tr>
+                                <tr><td>Notices</td><td id="sys-notice-count">0</td></tr>
+                                <tr><td>Warnings</td><td id="sys-warn-count">0</td></tr>
+                                <tr><td>Errors</td><td id="sys-error-count">0</td></tr>
+                                <tr><td>MON-SYS msg version</td><td id="sys-msg-version">—</td></tr>
+                            </table>
+                        </div>
+                        <div class="system-card" id="system-version-card">
+                            <h3>🧩 Receiver Information</h3>
+                            <table class="system-info">
+                                <tr><td>Software version</td><td id="sys-sw-version">—</td></tr>
+                                <tr><td>Hardware version</td><td id="sys-hw-version">—</td></tr>
+                            </table>
+                            <h4>Extensions</h4>
+                            <ul id="sys-extensions" class="system-extensions">
+                                <li class="sys-no-data">Waiting for MON-VER…</li>
+                            </ul>
                         </div>
                     </div>
                 </div>
@@ -1232,5 +1288,8 @@
     <script src="{{ url_for('static', filename='js/map.js') }}"></script>
     <script src="{{ url_for('static', filename='js/altitude.js') }}"></script>
     <script src="{{ url_for('static', filename='js/nav-filter-preview.js') }}"></script>
+    {% if mode == 'native' %}
+    <script src="{{ url_for('static', filename='js/system.js') }}"></script>
+    {% endif %}
 </body>
 </html>

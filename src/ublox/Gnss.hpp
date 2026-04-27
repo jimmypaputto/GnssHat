@@ -9,6 +9,7 @@
 #include "common/JPGuard.hpp"
 
 #include "ublox/Navigation.hpp"
+#include "ublox/SystemHealth.hpp"
 #include "ublox/TimeMark.hpp"
 
 #include <optional>
@@ -37,6 +38,9 @@ public:
     std::string hwVersion() const;
     std::vector<std::string> monVerExtensions() const;
 
+    void systemHealth(const SystemHealth& systemHealth);
+    SystemHealth systemHealth() const;
+
     void timeMark(const TimeMark& timeMark);
     std::optional<TimeMark> timeMark() const;
 
@@ -51,6 +55,7 @@ private:
     std::string swVersion_;
     std::string hwVersion_;
     std::vector<std::string> monVerExtensions_;
+    SystemHealth systemHealth_;
     mutable JPGuard xSemaphore_;
 };
 

@@ -124,6 +124,26 @@ std::vector<std::string> Gnss::monVerExtensions() const
     return {};
 }
 
+void Gnss::systemHealth(const SystemHealth& systemHealth)
+{
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        systemHealth_ = systemHealth;
+        xSemaphore_.releaseResource();
+    }
+}
+
+SystemHealth Gnss::systemHealth() const
+{
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        auto s = systemHealth_;
+        xSemaphore_.releaseResource();
+        return s;
+    }
+    return {};
+}
+
 void Gnss::timeMark(const TimeMark& timeMark)
 {
     if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))

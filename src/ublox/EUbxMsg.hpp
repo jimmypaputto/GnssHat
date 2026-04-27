@@ -34,6 +34,7 @@ enum class EUbxMsg: std::uint8_t
     UBX_TIM_TM2      = 0x10,
     UBX_MON_SPAN     = 0x11,
     UBX_MON_VER      = 0x12,
+    UBX_MON_SYS      = 0x13,
     END_UBX
 };
 

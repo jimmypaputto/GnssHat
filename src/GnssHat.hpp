@@ -14,6 +14,7 @@
 #include "ublox/GnssConfig.hpp"
 #include "ublox/Navigation.hpp"
 #include "ublox/RTK.hpp"
+#include "ublox/SystemHealth.hpp"
 #include "ublox/TimeMark.hpp"
 
 #include "ntrip/NtripCaster.hpp"
@@ -49,6 +50,17 @@ public:
 
     virtual std::optional<TimeMark> timeMark() const = 0;
     virtual TimeMark waitAndGetFreshTimeMark() = 0;
+
+    // UBX-MON-SYS snapshot (CPU/mem/IO load, temperature, run time, error
+    // counts). Returned struct has `valid == false` if no MON-SYS frame has
+    // been received yet.
+    virtual SystemHealth systemHealth() const = 0;
+
+    // UBX-MON-VER receiver/firmware identification. Empty strings until the
+    // first MON-VER reply has been parsed (typically arrives during start()).
+    virtual std::string swVersion() const = 0;
+    virtual std::string hwVersion() const = 0;
+    virtual std::vector<std::string> monVerExtensions() const = 0;
 
     virtual bool enableTimeMarkTrigger() = 0;
     virtual void disableTimeMarkTrigger() = 0;

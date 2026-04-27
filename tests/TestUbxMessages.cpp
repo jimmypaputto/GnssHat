@@ -6,6 +6,7 @@
 #include "ublox/ubxmsg/UBX_NAV_DOP.hpp"
 #include "ublox/ubxmsg/UBX_NAV_SAT.hpp"
 #include "ublox/ubxmsg/UBX_MON_RF.hpp"
+#include "ublox/ubxmsg/UBX_MON_SYS.hpp"
 #include "ublox/ubxmsg/UBX_NAV_GEOFENCE.hpp"
 #include "ublox/ubxmsg/UBX_CFG_VALSET.hpp"
 #include "ublox/UbxParser.hpp"
@@ -405,6 +406,66 @@ TEST(NavGeofence, NotAvailable)
 
     EXPECT_EQ(nav.geofencingStatus, EGeofencingStatus::NotAvailable);
     EXPECT_EQ(nav.numberOfGeofences, 0);
+}
+
+TEST(MonSys, DeserializesPayload)
+{
+    // 6-byte UBX header (sync, class, id, len) + 24-byte payload
+    std::vector<uint8_t> frame(6 + 24, 0x00);
+
+    constexpr size_t off = 6;
+    frame[off + 0]  = 0x01;  // msgVer
+    frame[off + 1]  = 0x01;  // bootType = ColdStart
+    frame[off + 2]  = 42;    // cpuLoad
+    frame[off + 3]  = 78;    // cpuLoadMax
+    frame[off + 4]  = 30;    // memUsage
+    frame[off + 5]  = 55;    // memUsageMax
+    frame[off + 6]  = 12;    // ioUsage
+    frame[off + 7]  = 90;    // ioUsageMax
+
+    // runTime U4 LE @ +8 -> 0x12345678
+    frame[off + 8]  = 0x78;
+    frame[off + 9]  = 0x56;
+    frame[off + 10] = 0x34;
+    frame[off + 11] = 0x12;
+
+    // noticeCount U2 LE @ +12 = 7
+    frame[off + 12] = 0x07;
+    frame[off + 13] = 0x00;
+    // warnCount U2 LE @ +14 = 256
+    frame[off + 14] = 0x00;
+    frame[off + 15] = 0x01;
+    // errorCount U2 LE @ +16 = 3
+    frame[off + 16] = 0x03;
+    frame[off + 17] = 0x00;
+
+    // tempValue I1 @ +18 = -5
+    frame[off + 18] = static_cast<uint8_t>(static_cast<int8_t>(-5));
+
+    UBX_MON_SYS msg(frame);
+    const auto& sh = msg.systemHealth();
+
+    EXPECT_TRUE(sh.valid);
+    EXPECT_EQ(sh.msgVersion, 1u);
+    EXPECT_EQ(sh.bootType, EBootType::ColdStart);
+    EXPECT_EQ(sh.cpuLoad, 42u);
+    EXPECT_EQ(sh.cpuLoadMax, 78u);
+    EXPECT_EQ(sh.memUsage, 30u);
+    EXPECT_EQ(sh.memUsageMax, 55u);
+    EXPECT_EQ(sh.ioUsage, 12u);
+    EXPECT_EQ(sh.ioUsageMax, 90u);
+    EXPECT_EQ(sh.runTime, 0x12345678u);
+    EXPECT_EQ(sh.noticeCount, 7u);
+    EXPECT_EQ(sh.warnCount, 256u);
+    EXPECT_EQ(sh.errorCount, 3u);
+    EXPECT_EQ(sh.temperatureC, -5);
+}
+
+TEST(MonSys, RejectsTruncatedFrame)
+{
+    std::vector<uint8_t> frame(6 + 10, 0x00);
+    UBX_MON_SYS msg(frame);
+    EXPECT_FALSE(msg.systemHealth().valid);
 }
 
 

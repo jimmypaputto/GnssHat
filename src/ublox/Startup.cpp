@@ -1165,12 +1165,18 @@ F9PStartup::F9PStartup(ICommDriver& commDriver,
     ecv[UbxCfgKeys::CFG_SPIOUTPROT_RTCM3X] = {0x00};
 
     if (config.rtk == std::nullopt)
+    {
+        ecv[UbxCfgKeys::CFG_TMODE_MODE] =
+            {static_cast<uint8_t>(CFG_TMODE_MODE::DISABLED)};
         return;
+    }
 
     base_ = config.rtk->mode == ERtkMode::Base && config.rtk->base.has_value();
     if (!base_)
     {
         rover_ = true;
+        ecv[UbxCfgKeys::CFG_TMODE_MODE] =
+            {static_cast<uint8_t>(CFG_TMODE_MODE::DISABLED)};
         return;
     }
 
@@ -1232,11 +1238,27 @@ bool F9PStartup::execute()
         if (!result)
             return false;
     }
-    else if (rover_)
+    else
     {
-        result = rtkRoverStartup();
+        constexpr std::array<uint32_t, 1> tmodeDisableKey = {
+            UbxCfgKeys::CFG_TMODE_MODE
+        };
+        result = configure(tmodeDisableKey);
         if (!result)
+        {
+            fprintf(
+                stderr,
+                "[Startup] TMODE disable configuration failed\r\n"
+            );
             return false;
+        }
+
+        if (rover_)
+        {
+            result = rtkRoverStartup();
+            if (!result)
+                return false;
+        }
     }
 
     if (configRegistry_.getGnssConfig().saveToFlash

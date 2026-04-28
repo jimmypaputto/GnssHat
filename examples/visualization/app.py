@@ -1103,10 +1103,13 @@ def native_reader_thread():
 
             # MON-SYS + MON-VER throttled to 1 Hz on a separate `system_update`
             # event so the System tab can render independently of GPS data.
+            # NEO-M9N (L1 GNSS HAT) does not support UBX-MON-SYS, so the
+            # health block is skipped for that HAT; MON-VER is still emitted.
             if now - last_sys_time >= 1.0:
                 last_sys_time = now
+                supports_mon_sys = (
+                    gps_state.get('hat_name') != 'L1 GNSS HAT')
                 try:
-                    sh = hat.get_system_health()
                     if cached_mon_ver is None:
                         try:
                             mv = hat.get_mon_ver()
@@ -1121,9 +1124,12 @@ def native_reader_thread():
                         except Exception as e:
                             print(f"Error reading MON-VER: {e}")
 
-                    if sh.valid:
-                        sys_payload = {
-                            'system': {
+                    sys_payload = {'version': cached_mon_ver}
+
+                    if supports_mon_sys:
+                        sh = hat.get_system_health()
+                        if sh.valid:
+                            sys_payload['system'] = {
                                 'msg_version':    int(sh.msg_version),
                                 'boot_type':      int(sh.boot_type),
                                 'cpu_load':       int(sh.cpu_load),
@@ -1137,9 +1143,9 @@ def native_reader_thread():
                                 'warn_count':     int(sh.warn_count),
                                 'error_count':    int(sh.error_count),
                                 'temperature_c':  int(sh.temperature_c),
-                            },
-                            'version': cached_mon_ver,
-                        }
+                            }
+
+                    if 'system' in sys_payload or cached_mon_ver is not None:
                         gps_state['system_data'] = sys_payload
                         socketio.emit(
                             'system_update', sys_payload, namespace='/')

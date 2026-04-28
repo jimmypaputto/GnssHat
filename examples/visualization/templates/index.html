@@ -226,6 +226,7 @@
                 <!-- System - UBX-MON-SYS health + UBX-MON-VER firmware -->
                 <div id="system-map" class="map-view" style="display: none;">
                     <div class="system-layout">
+                        {% if hat_name != 'L1 GNSS HAT' %}
                         <div class="system-card" id="system-health-card">
                             <h3>📈 Receiver Health <span class="system-card-sub" id="system-runtime">—</span></h3>
                             <div class="system-stats-grid">
@@ -260,6 +261,7 @@
                                 <tr><td>MON-SYS msg version</td><td id="sys-msg-version">—</td></tr>
                             </table>
                         </div>
+                        {% endif %}
                         <div class="system-card" id="system-version-card">
                             <h3>🧩 Receiver Information</h3>
                             <table class="system-info">

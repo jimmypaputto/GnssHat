@@ -569,10 +569,9 @@ bool M9NStartup::execute()
         return false;
     }
 
-    constexpr std::array<uint32_t, 7> msgoutKeys = {
+    constexpr std::array<uint32_t, 6> msgoutKeys = {
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_SPAN_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,
-        UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_SPI,
@@ -743,7 +742,6 @@ std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigVa
 
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_SPAN_SPI,     {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,       {0x01}},
-    {UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_SPI,      {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI,      {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,      {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_SPI,      {0x01}},
@@ -1164,6 +1162,8 @@ F9PStartup::F9PStartup(ICommDriver& commDriver,
     ecv[UbxCfgKeys::CFG_SPIINPROT_SPARTN] = {0x00};
     ecv[UbxCfgKeys::CFG_SPIOUTPROT_RTCM3X] = {0x00};
 
+    ecv[UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_SPI] = {0x01};
+
     if (config.rtk == std::nullopt)
     {
         ecv[UbxCfgKeys::CFG_TMODE_MODE] =
@@ -1217,6 +1217,19 @@ bool F9PStartup::execute()
         fprintf(
             stderr,
             "[Startup] SPI protocol (RTCM3X/SPARTN) configuration failed\r\n"
+        );
+        return false;
+    }
+
+    constexpr std::array<uint32_t, 1> monSysSpiKeys = {
+        UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_SPI
+    };
+    result = configure(monSysSpiKeys);
+    if (!result)
+    {
+        fprintf(
+            stderr,
+            "[Startup] UBX-MON-SYS SPI message output configuration failed\r\n"
         );
         return false;
     }

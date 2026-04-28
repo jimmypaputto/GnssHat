@@ -30,6 +30,7 @@ public:
 
     void deserialize(std::span<const uint8_t> serialized) override
     {
+        nav_ = Geofencing::Nav{};
         nav_.iTOW = readLE<uint32_t>(serialized, 6);
         nav_.geofencingStatus = static_cast<EGeofencingStatus>(serialized[11]);
         if (nav_.geofencingStatus == EGeofencingStatus::Active)

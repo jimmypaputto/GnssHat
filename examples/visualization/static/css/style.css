@@ -133,6 +133,38 @@ header h1 {
     background: rgba(239, 68, 68, 0.1);
 }
 
+/* Round-trip latency badge next to the Connection status.
+   Matches `.status-value` metrics so both pills share the same height. */
+.status-latency {
+    margin-left: 6px;
+    padding: 4px 8px;
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+}
+.status-latency.latency-good {
+    color: var(--accent-green);
+    border-color: var(--accent-green);
+    background: rgba(34, 197, 94, 0.1);
+}
+.status-latency.latency-warn {
+    color: #f59e0b;
+    border-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+}
+.status-latency.latency-bad {
+    color: var(--accent-red);
+    border-color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.1);
+}
+.status-latency.latency-unknown {
+    opacity: 0.7;
+}
+
 .status-indicator {
     display: flex;
     align-items: center;

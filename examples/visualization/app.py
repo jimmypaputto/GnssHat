@@ -1702,6 +1702,17 @@ def handle_disconnect():
     print(f"Client disconnected")
 
 
+@socketio.on('ui_ping')
+def handle_ui_ping(_client_t0):
+    """Lightweight RTT probe.
+
+    The client times the round-trip via the Socket.IO ack callback;
+    we just need to acknowledge as fast as possible. No timestamps or
+    clock-sync involved — immune to skew between browser and server.
+    """
+    return True
+
+
 @socketio.on('reset_reference')
 def handle_reset_reference():
     """Legacy handler — reference is now managed on the frontend"""

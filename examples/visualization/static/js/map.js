@@ -836,15 +836,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function initializeSocket() {
     socket = io();
-    
+
     socket.on('connect', function() {
         console.log('Connected to server');
         updateConnectionStatus(true);
+        startLatencyProbe();
     });
-    
+
     socket.on('disconnect', function() {
         console.log('Disconnected from server');
         updateConnectionStatus(false);
+        stopLatencyProbe();
     });
     
     socket.on('connection_response', function(data) {
@@ -1084,6 +1086,56 @@ function updateConnectionStatus(connected) {
         statusEl.textContent = connected ? 'Connected' : 'Disconnected';
         statusEl.className = connected ? 'status-value connected' : 'status-value disconnected';
     }
+}
+
+// ─── Round-trip latency probe (browser ↔ Flask-SocketIO server) ─────
+// Uses Socket.IO ack callbacks: client times t0 → server acks → client
+// reads RTT from performance.now()-t0. No clock sync needed.
+let _pingTimer = null;
+let _rttEMA = null;
+const _RTT_ALPHA = 0.3;          // EMA smoothing factor
+const _PING_INTERVAL_MS = 2000;
+const _PING_TIMEOUT_MS = 5000;
+
+function startLatencyProbe() {
+    stopLatencyProbe();
+    // One immediate ping so the badge updates instantly on (re)connect.
+    sendLatencyPing();
+    _pingTimer = setInterval(sendLatencyPing, _PING_INTERVAL_MS);
+}
+
+function stopLatencyProbe() {
+    if (_pingTimer) { clearInterval(_pingTimer); _pingTimer = null; }
+    _rttEMA = null;
+    renderLatency(null);
+}
+
+function sendLatencyPing() {
+    if (!socket || !socket.connected) return;
+    const t0 = performance.now();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; renderLatency(null); }, _PING_TIMEOUT_MS);
+    socket.emit('ui_ping', t0, () => {
+        clearTimeout(timer);
+        if (timedOut) return;
+        const rtt = performance.now() - t0;
+        _rttEMA = (_rttEMA == null) ? rtt : (_RTT_ALPHA * rtt + (1 - _RTT_ALPHA) * _rttEMA);
+        renderLatency(_rttEMA);
+    });
+}
+
+function renderLatency(ms) {
+    const el = document.getElementById('connection-latency');
+    if (!el) return;
+    if (ms == null) {
+        el.textContent = '— ms';
+        el.className = 'status-latency latency-unknown';
+        return;
+    }
+    const rounded = Math.round(ms);
+    el.textContent = `${rounded} ms`;
+    el.className = 'status-latency ' +
+        (ms < 50 ? 'latency-good' : ms < 150 ? 'latency-warn' : 'latency-bad');
 }
 
 function updateGPSData(data) {

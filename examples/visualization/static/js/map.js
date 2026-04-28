@@ -6,6 +6,9 @@ const CHART_THEMES = {
         light: {
             bg: '#ffffff', grid: '#e0e0e0', axis: '#000000', axisText: '#000000',
             trail: '#22c55e', trailDot: 'rgba(34, 197, 94, 0.4)',
+            trailRtkFixed: '#f97316', trailDotRtkFixed: 'rgba(249, 115, 22, 0.4)',
+            trailRtkFloat: '#a855f7', trailDotRtkFloat: 'rgba(168, 85, 247, 0.4)',
+            trailDgnss:    '#3b82f6', trailDotDgnss:    'rgba(59, 130, 246, 0.4)',
             position: '#ef4444', positionOutline: '#ffffff',
             origin: '#000000',
             geofenceFill: 'rgba(0, 180, 255, 0.08)',
@@ -15,6 +18,9 @@ const CHART_THEMES = {
         dark: {
             bg: '#0f1220', grid: '#252844', axis: '#b8c0ff', axisText: '#e6e8ff',
             trail: '#4ade80', trailDot: 'rgba(74, 222, 128, 0.5)',
+            trailRtkFixed: '#fb923c', trailDotRtkFixed: 'rgba(251, 146, 60, 0.5)',
+            trailRtkFloat: '#c084fc', trailDotRtkFloat: 'rgba(192, 132, 252, 0.5)',
+            trailDgnss:    '#60a5fa', trailDotDgnss:    'rgba(96, 165, 250, 0.5)',
             position: '#ff6b6b', positionOutline: '#0f1220',
             origin: '#ffffff',
             geofenceFill: 'rgba(56, 189, 248, 0.12)',
@@ -30,6 +36,7 @@ const CHART_THEMES = {
             marker: '#ef4444', markerOutline: '#ffffff',
             offScale: '#f59e0b',
             trail: '#22c55e',
+            trailRtkFixed: '#f97316', trailRtkFloat: '#a855f7', trailDgnss: '#3b82f6',
             accBand: 'rgba(239, 68, 68, 0.12)', accStroke: 'rgba(239, 68, 68, 0.35)',
             delta: '#000000', waiting: '#888888',
         },
@@ -40,6 +47,7 @@ const CHART_THEMES = {
             marker: '#ff6b6b', markerOutline: '#0f1220',
             offScale: '#fbbf24',
             trail: '#4ade80',
+            trailRtkFixed: '#fb923c', trailRtkFloat: '#c084fc', trailDgnss: '#60a5fa',
             accBand: 'rgba(255, 107, 107, 0.18)', accStroke: 'rgba(255, 107, 107, 0.5)',
             delta: '#e6e8ff', waiting: '#8a93c9',
         },
@@ -98,6 +106,30 @@ function getChartPalette(name) {
     const themes = CHART_THEMES[name];
     if (!themes) return null;
     return themes[theme] || themes.dark;
+}
+
+// Map a fix-quality string (as produced by app.py's fix_quality_map) to
+// one of four trail-color buckets. Anything we don't recognise — "No Fix",
+// 2D/3D, dead-reckoning, etc. — falls into 'other' (the original green).
+function fixQualityBucket(fq) {
+    if (fq === 'RTK Fixed') return 'rtkFixed';
+    if (fq === 'RTK Float') return 'rtkFloat';
+    if (fq === 'DGPS Fix')  return 'dgnss';
+    return 'other';
+}
+
+function trailColorForBucket(pal, bucket) {
+    if (bucket === 'rtkFixed' && pal.trailRtkFixed) return pal.trailRtkFixed;
+    if (bucket === 'rtkFloat' && pal.trailRtkFloat) return pal.trailRtkFloat;
+    if (bucket === 'dgnss'    && pal.trailDgnss)    return pal.trailDgnss;
+    return pal.trail;
+}
+
+function trailDotColorForBucket(pal, bucket) {
+    if (bucket === 'rtkFixed' && pal.trailDotRtkFixed) return pal.trailDotRtkFixed;
+    if (bucket === 'rtkFloat' && pal.trailDotRtkFloat) return pal.trailDotRtkFloat;
+    if (bucket === 'dgnss'    && pal.trailDotDgnss)    return pal.trailDotDgnss;
+    return pal.trailDot;
 }
 
 // Pretty-print a metre value as either "NN cm" (sub-metre) or "N m" (≥1 m).
@@ -294,7 +326,7 @@ class GPSMap {
         };
     }
 
-    updatePositionFromLatLon(lat, lon) {
+    updatePositionFromLatLon(lat, lon, fixQuality) {
         if (!this.referencePosition) {
             if (lat !== 0.0 && lon !== 0.0) {
                 this.referencePosition = { lat, lon };
@@ -304,10 +336,11 @@ class GPSMap {
         }
 
         const offset = this.calculateOffset(lat, lon);
+        const bucket = fixQualityBucket(fixQuality);
 
         if (!this.originSet) {
             this.originSet = true;
-            this.trail = [offset];
+            this.trail = [{ x: offset.x, y: offset.y, q: bucket }];
             this.position = offset;
             this.updateScaleDisplay();
             if (this._pendingGeofences) {
@@ -320,12 +353,12 @@ class GPSMap {
         this.position = offset;
         const last = this.trail.length ? this.trail[this.trail.length - 1] : null;
         if (!last) {
-            this.trail.push(offset);
+            this.trail.push({ x: offset.x, y: offset.y, q: bucket });
         } else {
             const dx = offset.x - last.x;
             const dy = offset.y - last.y;
             if ((dx * dx + dy * dy) >= (this.trailMinStepM * this.trailMinStepM)) {
-                this.trail.push(offset);
+                this.trail.push({ x: offset.x, y: offset.y, q: bucket });
                 if (this.trail.length > this.trailMaxPoints) {
                     // Drop the oldest excess in one shot. At 5000 entries
                     // splice is sub-millisecond and only happens once per
@@ -491,18 +524,17 @@ class GPSMap {
     
     drawTrail(centerX, centerY, p) {
         if (this.trail.length < 1) return;
-        
-        this.ctx.strokeStyle = p.trail;
+
         this.ctx.lineWidth = 2;
         this.ctx.lineCap = 'round';
         this.ctx.lineJoin = 'round';
-        
+
         // Enable clipping to avoid drawing outside canvas
         this.ctx.save();
         this.ctx.beginPath();
         this.ctx.rect(0, 0, this.width, this.height);
         this.ctx.clip();
-        
+
         // Cohen–Sutherland-style trail culling.
         // At small scales (5–50 cm) most of the 5000-point trail is far
         // off-screen, but Canvas still has to walk every lineTo and
@@ -520,42 +552,71 @@ class GPSMap {
         const yMax =  this.scale + buffer;
         const inBox = (pt) =>
             pt.x >= xMin && pt.x <= xMax && pt.y >= yMin && pt.y <= yMax;
-        
-        this.ctx.beginPath();
-        let prevIn = false;
+
+        // Bucket segments by fix-quality so we issue one stroke() per
+        // colour instead of one per segment. Each Path2D collects all
+        // segments belonging to its bucket; round joins still apply
+        // within continuous same-bucket runs (we only break the path
+        // when the bucket changes, which is what we want — the colour
+        // boundary is naturally at a vertex).
+        const paths = {
+            other:    new Path2D(),
+            rtkFixed: new Path2D(),
+            rtkFloat: new Path2D(),
+            dgnss:    new Path2D(),
+        };
+
+        let prevPx = 0, prevPy = 0, prevIn = false, prevBucket = null, havePrev = false;
         for (let i = 0; i < this.trail.length; i++) {
             const point = this.trail[i];
             const curIn = inBox(point);
-            // Skip segments where both endpoints are outside the box —
-            // they couldn't possibly contribute pixels (the canvas clip
-            // would discard them anyway, but skipping the lineTo saves
-            // path construction time, which is the actual bottleneck).
-            if (!curIn && !prevIn && i > 0) {
-                prevIn = false;
+            const bucket = point.q || 'other';
+            // Skip segments where both endpoints are outside the box.
+            if (havePrev && !curIn && !prevIn) {
+                prevBucket = bucket;
                 continue;
             }
             const px = centerX + point.x * pxPerM;
             const py = centerY - point.y * pxPerM;
-            if (i === 0 || (!prevIn && curIn)) {
-                this.ctx.moveTo(px, py);
+
+            if (!havePrev) {
+                paths[bucket].moveTo(px, py);
+            } else if (bucket !== prevBucket) {
+                // Colour change: start a fresh subpath in the new bucket
+                // from the previous point so the joining segment is
+                // drawn in the destination colour.
+                paths[bucket].moveTo(prevPx, prevPy);
+                paths[bucket].lineTo(px, py);
             } else {
-                this.ctx.lineTo(px, py);
+                paths[bucket].lineTo(px, py);
             }
-            prevIn = curIn;
+
+            prevPx = px; prevPy = py; prevIn = curIn; prevBucket = bucket; havePrev = true;
         }
-        this.ctx.stroke();
-        
+
+        // Stroke each bucket once. Order: 'other' first so coloured
+        // segments paint on top at any visual overlap (negligible since
+        // segments don't overlap, but consistent).
+        const buckets = ['other', 'dgnss', 'rtkFloat', 'rtkFixed'];
+        for (const b of buckets) {
+            this.ctx.strokeStyle = trailColorForBucket(p, b);
+            this.ctx.stroke(paths[b]);
+        }
+
         this.ctx.restore();
-        
-        // Draw semi-transparent trail history dots (every 5th point)
-        this.ctx.fillStyle = p.trailDot;
-        for (let i = 0; i < this.trail.length; i += Math.max(1, Math.floor(this.trail.length / 20))) {
+
+        // Draw semi-transparent trail history dots (every Nth point).
+        // Capped at ~20 dots per frame so the per-dot fillStyle change
+        // is irrelevant performance-wise.
+        const step = Math.max(1, Math.floor(this.trail.length / 20));
+        for (let i = 0; i < this.trail.length; i += step) {
             const point = this.trail[i];
             if (!inBox(point)) continue;
             const px = centerX + point.x * pxPerM;
             const py = centerY - point.y * pxPerM;
-            
+
             if (this.isPointInCanvas(px, py)) {
+                this.ctx.fillStyle = trailDotColorForBucket(p, point.q || 'other');
                 this.ctx.beginPath();
                 this.ctx.arc(px, py, 2, 0, Math.PI * 2);
                 this.ctx.fill();
@@ -1034,7 +1095,7 @@ function updateGPSData(data) {
     window.lastGPSData = data;
     
     // Update map position — offset calculated locally
-    const offset = map.updatePositionFromLatLon(pvt.latitude, pvt.longitude);
+    const offset = map.updatePositionFromLatLon(pvt.latitude, pvt.longitude, pvt.fix_quality);
     if (offset) {
         document.getElementById('pos-x').textContent = `${offset.x.toFixed(2)} m`;
         document.getElementById('pos-y').textContent = `${offset.y.toFixed(2)} m`;

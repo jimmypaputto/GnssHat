@@ -213,7 +213,9 @@ class AltitudeTape {
 
         const delta = alt - this.referenceAltitude;
         const now = performance.now();
-        this.trail.push({ t: now, d: delta });
+        const bucket = (typeof fixQualityBucket === 'function')
+            ? fixQualityBucket(pvt.fix_quality) : 'other';
+        this.trail.push({ t: now, d: delta, q: bucket });
         // Drop everything older than the visible window.
         const cutoff = now - this.trailWindowMs;
         let i = 0;
@@ -237,7 +239,7 @@ class AltitudeTape {
             this.referenceAltitude = null;
         }
         this.originSet = this.referenceAltitude !== null;
-        this.trail = this.originSet ? [{ t: performance.now(), d: 0 }] : [];
+        this.trail = this.originSet ? [{ t: performance.now(), d: 0, q: 'other' }] : [];
     }
 
     draw() {
@@ -380,16 +382,23 @@ class AltitudeTape {
         ctx.rect(traceX0, 0, traceX1 - traceX0, this.height);
         ctx.clip();
 
-        ctx.strokeStyle = pal.trail;
         ctx.lineWidth = 2;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        ctx.beginPath();
+
+        // Bucket segments by fix-quality so we issue one stroke() per
+        // colour. Trail is bounded by `trailWindowMs`, so this is cheap.
+        const paths = {
+            other:    new Path2D(),
+            rtkFixed: new Path2D(),
+            rtkFloat: new Path2D(),
+            dgnss:    new Path2D(),
+        };
 
         const now = performance.now();
         const win = this.trailWindowMs;
         const n = this.trail.length;
-        let started = false;
+        let prevPx = 0, prevPy = 0, prevBucket = null, havePrev = false;
         for (let i = 0; i < n; i++) {
             const sample = this.trail[i];
             const age = now - sample.t;
@@ -397,10 +406,30 @@ class AltitudeTape {
             const t = age / win;                 // 0 = now, 1 = window edge
             const px = traceX1 - t * (traceX1 - traceX0);
             const py = centerY - this.metersToPixels(sample.d);
-            if (!started) { ctx.moveTo(px, py); started = true; }
-            else ctx.lineTo(px, py);
+            const bucket = sample.q || 'other';
+
+            if (!havePrev) {
+                paths[bucket].moveTo(px, py);
+            } else if (bucket !== prevBucket) {
+                // Colour change: start a fresh subpath in the new bucket
+                // from the previous point so the joining segment renders
+                // in the destination colour.
+                paths[bucket].moveTo(prevPx, prevPy);
+                paths[bucket].lineTo(px, py);
+            } else {
+                paths[bucket].lineTo(px, py);
+            }
+            prevPx = px; prevPy = py; prevBucket = bucket; havePrev = true;
         }
-        ctx.stroke();
+
+        const buckets = ['other', 'dgnss', 'rtkFloat', 'rtkFixed'];
+        const colorFor = (typeof trailColorForBucket === 'function')
+            ? trailColorForBucket
+            : (p, b) => p.trail;
+        for (const b of buckets) {
+            ctx.strokeStyle = colorFor(pal, b);
+            ctx.stroke(paths[b]);
+        }
         ctx.restore();
     }
 

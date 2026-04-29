@@ -4,3 +4,7 @@ pyserial==3.5
 pynmea2==1.19.0
 geopy==2.4.1
 orjson>=3.9
+# Optional: enables cooperative async runtime to avoid Socket.IO write-lock
+# contention. Activate by exporting GNSSHAT_ASYNC_MODE=eventlet before
+# launching app.py. Without this env var the app uses async_mode='threading'.
+eventlet>=0.35

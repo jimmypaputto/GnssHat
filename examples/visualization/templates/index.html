@@ -290,7 +290,16 @@
                                         {{ ui_info.json_encoder }}{% if ui_info.orjson_version %} (v{{ ui_info.orjson_version }}){% endif %}
                                     </td>
                                 </tr>
-                                <tr><td>Socket.IO async mode</td><td>{{ ui_info.async_mode }}</td></tr>
+                                <tr><td>Socket.IO async mode</td>
+                                    <td>
+                                        {{ ui_info.async_mode }}
+                                        {% if ui_info.eventlet_active %}
+                                            <span class="badge-good">eventlet active{% if ui_info.eventlet_version %} v{{ ui_info.eventlet_version }}{% endif %}</span>
+                                        {% elif ui_info.async_mode_requested == 'eventlet' %}
+                                            <span class="badge-bad" title="{{ ui_info.eventlet_error or 'monkey-patch did not engage' }}">eventlet requested but inactive</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
                                 <tr><td>WebSocket transport only</td><td>{{ 'yes' if ui_info.ws_transport_only else 'no' }}</td></tr>
                                 <tr><td>NTRIP push period</td><td>{{ ui_info.ntrip_tick_period_s }} s</td></tr>
                                 <tr><td>Process PID</td><td>{{ ui_info.gps_pid }}</td></tr>

@@ -3,6 +3,76 @@
 # GPS Visualization Web Application
 # Modes: native (GnssHat library), external_tty (NMEA serial), or ros2 (ROS 2 topic)
 
+# ─── Optional eventlet runtime (must run BEFORE any stdlib import that ─────
+#     pulls socket/ssl/threading, otherwise monkey_patch() can't replace
+#     them). Opt in by exporting GNSSHAT_ASYNC_MODE=eventlet. The default
+#     stays 'threading' so users without eventlet aren't surprised.
+import os as _os_bootstrap
+_REQUESTED_ASYNC_MODE = _os_bootstrap.environ.get(
+    'GNSSHAT_ASYNC_MODE', 'threading').strip().lower()
+_EVENTLET_ACTIVE = False
+_EVENTLET_VERSION = None
+_EVENTLET_ERROR = None
+if _REQUESTED_ASYNC_MODE == 'eventlet':
+    try:
+        # Eventlet 0.40+ emits a noisy `EventletDeprecationWarning` from
+        # its package __init__ via warnings.warn, *and* registers its own
+        # filter that re-enables it (so a plain simplefilter('ignore')
+        # before the import gets overridden during the import itself).
+        # `catch_warnings()` saves+restores the entire filter stack, so
+        # any filters eventlet installs at import time are rolled back.
+        import warnings as _w
+        with _w.catch_warnings():
+            _w.simplefilter('ignore')
+            import eventlet  # type: ignore
+        # Patch ssl/select/socket/thread/time/os via the default arg-less
+        # call. Older eventlet (≤0.33) accepted per-module kwargs; 0.41+
+        # removed them and patches everything supported by default.
+        eventlet.monkey_patch()
+        _EVENTLET_ACTIVE = True
+        _EVENTLET_VERSION = getattr(eventlet, '__version__', None)
+    except Exception as _e:  # pragma: no cover
+        _EVENTLET_ERROR = repr(_e)
+        # Fall back silently to threading; record the error for the
+        # System tab so the user can see why eventlet didn't engage.
+
+# Pre-resolve a *real* OS-thread `threading` module. Under eventlet the
+# patched `threading.Thread` is a greenlet, which is fatal for our
+# reader threads: they call blocking C++ bindings
+# (`wait_and_get_fresh_navigation`, `pyserial.readline`, RTCM feeders)
+# that don't yield to eventlet's hub, so the entire event loop —
+# including Socket.IO I/O and HTTP requests — would freeze. Routing
+# those reader threads through the unpatched `threading` keeps them on
+# real OS threads, which can run concurrently with the green hub
+# whenever the C++ side releases the GIL.
+if _EVENTLET_ACTIVE:
+    import eventlet.patcher as _eventlet_patcher  # type: ignore
+    _native_threading = _eventlet_patcher.original('threading')
+    _native_queue = _eventlet_patcher.original('queue')
+else:
+    import threading as _native_threading  # noqa: F401  (alias)
+    import queue as _native_queue          # noqa: F401  (alias)
+
+# ─── Cross-runtime emit bridge ─────────────────────────────────────────────
+# Under eventlet, `socketio.emit()` ultimately writes to a green-patched
+# socket via the hub. That call is only safe from inside a greenlet —
+# invoking it from a real OS thread (our blocking GnssHat / NMEA / NTRIP
+# feed readers) deadlocks the hub on its first emit, which is exactly the
+# "stalls after a few seconds" symptom we hit. The bridge below decouples
+# producers from the hub:
+#
+#   producer thread -> _safe_emit(...) -> _emit_queue.put(...)
+#                                                          |
+#                                                          v
+#   green emitter <- tpool.execute(queue.get)  (blocks in real OS thread,
+#                                               so the hub stays responsive)
+#                 -> socketio.emit(...)         (always on a greenlet now)
+#
+# Without eventlet the queue is bypassed and `_safe_emit` collapses to a
+# direct `socketio.emit` call, so the threading async_mode path is
+# unchanged.
+_emit_queue = _native_queue.Queue() if _EVENTLET_ACTIVE else None
+
 import sys
 import os
 import argparse
@@ -53,7 +123,11 @@ class _SocketIOJsonAdapter:
 
 _socketio_kwargs = {
     'cors_allowed_origins': '*',
-    'async_mode': 'threading',
+    # Use eventlet only if the monkey-patch actually succeeded; otherwise
+    # we'd hand python-socketio an async_mode whose runtime isn't really
+    # patched and weird "RuntimeError: cannot use synchronous IO" surface
+    # at the worst time (mid-emit under load).
+    'async_mode': 'eventlet' if _EVENTLET_ACTIVE else 'threading',
 }
 if _HAS_ORJSON:
     _socketio_kwargs['json'] = _SocketIOJsonAdapter
@@ -82,6 +156,48 @@ def _no_cache(response):
     return response
 
 socketio = SocketIO(app, **_socketio_kwargs)
+
+
+def _safe_emit(event, data=None, namespace='/', **kwargs):
+    """Bridged replacement for `socketio.emit`, callable from any thread.
+
+    Under eventlet, hands the event off to the green emitter via a
+    real-OS-thread-safe queue (see `_emit_queue` above). Without
+    eventlet, calls `socketio.emit` directly — identical behaviour to
+    today's `async_mode='threading'` path.
+    """
+    if _emit_queue is None:
+        return socketio.emit(event, data, namespace=namespace, **kwargs)
+    # The queue is unbounded (memory pressure on a backed-up emitter is
+    # easier to spot than a silently dropped frame), and `put` on a
+    # native queue.Queue with no maxsize never blocks the producer.
+    _emit_queue.put((event, data, namespace, kwargs))
+
+
+def _emitter_loop():
+    """Green-thread drainer for `_emit_queue`.
+
+    Started once via `socketio.start_background_task` when eventlet is
+    active. `eventlet.tpool.execute` parks the blocking `queue.get` on a
+    real OS worker thread, so the hub keeps servicing Socket.IO frames
+    while we wait for producers.
+    """
+    import eventlet.tpool as _tpool  # type: ignore
+    while True:
+        try:
+            item = _tpool.execute(_emit_queue.get)
+        except Exception as e:
+            # tpool can raise on shutdown; back off briefly and retry.
+            print(f"emitter tpool error: {e}")
+            socketio.sleep(0.1)
+            continue
+        if item is None:  # poison pill (unused today, future-proof)
+            break
+        event, data, namespace, kwargs = item
+        try:
+            socketio.emit(event, data, namespace=namespace, **kwargs)
+        except Exception as e:
+            print(f"emitter dispatch error ({event}): {e}")
 
 # ─── Quieten werkzeug access log for high-frequency polling endpoints ──────
 # The dashboard polls /api/ntrip/* /api/caster/* /api/ntrip-server/* every
@@ -325,7 +441,7 @@ def _caster_feed_thread():
                         float(nav.pvt.latitude),
                         float(nav.pvt.longitude))
                 # Emit client count update
-                socketio.emit('caster_status', {
+                _safe_emit('caster_status', {
                     'state': 'running',
                     'client_count': caster.client_count(),
                 }, namespace='/')
@@ -405,7 +521,7 @@ def start_ntrip(config):
     ntrip_state['connected'] = True
     ntrip_state['config'] = config
 
-    t = threading.Thread(target=_ntrip_corrections_thread, daemon=True)
+    t = _native_threading.Thread(target=_ntrip_corrections_thread, daemon=True)
     t.start()
     ntrip_state['corrections_thread'] = t
 
@@ -499,7 +615,7 @@ def start_caster(config):
     if config.get('local_source', False):
         stop_event = threading.Event()
         caster_state['stop_event'] = stop_event
-        t = threading.Thread(target=_caster_feed_thread, daemon=True)
+        t = _native_threading.Thread(target=_caster_feed_thread, daemon=True)
         t.start()
         caster_state['feed_thread'] = t
 
@@ -630,7 +746,7 @@ def start_server(config):
     server_state['running'] = True
     server_state['config'] = config
 
-    t = threading.Thread(target=_server_feed_thread, daemon=True)
+    t = _native_threading.Thread(target=_server_feed_thread, daemon=True)
     t.start()
     server_state['feed_thread'] = t
 
@@ -1247,7 +1363,7 @@ def native_reader_thread():
 
                     if 'system' in sys_payload or cached_mon_ver is not None:
                         gps_state['system_data'] = sys_payload
-                        socketio.emit(
+                        _safe_emit(
                             'system_update', sys_payload, namespace='/')
                 except Exception as e:
                     print(f"Error reading system health: {e}")
@@ -1280,7 +1396,7 @@ def native_reader_thread():
             if ('rf_blocks' in data
                     or (now - last_emit_time) >= (emit_period_s * 0.95)):
                 last_emit_time = now
-                socketio.emit('gps_update', data, namespace='/')
+                _safe_emit('gps_update', data, namespace='/')
 
         except Exception as e:
             print(f"Error in native reader thread: {e}")
@@ -1392,7 +1508,7 @@ def gps_reader_thread():
                 # Emit to all connected clients on RMC (arrives after GGA, GSA, GSV
                 # in NmeaForwarder cycle, so satellite data is complete)
                 if isinstance(msg, pynmea2.types.talker.RMC):
-                    socketio.emit('gps_update', data, namespace='/')
+                    _safe_emit('gps_update', data, namespace='/')
                 
             except pynmea2.ParseError as e:
                 # Ignore parse errors (incomplete/corrupted sentences)
@@ -1732,7 +1848,7 @@ def ros2_reader_thread():
             frame_id = nav_msg.header.frame_id
             if frame_id in KNOWN_HAT_NAMES and frame_id != gps_state.get('hat_name'):
                 gps_state['hat_name'] = frame_id
-                socketio.emit('hat_changed', {'hat_name': frame_id}, namespace='/')
+                _safe_emit('hat_changed', {'hat_name': frame_id}, namespace='/')
 
             pvt_data = ros2_nav_to_pvt_data(nav_msg)
 
@@ -1747,7 +1863,7 @@ def ros2_reader_thread():
                 print(f"Error serializing extra nav data: {e}")
 
             gps_state['current_data'] = data
-            socketio.emit('gps_update', data, namespace='/')
+            _safe_emit('gps_update', data, namespace='/')
 
         except Exception as e:
             print(f"Error in ROS 2 nav callback: {e}")
@@ -1805,6 +1921,10 @@ def _build_ui_info():
         'orjson_version': (orjson.__version__ if _HAS_ORJSON else None),
         'json_encoder': ('orjson' if _HAS_ORJSON else 'stdlib json'),
         'async_mode': socketio.async_mode,
+        'async_mode_requested': _REQUESTED_ASYNC_MODE,
+        'eventlet_active': _EVENTLET_ACTIVE,
+        'eventlet_version': _EVENTLET_VERSION,
+        'eventlet_error': _EVENTLET_ERROR,
         'ws_transport_only': True,  # client forces transports: ['websocket']
         'ntrip_tick_period_s': NTRIP_TICK_PERIOD_S,
         'gps_pid': os.getpid(),
@@ -1813,33 +1933,43 @@ def _build_ui_info():
 
 
 def _safe_pkg_version(modname):
-    """Best-effort version lookup. Tries module.__version__ first, then
-    importlib.metadata under the wheel's distribution name (which doesn't
-    always match the import name — e.g. flask_socketio → Flask-SocketIO,
-    socketio → python-socketio, engineio → python-engineio)."""
-    try:
-        m = __import__(modname)
-        v = getattr(m, '__version__', None)
-        if v:
-            return v
-    except Exception:
-        pass
+    """Best-effort version lookup. Prefers `importlib.metadata` (the
+    forward-compatible source of truth — Flask 3.1 deprecates
+    `flask.__version__`, and other packages will follow), and falls back
+    to `module.__version__` for libraries that don't ship metadata
+    under the expected distribution name."""
     try:
         from importlib.metadata import version, PackageNotFoundError
     except ImportError:
-        return None
+        version = None
+        PackageNotFoundError = Exception  # type: ignore[assignment]
     dist_candidates = {
+        'flask':            ['Flask', 'flask'],
         'flask_socketio':   ['Flask-SocketIO', 'flask-socketio'],
         'socketio':         ['python-socketio', 'socketio'],
         'engineio':         ['python-engineio', 'engineio'],
     }.get(modname, [modname])
-    for dist in dist_candidates:
-        try:
-            return version(dist)
-        except PackageNotFoundError:
-            continue
-        except Exception:
-            return None
+    if version is not None:
+        for dist in dist_candidates:
+            try:
+                return version(dist)
+            except PackageNotFoundError:
+                continue
+            except Exception:
+                break
+    # Last resort — some packages only expose __version__. Suppress the
+    # Flask 3.1 deprecation warning so it doesn't pollute the console
+    # for users who still hit this branch.
+    try:
+        import warnings as _w
+        with _w.catch_warnings():
+            _w.simplefilter('ignore', DeprecationWarning)
+            m = __import__(modname)
+            v = getattr(m, '__version__', None)
+        if v:
+            return v
+    except Exception:
+        pass
     return None
 
 
@@ -1951,7 +2081,7 @@ def _ntrip_tick_loop():
             continue
         try:
             payload = _build_ntrip_tick()
-            socketio.emit('ntrip_tick', payload, namespace='/')
+            _safe_emit('ntrip_tick', payload, namespace='/')
         except Exception as e:
             print(f"ntrip_tick loop error: {e}")
 
@@ -2137,18 +2267,18 @@ def api_caster_start():
     if not data:
         return jsonify({'error': 'No JSON body'}), 400
 
-    socketio.emit('caster_status',
+    _safe_emit('caster_status',
                   {'state': 'starting', 'message': 'Starting NTRIP caster...'},
                   namespace='/')
 
     ok, err = start_caster(data)
     if ok:
-        socketio.emit('caster_status',
+        _safe_emit('caster_status',
                       {'state': 'running', 'message': 'NTRIP caster running', 'client_count': 0},
                       namespace='/')
         return jsonify({'success': True})
     else:
-        socketio.emit('caster_status',
+        _safe_emit('caster_status',
                       {'state': 'error', 'message': err},
                       namespace='/')
         return jsonify({'error': err}), 500
@@ -2161,7 +2291,7 @@ def api_caster_stop():
         return jsonify({'error': 'Caster only available in native mode'}), 400
 
     stop_caster()
-    socketio.emit('caster_status',
+    _safe_emit('caster_status',
                   {'state': 'stopped', 'message': 'NTRIP caster stopped'},
                   namespace='/')
     return jsonify({'success': True})
@@ -2470,12 +2600,12 @@ def api_set_config():
                 stop_ntrip()
             if caster_state['running']:
                 stop_caster()
-                socketio.emit('caster_status',
+                _safe_emit('caster_status',
                               {'state': 'stopped', 'message': 'Caster stopped — module configuration changed'},
                               namespace='/')
 
             # 1. Stop reader thread
-            socketio.emit('config_progress', {'step': 'stop', 'message': 'Stopping reader...'}, namespace='/')
+            _safe_emit('config_progress', {'step': 'stop', 'message': 'Stopping reader...'}, namespace='/')
             gps_state['running'] = False
             if gps_state['thread']:
                 gps_state['thread'].join(timeout=5)
@@ -2484,28 +2614,28 @@ def api_set_config():
                 gps_state['thread'] = None
 
             # 2. Destroy old hat (destructor stops C++ threads & releases HW)
-            socketio.emit('config_progress', {'step': 'destroy', 'message': 'Destroying old GnssHat object...'}, namespace='/')
+            _safe_emit('config_progress', {'step': 'destroy', 'message': 'Destroying old GnssHat object...'}, namespace='/')
             if gps_state['hat']:
                 del gps_state['hat']
                 gps_state['hat'] = None
 
             # 3. Create new hat
-            socketio.emit('config_progress', {'step': 'create', 'message': 'Creating new GnssHat object...'}, namespace='/')
+            _safe_emit('config_progress', {'step': 'create', 'message': 'Creating new GnssHat object...'}, namespace='/')
             from jimmypaputto import gnsshat
             hat = gnsshat.GnssHat()
 
             # 4. Soft hot reset — preserves almanac/ephemeris for fast re-lock
-            socketio.emit('config_progress', {'step': 'reset', 'message': 'Resetting module (hot start)...'}, namespace='/')
+            _safe_emit('config_progress', {'step': 'reset', 'message': 'Resetting module (hot start)...'}, namespace='/')
             hat.soft_reset_hot_start()
             time.sleep(1)
 
             # 5. Convert and apply config
-            socketio.emit('config_progress', {'step': 'config', 'message': 'Applying configuration...'}, namespace='/')
+            _safe_emit('config_progress', {'step': 'config', 'message': 'Applying configuration...'}, namespace='/')
             config = json_to_native_config(data)
 
             if not hat.start(config):
                 del hat
-                socketio.emit('config_progress', {'step': 'error', 'message': 'hat.start() failed!'}, namespace='/')
+                _safe_emit('config_progress', {'step': 'error', 'message': 'hat.start() failed!'}, namespace='/')
                 # Try to restart with old config
                 try:
                     start_gps_native()
@@ -2514,7 +2644,7 @@ def api_set_config():
                 return jsonify({'error': 'hat.start() returned False — configuration rejected by module'}), 500
 
             # 6. Success — save state and restart reader
-            socketio.emit('config_progress', {'step': 'reader', 'message': 'Starting GNSS reader thread...'}, namespace='/')
+            _safe_emit('config_progress', {'step': 'reader', 'message': 'Starting GNSS reader thread...'}, namespace='/')
             gps_state['hat'] = hat
             gps_state['current_config'] = config
             gps_state['reference_position'] = None  # Reset so map re-calibrates
@@ -2532,14 +2662,14 @@ def api_set_config():
                     gps_state['time_mark_enabled'] = False
 
             gps_state['running'] = True
-            gps_state['thread'] = threading.Thread(target=native_reader_thread, daemon=True)
+            gps_state['thread'] = _native_threading.Thread(target=native_reader_thread, daemon=True)
             gps_state['thread'].start()
 
-            socketio.emit('config_progress', {'step': 'done', 'message': 'Configuration applied successfully!'}, namespace='/')
+            _safe_emit('config_progress', {'step': 'done', 'message': 'Configuration applied successfully!'}, namespace='/')
             return jsonify({'success': True, 'config': config_to_json_safe(config)})
 
         except Exception as e:
-            socketio.emit('config_progress', {'step': 'error', 'message': f'Error: {str(e)}'}, namespace='/')
+            _safe_emit('config_progress', {'step': 'error', 'message': f'Error: {str(e)}'}, namespace='/')
             # Try to restart with previous config using hot start
             try:
                 if not gps_state['hat'] and not gps_state['running']:
@@ -2551,7 +2681,7 @@ def api_set_config():
                     if hat.start(old_cfg):
                         gps_state['hat'] = hat
                         gps_state['running'] = True
-                        gps_state['thread'] = threading.Thread(target=native_reader_thread, daemon=True)
+                        gps_state['thread'] = _native_threading.Thread(target=native_reader_thread, daemon=True)
                         gps_state['thread'].start()
                         print("Recovery: restarted with previous config")
                     else:
@@ -2614,7 +2744,7 @@ def _ros2_set_config():
 
     try:
         srv_name = f'{_ros2_topic_prefix()}/set_config'
-        socketio.emit('config_progress',
+        _safe_emit('config_progress',
                        {'step': 'config', 'message': 'Sending config via ROS 2 service...'},
                        namespace='/')
 
@@ -2624,26 +2754,26 @@ def _ros2_set_config():
 
         resp = _ros2_call_service(SetGnssConfig, srv_name, req, timeout=30.0)
         if resp is None:
-            socketio.emit('config_progress',
+            _safe_emit('config_progress',
                            {'step': 'error', 'message': f'Service {srv_name} unavailable'},
                            namespace='/')
             return jsonify({'error': f'Service {srv_name} unavailable'}), 503
 
         if not resp.success:
-            socketio.emit('config_progress',
+            _safe_emit('config_progress',
                            {'step': 'error', 'message': f'Config rejected: {resp.message}'},
                            namespace='/')
             return jsonify({'error': resp.message}), 500
 
         gps_state['current_config'] = data
         gps_state['reference_position'] = None
-        socketio.emit('config_progress',
+        _safe_emit('config_progress',
                        {'step': 'done', 'message': 'Configuration applied successfully!'},
                        namespace='/')
         return jsonify({'success': True, 'config': data})
 
     except Exception as e:
-        socketio.emit('config_progress',
+        _safe_emit('config_progress',
                        {'step': 'error', 'message': f'Error: {str(e)}'},
                        namespace='/')
         return jsonify({'error': str(e)}), 500
@@ -2691,7 +2821,7 @@ def start_gps_native():
                 gps_state['time_mark_enabled'] = False
 
         gps_state['running'] = True
-        gps_state['thread'] = threading.Thread(target=native_reader_thread, daemon=True)
+        gps_state['thread'] = _native_threading.Thread(target=native_reader_thread, daemon=True)
         gps_state['thread'].start()
         return True
 
@@ -2723,7 +2853,7 @@ def start_gps_external_tty():
         print(f"Serial port {SERIAL_PORT} opened successfully!")
         
         gps_state['running'] = True
-        gps_state['thread'] = threading.Thread(target=gps_reader_thread, daemon=True)
+        gps_state['thread'] = _native_threading.Thread(target=gps_reader_thread, daemon=True)
         gps_state['thread'].start()
         
         return True
@@ -2743,7 +2873,7 @@ def start_gps_ros2():
         rclpy.init()
         gps_state['hat_name'] = 'L1 GNSS HAT'
         gps_state['running'] = True
-        gps_state['thread'] = threading.Thread(target=ros2_reader_thread, daemon=True)
+        gps_state['thread'] = _native_threading.Thread(target=ros2_reader_thread, daemon=True)
         gps_state['thread'].start()
         return True
     except Exception as e:
@@ -2840,6 +2970,12 @@ if __name__ == '__main__':
         print("  - From network: http://<raspberry-pi-ip>:5000")
         print("\nPress Ctrl+C to stop")
         print("=" * 60)
+
+        # Bridge real-OS-thread emits onto a greenlet under eventlet so
+        # `socketio.emit` is always invoked from the hub's context.
+        # No-op when running with async_mode='threading'.
+        if _EVENTLET_ACTIVE:
+            socketio.start_background_task(_emitter_loop)
 
         # Start the periodic NTRIP-tick pusher (replaces 5× HTTP polling
         # from the UI every 1.5 s).

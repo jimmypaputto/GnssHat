@@ -2381,6 +2381,27 @@ footer {
 #sys-warn-count.non-zero { color: #f1c40f; font-weight: 600; }
 #sys-error-count.critical { color: #e74c3c; font-weight: 600; }
 
+.badge-good,
+.badge-bad {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    vertical-align: middle;
+}
+.badge-good {
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+    border: 1px solid rgba(46, 204, 113, 0.4);
+}
+.badge-bad {
+    background: rgba(231, 76, 60, 0.15);
+    color: #e74c3c;
+    border: 1px solid rgba(231, 76, 60, 0.4);
+}
+
 .system-extensions {
     list-style: none;
     margin: 0;

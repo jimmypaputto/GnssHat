@@ -11,6 +11,53 @@ import time
 import json
 import logging
 
+# orjson is 5–10× faster than stdlib json for the dicts we ship over
+# Socket.IO (gps_update, spectrum, rf_blocks, ntrip_tick). Falling back to
+# stdlib if not installed keeps the example runnable in stripped-down envs.
+try:
+    import orjson  # type: ignore
+    _HAS_ORJSON = True
+except ImportError:
+    orjson = None  # type: ignore
+    _HAS_ORJSON = False
+
+
+class _SocketIOJsonAdapter:
+    """Minimal `json`-module-shaped adapter for python-socketio.
+
+    python-socketio expects an object with `dumps(obj) -> str` and
+    `loads(s) -> obj`. orjson.dumps returns bytes (no separators kwarg),
+    so we wrap it. `default=str` swallows the rare non-JSON-native value
+    (e.g. IntEnum subclasses, datetime, numpy scalars) instead of raising
+    inside the emit path.
+    """
+    _OPTS = (
+        orjson.OPT_NON_STR_KEYS
+        | orjson.OPT_SERIALIZE_NUMPY
+    ) if _HAS_ORJSON else 0
+
+    @staticmethod
+    def dumps(obj, *args, **kwargs):  # python-socketio passes positional only
+        return orjson.dumps(
+            obj,
+            default=str,
+            option=_SocketIOJsonAdapter._OPTS,
+        ).decode('utf-8')
+
+    @staticmethod
+    def loads(s, *args, **kwargs):
+        if isinstance(s, str):
+            s = s.encode('utf-8')
+        return orjson.loads(s)
+
+
+_socketio_kwargs = {
+    'cors_allowed_origins': '*',
+    'async_mode': 'threading',
+}
+if _HAS_ORJSON:
+    _socketio_kwargs['json'] = _SocketIOJsonAdapter
+
 # Ensure GnssHat Python bindings are findable when running as root (sudo)
 # The module is installed in the pi user's site-packages
 _pi_user_site = '/home/pi/.local/lib/python3.13/site-packages'
@@ -34,7 +81,7 @@ def _no_cache(response):
     response.headers['Expires'] = '0'
     return response
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, **_socketio_kwargs)
 
 # ─── Quieten werkzeug access log for high-frequency polling endpoints ──────
 # The dashboard polls /api/ntrip/* /api/caster/* /api/ntrip-server/* every
@@ -60,6 +107,44 @@ class _NtripPollLogFilter(logging.Filter):
         return True
 
 logging.getLogger('werkzeug').addFilter(_NtripPollLogFilter())
+
+
+# ─── Suppress Werkzeug WS-upgrade race traceback ───────────────────────────
+# When a client disconnects mid-WebSocket-upgrade (common on tab close,
+# hard refresh, or VPN reconnects), Werkzeug's dev-server WSGI bookkeeping
+# trips an internal assertion:
+#
+#   AssertionError: write() before start_response
+#
+# It's cosmetic — the connection is already torn down and other clients
+# are unaffected — but the multi-line traceback drowns the console. We
+# drop just that exact pattern (matched on the assertion message and the
+# werkzeug.serving frame) and let every other werkzeug error through.
+class _WerkzeugWsRaceFilter(logging.Filter):
+    _MARKERS = (
+        'write() before start_response',
+        'werkzeug/serving.py',
+    )
+    def filter(self, record):
+        try:
+            msg = record.getMessage()
+        except Exception:
+            msg = ''
+        # Match the "Error on request:" header line and any traceback
+        # frames carrying the markers.
+        if any(m in msg for m in self._MARKERS):
+            return False
+        if record.exc_info:
+            exc = record.exc_info[1]
+            if isinstance(exc, AssertionError) and \
+               'write() before start_response' in str(exc):
+                return False
+        return True
+
+# Werkzeug logs the traceback under both 'werkzeug' and the root logger
+# depending on the path; attach the filter to both to be safe.
+logging.getLogger('werkzeug').addFilter(_WerkzeugWsRaceFilter())
+logging.getLogger().addFilter(_WerkzeugWsRaceFilter())
 
 # Serial port configuration (external_tty mode)
 SERIAL_PORT = '/dev/jimmypaputto/gnss'
@@ -1073,6 +1158,14 @@ def native_reader_thread():
     hat = gps_state['hat']
     last_rf_time = 0.0
     last_sys_time = 0.0
+    last_emit_time = 0.0
+    # Cap UI emit rate to min(nav_rate, UI_MAX_HZ). The nav loop can be
+    # configured 1–25 Hz; emitting much faster than the browser can repaint
+    # only inflates the Socket.IO send-queue under async_mode='threading'
+    # and delays every other event (including ui_ping) on the same socket.
+    # At nav_rate ≤ UI_MAX_HZ every frame is forwarded; above that we
+    # subsample. Recomputed each loop so config changes take effect live.
+    UI_MAX_HZ = 10.0
     cached_mon_ver = None  # MON-VER is essentially static after boot
 
     while gps_state['running']:
@@ -1087,8 +1180,12 @@ def native_reader_thread():
                 'pvt': pvt_data,
             }
 
+            # Pull the heavy spectrum array out of every-frame emits and
+            # piggy-back it on the 1 Hz RF throttle below.
+            spectrum_payload = None
             try:
                 extra = nav_to_full_data(nav)
+                spectrum_payload = extra.pop('spectrum', None)
                 data.update(extra)
             except Exception as e:
                 print(f"Error serializing extra nav data: {e}")
@@ -1098,6 +1195,9 @@ def native_reader_thread():
                 last_rf_time = now
                 try:
                     data['rf_blocks'] = nav_to_rf_data(nav)
+                    # Spectrum is large; only ship it on the 1 Hz RF tick.
+                    if spectrum_payload is not None:
+                        data['spectrum'] = spectrum_payload
                 except Exception as e:
                     print(f"Error serializing RF data: {e}")
 
@@ -1162,7 +1262,25 @@ def native_reader_thread():
                     print(f"Error reading time mark: {e}")
 
             gps_state['current_data'] = data
-            socketio.emit('gps_update', data, namespace='/')
+
+            # Throttle the per-frame broadcast. `gps_state['current_data']`
+            # is always kept fresh so newly connected clients still receive
+            # the latest snapshot on connect. Force-flush whenever the heavy
+            # 1 Hz payload (rf_blocks / spectrum) is attached so the RF tab
+            # is never starved by the throttle.
+            cfg = gps_state.get('current_config') or {}
+            try:
+                nav_hz = float(cfg.get('measurement_rate_hz') or 1)
+            except (TypeError, ValueError):
+                nav_hz = 1.0
+            emit_hz = min(max(nav_hz, 1.0), UI_MAX_HZ)
+            emit_period_s = 1.0 / emit_hz
+            # Small slack so floating-point jitter doesn't drop every other
+            # frame when nav_rate ≈ UI_MAX_HZ.
+            if ('rf_blocks' in data
+                    or (now - last_emit_time) >= (emit_period_s * 0.95)):
+                last_emit_time = now
+                socketio.emit('gps_update', data, namespace='/')
 
         except Exception as e:
             print(f"Error in native reader thread: {e}")
@@ -1670,7 +1788,59 @@ def index():
         pass
     return render_template('index.html', mode=RUN_MODE,
                            hat_name=gps_state.get('hat_name'),
-                           tls_available=tls_available)
+                           tls_available=tls_available,
+                           ui_info=_build_ui_info())
+
+
+def _build_ui_info():
+    """Static info about the Python UI app, rendered into the System tab."""
+    import platform
+    info = {
+        'python': platform.python_version(),
+        'platform': f"{platform.system()} {platform.release()} ({platform.machine()})",
+        'flask': _safe_pkg_version('flask'),
+        'flask_socketio': _safe_pkg_version('flask_socketio'),
+        'python_socketio': _safe_pkg_version('socketio'),
+        'engineio': _safe_pkg_version('engineio'),
+        'orjson_version': (orjson.__version__ if _HAS_ORJSON else None),
+        'json_encoder': ('orjson' if _HAS_ORJSON else 'stdlib json'),
+        'async_mode': socketio.async_mode,
+        'ws_transport_only': True,  # client forces transports: ['websocket']
+        'ntrip_tick_period_s': NTRIP_TICK_PERIOD_S,
+        'gps_pid': os.getpid(),
+    }
+    return info
+
+
+def _safe_pkg_version(modname):
+    """Best-effort version lookup. Tries module.__version__ first, then
+    importlib.metadata under the wheel's distribution name (which doesn't
+    always match the import name — e.g. flask_socketio → Flask-SocketIO,
+    socketio → python-socketio, engineio → python-engineio)."""
+    try:
+        m = __import__(modname)
+        v = getattr(m, '__version__', None)
+        if v:
+            return v
+    except Exception:
+        pass
+    try:
+        from importlib.metadata import version, PackageNotFoundError
+    except ImportError:
+        return None
+    dist_candidates = {
+        'flask_socketio':   ['Flask-SocketIO', 'flask-socketio'],
+        'socketio':         ['python-socketio', 'socketio'],
+        'engineio':         ['python-engineio', 'engineio'],
+    }.get(modname, [modname])
+    for dist in dist_candidates:
+        try:
+            return version(dist)
+        except PackageNotFoundError:
+            continue
+        except Exception:
+            return None
+    return None
 
 
 @app.route('/api/status')
@@ -1689,22 +1859,132 @@ def api_current():
     return jsonify({'error': 'No data available'}), 404
 
 
+# ─── NTRIP push-tick (replaces 5× HTTP polling from the UI every 1.5 s) ────
+#
+# Instead of having every browser tab fire 5 parallel GETs to /api/ntrip/...
+# every 1.5 s — which serializes against the WebSocket I/O under
+# async_mode='threading' and inflates ui_ping latency — the server emits one
+# combined `ntrip_tick` event over the existing Socket.IO connection.
+NTRIP_TICK_PERIOD_S = 1.5
+_ntrip_clients = 0
+_ntrip_clients_lock = threading.Lock()
+
+
+def _build_ntrip_status_dict():
+    client = ntrip_state['client']
+    if client is None:
+        return {
+            'state': 'disconnected',
+            'connected': False,
+            'config': ntrip_state['config'],
+        }
+    try:
+        connected = client.is_connected()
+    except Exception:
+        connected = False
+    config = ntrip_state.get('config') or {}
+    auto_reconnect = config.get('auto_reconnect', False)
+    if connected:
+        state = 'connected'
+    elif ntrip_state['connected'] and auto_reconnect:
+        state = 'reconnecting'
+    elif ntrip_state['connected']:
+        state = 'error'
+    else:
+        state = 'disconnected'
+    return {'state': state, 'connected': connected, 'config': config}
+
+
+def _drain_ntrip_logs():
+    entries = []
+    while True:
+        try:
+            entries.append(_ntrip_log_queue.get_nowait())
+        except queue.Empty:
+            break
+    return entries
+
+
+def _safe_get_stats(obj):
+    if obj is None:
+        return {}
+    try:
+        return obj.get_stats() or {}
+    except Exception:
+        return {}
+
+
+def _build_ntrip_tick():
+    """Single combined snapshot for the periodic push."""
+    client_stats = {}
+    if ntrip_state['connected'] and ntrip_state['client']:
+        client_stats = _safe_get_stats(ntrip_state['client'])
+
+    caster_stats = {}
+    if caster_state['running'] and caster_state['caster']:
+        caster_stats = _safe_get_stats(caster_state['caster'])
+
+    server_stats = {}
+    if server_state['running'] and server_state['server']:
+        server_stats = _safe_get_stats(server_state['server'])
+
+    return {
+        'status': _build_ntrip_status_dict(),
+        'logs': _drain_ntrip_logs(),
+        'stats': {
+            'client': client_stats,
+            'caster': caster_stats,
+            'server': server_stats,
+        },
+    }
+
+
+def _ntrip_tick_loop():
+    """Background task that pushes `ntrip_tick` while clients are connected."""
+    while True:
+        socketio.sleep(NTRIP_TICK_PERIOD_S)
+        with _ntrip_clients_lock:
+            n = _ntrip_clients
+        if n <= 0:
+            # No subscribers; skip work entirely. Logs will still drain on
+            # the next tick once a client connects (or via the legacy GET).
+            continue
+        try:
+            payload = _build_ntrip_tick()
+            socketio.emit('ntrip_tick', payload, namespace='/')
+        except Exception as e:
+            print(f"ntrip_tick loop error: {e}")
+
+
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection"""
+    global _ntrip_clients
+    with _ntrip_clients_lock:
+        _ntrip_clients += 1
     print(f"Client connected")
     emit('connection_response', {'status': 'connected'})
-    
+
     # Send current data if available
     if gps_state['current_data']:
         emit('gps_update', gps_state['current_data'])
     if gps_state.get('system_data'):
         emit('system_update', gps_state['system_data'])
+    # Send a fresh NTRIP snapshot immediately so the new tab doesn't have to
+    # wait up to NTRIP_TICK_PERIOD_S for the first periodic broadcast.
+    try:
+        emit('ntrip_tick', _build_ntrip_tick())
+    except Exception as e:
+        print(f"ntrip_tick (on connect) error: {e}")
 
 
 @socketio.on('disconnect')
 def handle_disconnect():
     """Handle client disconnection"""
+    global _ntrip_clients
+    with _ntrip_clients_lock:
+        if _ntrip_clients > 0:
+            _ntrip_clients -= 1
     print(f"Client disconnected")
 
 
@@ -2560,7 +2840,11 @@ if __name__ == '__main__':
         print("  - From network: http://<raspberry-pi-ip>:5000")
         print("\nPress Ctrl+C to stop")
         print("=" * 60)
-        
+
+        # Start the periodic NTRIP-tick pusher (replaces 5× HTTP polling
+        # from the UI every 1.5 s).
+        socketio.start_background_task(_ntrip_tick_loop)
+
         socketio.run(app, host='0.0.0.0', port=5000, debug=False)
         
     except KeyboardInterrupt:

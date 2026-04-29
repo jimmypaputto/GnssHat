@@ -835,7 +835,13 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeSocket() {
-    socket = io();
+    // Force the WebSocket transport (no HTTP long-polling fallback).
+    // Long-polling turns every event into a separate HTTP round-trip, which
+    // multiplies server-side queue contention under the threading async-mode.
+    socket = io({
+        transports: ['websocket'],
+        upgrade: false,
+    });
 
     socket.on('connect', function() {
         console.log('Connected to server');
@@ -876,8 +882,49 @@ function initializeSocket() {
         updateCasterUI(data.state, data.message || null, data.client_count);
     });
 
-    // Unified NTRIP polling (status + logs + stats every 1.5s)
-    setInterval(pollNtrip, 1500);
+    // Unified NTRIP push: server emits one combined snapshot every ~1.5 s
+    // instead of the UI firing 5 parallel HTTP GETs. Replaces the old
+    // setInterval(pollNtrip, 1500) burst that was contending with WebSocket
+    // I/O under async_mode='threading' and inflating the latency badge.
+    socket.on('ntrip_tick', function(payload) {
+        // Don't waste DOM work when the tab isn't visible. The server keeps
+        // emitting (cheap), but we skip rendering on hidden tabs.
+        if (typeof document !== 'undefined' &&
+            document.visibilityState === 'hidden') {
+            return;
+        }
+        if (!payload) return;
+
+        // Status
+        if (payload.status) {
+            try { updateNtripUI(payload.status.state); } catch (e) {}
+        }
+
+        // Logs
+        var entries = payload.logs || [];
+        for (var i = 0; i < entries.length; i++) {
+            var data = entries[i];
+            var panelId = data.source === 'server'
+                ? 'ntrip-server-log'
+                : data.source === 'caster'
+                    ? 'ntrip-caster-log'
+                    : 'ntrip-client-log';
+            var panel = document.getElementById(panelId);
+            if (!panel) continue;
+            var line = document.createElement('div');
+            line.className = 'log-' + (data.level || 'info');
+            line.textContent = data.message || '';
+            panel.appendChild(line);
+            while (panel.childNodes.length > 200) panel.removeChild(panel.firstChild);
+            panel.scrollTop = panel.scrollHeight;
+        }
+
+        // Stats
+        var stats = payload.stats || {};
+        renderNtripStats(stats.client, 'ntrip-client-stats', 'nc-stat');
+        renderNtripStats(stats.caster, 'ntrip-caster-stats', 'cs-stat');
+        renderNtripStats(stats.server, 'ntrip-server-stats', 'sv-stat');
+    });
 }
 
 var _ntripPolling = false;
@@ -928,42 +975,50 @@ function formatBytes(b) {
     return b + ' B';
 }
 
+function renderNtripStats(s, containerId, prefix) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    if (!s || (!s.frames_tx && !s.frames_rx && !s.uptime_ms)) {
+        container.style.display = 'none';
+        return;
+    }
+    container.style.display = '';
+    var el;
+    el = document.getElementById(prefix + '-uptime');
+    if (el) el.textContent = formatUptime(s.uptime_ms || 0);
+    el = document.getElementById(prefix + '-bytes-rx');
+    if (el) el.textContent = formatBytes(s.bytes_rx || 0);
+    el = document.getElementById(prefix + '-bytes-tx');
+    if (el) el.textContent = formatBytes(s.bytes_tx || 0);
+    el = document.getElementById(prefix + '-frames-rx');
+    if (el) el.textContent = (s.frames_rx || 0).toLocaleString();
+    el = document.getElementById(prefix + '-frames-tx');
+    if (el) el.textContent = (s.frames_tx || 0).toLocaleString();
+    el = document.getElementById(prefix + '-last-frame');
+    if (el) {
+        var age = s.last_frame_age_ms || 0;
+        el.textContent = age < 1000 ? age + ' ms ago' : (age / 1000).toFixed(1) + ' s ago';
+        el.style.color = age < 5000 ? '#88cc88' : age < 30000 ? '#ffaa00' : '#ff4444';
+    }
+    el = document.getElementById(prefix + '-avg-interval');
+    if (el) el.textContent = (s.avg_inter_frame_ms || 0).toFixed(0) + ' ms';
+    el = document.getElementById(prefix + '-msg-types');
+    if (el && s.message_types) {
+        var parts = [];
+        Object.keys(s.message_types).sort(function(a,b){return a-b;}).forEach(function(k) {
+            parts.push(k + '×' + s.message_types[k]);
+        });
+        el.textContent = parts.join(', ') || '—';
+    }
+}
+
 function pollNtripStats(url, containerId, prefix) {
+    // Legacy HTTP path, still callable for debugging. The live UI now gets
+    // stats pushed via the `ntrip_tick` Socket.IO event (see initializeSocket).
     var container = document.getElementById(containerId);
     if (!container) return;
     fetch(url).then(function(r) { return r.json(); }).then(function(s) {
-        if (!s || (!s.frames_tx && !s.frames_rx && !s.uptime_ms)) {
-            container.style.display = 'none';
-            return;
-        }
-        container.style.display = '';
-        var el;
-        el = document.getElementById(prefix + '-uptime');
-        if (el) el.textContent = formatUptime(s.uptime_ms || 0);
-        el = document.getElementById(prefix + '-bytes-rx');
-        if (el) el.textContent = formatBytes(s.bytes_rx || 0);
-        el = document.getElementById(prefix + '-bytes-tx');
-        if (el) el.textContent = formatBytes(s.bytes_tx || 0);
-        el = document.getElementById(prefix + '-frames-rx');
-        if (el) el.textContent = (s.frames_rx || 0).toLocaleString();
-        el = document.getElementById(prefix + '-frames-tx');
-        if (el) el.textContent = (s.frames_tx || 0).toLocaleString();
-        el = document.getElementById(prefix + '-last-frame');
-        if (el) {
-            var age = s.last_frame_age_ms || 0;
-            el.textContent = age < 1000 ? age + ' ms ago' : (age / 1000).toFixed(1) + ' s ago';
-            el.style.color = age < 5000 ? '#88cc88' : age < 30000 ? '#ffaa00' : '#ff4444';
-        }
-        el = document.getElementById(prefix + '-avg-interval');
-        if (el) el.textContent = (s.avg_inter_frame_ms || 0).toFixed(0) + ' ms';
-        el = document.getElementById(prefix + '-msg-types');
-        if (el && s.message_types) {
-            var parts = [];
-            Object.keys(s.message_types).sort(function(a,b){return a-b;}).forEach(function(k) {
-                parts.push(k + '×' + s.message_types[k]);
-            });
-            el.textContent = parts.join(', ') || '—';
-        }
+        renderNtripStats(s, containerId, prefix);
     }).catch(function() {});
 }
 
@@ -1104,6 +1159,16 @@ function startLatencyProbe() {
     _pingTimer = setInterval(sendLatencyPing, _PING_INTERVAL_MS);
 }
 
+if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+            // Reset EMA so a stale background value doesn't dominate.
+            _rttEMA = null;
+            sendLatencyPing();
+        }
+    });
+}
+
 function stopLatencyProbe() {
     if (_pingTimer) { clearInterval(_pingTimer); _pingTimer = null; }
     _rttEMA = null;
@@ -1112,6 +1177,13 @@ function stopLatencyProbe() {
 
 function sendLatencyPing() {
     if (!socket || !socket.connected) return;
+    // Skip while the tab is hidden: setInterval/setTimeout get throttled to
+    // ~1 Hz in background tabs, which makes the ack callback look slow and
+    // pollutes the EMA. Resume on visibilitychange below.
+    if (typeof document !== 'undefined' &&
+        document.visibilityState === 'hidden') {
+        return;
+    }
     const t0 = performance.now();
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; renderLatency(null); }, _PING_TIMEOUT_MS);

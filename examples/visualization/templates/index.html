@@ -273,6 +273,30 @@
                                 <li class="sys-no-data">Waiting for MON-VER…</li>
                             </ul>
                         </div>
+
+                        {% if ui_info %}
+                        <div class="system-card" id="system-uiapp-card">
+                            <h3>🐍 UI Application</h3>
+                            <table class="system-info">
+                                <tr><td>Python</td><td>{{ ui_info.python }}</td></tr>
+                                <tr><td>Platform</td><td>{{ ui_info.platform }}</td></tr>
+                                <tr><td>Flask</td><td>{{ ui_info.flask or '—' }}</td></tr>
+                                <tr><td>Flask-SocketIO</td><td>{{ ui_info.flask_socketio or '—' }}</td></tr>
+                                <tr><td>python-socketio</td><td>{{ ui_info.python_socketio or '—' }}</td></tr>
+                                <tr><td>Engine.IO</td><td>{{ ui_info.engineio or '—' }}</td></tr>
+                                <tr>
+                                    <td>JSON encoder</td>
+                                    <td>
+                                        {{ ui_info.json_encoder }}{% if ui_info.orjson_version %} (v{{ ui_info.orjson_version }}){% endif %}
+                                    </td>
+                                </tr>
+                                <tr><td>Socket.IO async mode</td><td>{{ ui_info.async_mode }}</td></tr>
+                                <tr><td>WebSocket transport only</td><td>{{ 'yes' if ui_info.ws_transport_only else 'no' }}</td></tr>
+                                <tr><td>NTRIP push period</td><td>{{ ui_info.ntrip_tick_period_s }} s</td></tr>
+                                <tr><td>Process PID</td><td>{{ ui_info.gps_pid }}</td></tr>
+                            </table>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
                 {% endif %}

@@ -2240,7 +2240,17 @@ footer {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 16px;
-    align-items: start;
+    /* `stretch` makes cards in the same grid row share the height of the
+     * tallest sibling, which keeps the dashboard tidy even when one card
+     * (e.g. Receiver Information with many extensions) is much taller. */
+    align-items: stretch;
+}
+
+.system-card {
+    /* So the inner content can flex / push the bottom edge to fill the
+     * stretched height. */
+    display: flex;
+    flex-direction: column;
 }
 
 @media (max-width: 1100px) {

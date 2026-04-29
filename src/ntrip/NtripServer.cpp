@@ -58,8 +58,24 @@ namespace JimmyPaputto
 
         reconnectCount_ = 0;
 
-        if (!connectInternal())
+        const bool initialOk = connectInternal();
+
+        // If auto-reconnect is enabled, always spawn the monitor thread —
+        // even when the initial handshake failed — so its exponential
+        // backoff loop can keep retrying in the background. This lets the
+        // caller (e.g. a systemd service) start successfully and stay up
+        // while the caster is unreachable or rejecting requests, instead
+        // of exiting and being throttled by systemd's StartLimit.
+        if (!initialOk && !autoReconnect_)
             return false;
+
+        if (!initialOk)
+        {
+            log(ENtripLogLevel::Warning,
+                "[NtripServer] Initial connect failed; auto-reconnect "
+                "will keep trying with exponential backoff (%u..%u ms)",
+                reconnectInitialMs_, reconnectMaxMs_);
+        }
 
         monitorThread_ = std::jthread([this](std::stop_token st)
                                       { monitorLoop(st); });

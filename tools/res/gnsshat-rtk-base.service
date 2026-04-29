@@ -3,8 +3,13 @@ Description=GNSS RTK Base Station (Jimmy Paputto)
 Documentation=https://github.com/jimmypaputto/GnssHat
 After=network-online.target
 Wants=network-online.target
-StartLimitBurst=5
-StartLimitIntervalSec=60
+# The tool itself keeps trying to reach the NTRIP caster with exponential
+# backoff (NtripServer auto-reconnect), so we only need the systemd start
+# limiter as a safety net for genuine startup faults (bad config, missing
+# HAT, etc.). Keep the burst small but spread it over a longer window so
+# transient issues don't latch the unit into a failed state.
+StartLimitBurst=10
+StartLimitIntervalSec=600
 
 [Service]
 Type=notify
@@ -20,6 +25,11 @@ ExecStart=/usr/local/bin/gnsshat-rtk-base --config /etc/gnsshat/rtk-base.toml
 
 Restart=on-failure
 RestartSec=5
+# Stepwise restart backoff (systemd >= v254): each failure adds
+# RestartSec until RestartMaxDelaySec is reached. Older systemd versions
+# silently ignore these directives and fall back to a constant RestartSec.
+RestartSteps=10
+RestartMaxDelaySec=300
 
 # Exit code 78 (EX_CONFIG) is used for unrecoverable config problems,
 # such as "HAT not detected" or "wrong HAT for RTK base". Do not loop

@@ -575,16 +575,35 @@ int main(int argc, char* argv[])
         if (cfg.ntripTlsEnabled)
             server->setUseTls(true, cfg.ntripTlsVerifyPeer);
 
-        if (!server->connect())
+        // With auto-reconnect enabled, NtripServer::connect() returns true
+        // even if the initial handshake failed — its monitor thread will
+        // keep retrying with exponential backoff. We therefore only treat
+        // this as fatal when auto-reconnect is OFF, so a transient caster
+        // outage at startup doesn't trip systemd's StartLimit.
+        const bool connectOk = server->connect();
+        if (!connectOk)
         {
-            logLine(LogLvl::Error, "Failed to connect to %s:%u/%s",
+            logLine(LogLvl::Error,
+                    "Failed to connect to %s:%u/%s (auto-reconnect disabled)",
                     cfg.ntripHost.c_str(), cfg.ntripPort, cfg.ntripMountpoint.c_str());
             delete server;
             delete hat;
             return 1;
         }
-        logLine(LogLvl::Info, "Connected to NTRIP caster %s:%u/%s",
-                cfg.ntripHost.c_str(), cfg.ntripPort, cfg.ntripMountpoint.c_str());
+        if (server->isConnected())
+        {
+            logLine(LogLvl::Info, "Connected to NTRIP caster %s:%u/%s",
+                    cfg.ntripHost.c_str(), cfg.ntripPort, cfg.ntripMountpoint.c_str());
+        }
+        else
+        {
+            logLine(LogLvl::Warning,
+                    "NTRIP caster %s:%u/%s unreachable; retrying in background "
+                    "with exponential backoff (%u..%u ms)",
+                    cfg.ntripHost.c_str(), cfg.ntripPort, cfg.ntripMountpoint.c_str(),
+                    cfg.ntripReconnectInitialMs, cfg.ntripReconnectMaxMs);
+            sdNotifyRaw("STATUS=NTRIP caster unreachable; retrying in background");
+        }
     }
 
     // ── Notify systemd we're up and configure watchdog ──────────────

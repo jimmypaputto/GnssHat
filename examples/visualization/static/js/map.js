@@ -208,13 +208,28 @@ class GPSMap {
         this.originSet = false; // Whether reference position has been set
         this.geofences = []; // Array of {offsetX, offsetY, radius} in meters
         this.referencePosition = null; // {lat, lon} — set on first valid fix
-        
+
+        // Pan offset in CSS pixels: shifts the logical (0, 0) world point
+        // away from the canvas centre. Set by mouse/touch drag, reset on
+        // double-click or via the recenter button. Independent of scale,
+        // so zooming keeps the panned view stable around the canvas
+        // centre — same convention as web map UIs.
+        this.panX = 0;
+        this.panY = 0;
+        // Active pointer ids → starting drag state. We only treat a
+        // gesture as a pan while exactly one pointer is down; on the
+        // second pointer down we cancel the pan and let attachPinchZoom
+        // own the gesture.
+        this._panPointers = new Map();
+        this._panActiveId = null;
+
         // Animation
         this.animationFrame = null;
-        
+
         // Setup
         this.setupCanvas();
         this.setupScaleSlider();
+        this.setupPan();
         this.startAnimation();
         
         // Handle window resize
@@ -275,6 +290,99 @@ class GPSMap {
         if (valEl) valEl.textContent = `±${formatMeters(this.scale)}`;
         this.updateScaleDisplay();
         this.requestRedraw();
+    }
+
+    setupPan() {
+        // Drag-to-pan via Pointer Events. We listen on the wrapper (not
+        // the canvas) so the cursor tracks beyond the canvas edge if the
+        // user drags outside, and we play nicely with the existing pinch
+        // handler that already grabs `touchstart/move` for two-finger
+        // gestures.
+        const wrapper = this.canvas.parentElement;
+        if (!wrapper) return;
+        wrapper.style.touchAction = 'none';     // suppress browser pan/zoom
+        wrapper.style.cursor = 'grab';
+
+        const onDown = (e) => {
+            // Only react to primary mouse button / touch / pen.
+            if (e.button !== undefined && e.button !== 0) return;
+            this._panPointers.set(e.pointerId, {
+                x: e.clientX, y: e.clientY,
+                startPanX: this.panX, startPanY: this.panY,
+                moved: false,
+            });
+            if (this._panPointers.size === 1) {
+                this._panActiveId = e.pointerId;
+                wrapper.style.cursor = 'grabbing';
+                try { wrapper.setPointerCapture(e.pointerId); } catch (_) {}
+            } else {
+                // Pinch starting — abandon the pan, restore its origin so
+                // the gesture doesn't end up shifted.
+                if (this._panActiveId !== null) {
+                    const s = this._panPointers.get(this._panActiveId);
+                    if (s) { this.panX = s.startPanX; this.panY = s.startPanY; }
+                    this._panActiveId = null;
+                    wrapper.style.cursor = 'grab';
+                    this.requestRedraw();
+                }
+            }
+        };
+        const onMove = (e) => {
+            if (this._panActiveId !== e.pointerId) return;
+            const s = this._panPointers.get(e.pointerId);
+            if (!s) return;
+            const dx = e.clientX - s.x;
+            const dy = e.clientY - s.y;
+            if (!s.moved && (dx * dx + dy * dy) < 9) return;   // 3 px deadzone
+            s.moved = true;
+            this.panX = s.startPanX + dx;
+            this.panY = s.startPanY + dy;
+            this._updateRecenterButton();
+            this.requestRedraw();
+        };
+        const onUp = (e) => {
+            this._panPointers.delete(e.pointerId);
+            if (this._panActiveId === e.pointerId) {
+                this._panActiveId = null;
+                wrapper.style.cursor = 'grab';
+                try { wrapper.releasePointerCapture(e.pointerId); } catch (_) {}
+            }
+            // If a pinch finishes and one pointer remains, promote it.
+            if (this._panPointers.size === 1 && this._panActiveId === null) {
+                const [id, s] = this._panPointers.entries().next().value;
+                s.startPanX = this.panX; s.startPanY = this.panY;
+                s.x = e.clientX; s.y = e.clientY;     // approximate — fine for resume
+                this._panActiveId = id;
+                wrapper.style.cursor = 'grabbing';
+            }
+        };
+        wrapper.addEventListener('pointerdown', onDown);
+        wrapper.addEventListener('pointermove', onMove);
+        wrapper.addEventListener('pointerup', onUp);
+        wrapper.addEventListener('pointercancel', onUp);
+
+        // Double-click / double-tap to recenter.
+        wrapper.addEventListener('dblclick', () => this.recenter());
+
+        // Recenter button (optional — only wires up if present in DOM).
+        const btn = document.getElementById('recenter-btn');
+        if (btn) btn.addEventListener('click', () => this.recenter());
+        this._updateRecenterButton();
+    }
+
+    recenter() {
+        if (this.panX === 0 && this.panY === 0) return;
+        this.panX = 0;
+        this.panY = 0;
+        this._updateRecenterButton();
+        this.requestRedraw();
+    }
+
+    _updateRecenterButton() {
+        const btn = document.getElementById('recenter-btn');
+        if (!btn) return;
+        const panned = (this.panX !== 0 || this.panY !== 0);
+        btn.style.display = panned ? '' : 'none';
     }
 
     setScale(value) {
@@ -425,10 +533,14 @@ class GPSMap {
         const p = getChartPalette('relative');
         this.ctx.fillStyle = p.bg;
         this.ctx.fillRect(0, 0, this.width, this.height);
-        
-        // Calculate center
-        const centerX = this.width / 2;
-        const centerY = this.height / 2;
+
+        // Calculate centre, shifted by the user's pan offset. Every
+        // sub-draw routine takes (centerX, centerY) so propagating the
+        // shift here is enough — except drawGrid, which used to walk
+        // outward from the centre and now needs to fill the whole
+        // viewport (handled inside drawGrid itself).
+        const centerX = this.width / 2 + this.panX;
+        const centerY = this.height / 2 + this.panY;
         
         // Draw grid
         this.drawGrid(centerX, centerY, p);
@@ -449,35 +561,46 @@ class GPSMap {
     drawGrid(centerX, centerY, p) {
         this.ctx.strokeStyle = p.grid;
         this.ctx.lineWidth = 1;
-        
+
         // Dynamic grid spacing based on current scale
         const gridSpacing = this.getGridSpacing();
-        
-        // Draw grid lines symmetrically from center (0,0 always has a crossing)
-        for (let i = 0; i <= this.scale; i += gridSpacing) {
-            const offset = this.metersToPixels(i);
-            
-            // Positive side: vertical line at +i, horizontal line at +i
-            this.ctx.beginPath();
-            this.ctx.moveTo(centerX + offset, 0);
-            this.ctx.lineTo(centerX + offset, this.height);
-            this.ctx.stroke();
-            
-            this.ctx.beginPath();
-            this.ctx.moveTo(0, centerY - offset);
-            this.ctx.lineTo(this.width, centerY - offset);
-            this.ctx.stroke();
-            
-            // Negative side (skip 0 to avoid double-drawing)
-            if (i > 0) {
+
+        // Hard cap: clamp the number of lines we'll draw per axis. Without
+        // this, an extreme pan (drag the world miles off-screen at 5 cm
+        // scale) could ask for thousands of stroke()s per frame. 400 lines
+        // covers any reasonable viewport; beyond that we bail silently.
+        const MAX_LINES = 400;
+
+        // World-space bounds of the visible viewport, given the panned
+        // centre. We then iterate grid indices that fall inside.
+        const halfSize = Math.min(this.width, this.height) / 2;
+        const pxPerM = (halfSize * 0.9) / this.scale;
+        const xMinW = (0 - centerX) / pxPerM;
+        const xMaxW = (this.width - centerX) / pxPerM;
+        // Y is inverted in screen space (canvas y grows downward).
+        const yMinW = (centerY - this.height) / pxPerM;
+        const yMaxW = (centerY - 0) / pxPerM;
+
+        const iXmin = Math.ceil(xMinW / gridSpacing);
+        const iXmax = Math.floor(xMaxW / gridSpacing);
+        const iYmin = Math.ceil(yMinW / gridSpacing);
+        const iYmax = Math.floor(yMaxW / gridSpacing);
+
+        if ((iXmax - iXmin) <= MAX_LINES) {
+            for (let i = iXmin; i <= iXmax; i++) {
+                const x = centerX + i * gridSpacing * pxPerM;
                 this.ctx.beginPath();
-                this.ctx.moveTo(centerX - offset, 0);
-                this.ctx.lineTo(centerX - offset, this.height);
+                this.ctx.moveTo(x, 0);
+                this.ctx.lineTo(x, this.height);
                 this.ctx.stroke();
-                
+            }
+        }
+        if ((iYmax - iYmin) <= MAX_LINES) {
+            for (let i = iYmin; i <= iYmax; i++) {
+                const y = centerY - i * gridSpacing * pxPerM;
                 this.ctx.beginPath();
-                this.ctx.moveTo(0, centerY + offset);
-                this.ctx.lineTo(this.width, centerY + offset);
+                this.ctx.moveTo(0, y);
+                this.ctx.lineTo(this.width, y);
                 this.ctx.stroke();
             }
         }
@@ -544,12 +667,14 @@ class GPSMap {
         // so the segment that crosses the edge still draws correctly).
         const halfSize = Math.min(this.width, this.height) / 2;
         const pxPerM = (halfSize * 0.9) / this.scale;
-        // World-space bounds in meters (a bit larger than viewport).
+        // World-space bounds of the visible viewport, given the panned
+        // centre, plus a small buffer so the segment crossing each edge
+        // still gets drawn.
         const buffer = this.scale * 0.1;
-        const xMin = -this.scale - buffer;
-        const xMax =  this.scale + buffer;
-        const yMin = -this.scale - buffer;
-        const yMax =  this.scale + buffer;
+        const xMin = (0 - centerX) / pxPerM - buffer;
+        const xMax = (this.width - centerX) / pxPerM + buffer;
+        const yMin = (centerY - this.height) / pxPerM - buffer;
+        const yMax = (centerY - 0) / pxPerM + buffer;
         const inBox = (pt) =>
             pt.x >= xMin && pt.x <= xMax && pt.y >= yMin && pt.y <= yMax;
 

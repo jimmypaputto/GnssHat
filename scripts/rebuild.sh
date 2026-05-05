@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
+cd ..
+
 BUILD_DIR="build"
 
 DO_CLEAN=false

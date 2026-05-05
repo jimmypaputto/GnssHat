@@ -717,7 +717,7 @@ namespace JimmyPaputto
                 return; // Need more data
 
             // Verify CRC-24Q over header + payload
-            uint32_t computed = crc24q(parseBuffer_.data(), 3u + payloadLen);
+            uint32_t computed = Rtcm3Parser::crc24q(parseBuffer_.data(), 3u + payloadLen);
             uint32_t received =
                 (static_cast<uint32_t>(parseBuffer_[3 + payloadLen]) << 16) |
                 (static_cast<uint32_t>(parseBuffer_[4 + payloadLen]) << 8) |

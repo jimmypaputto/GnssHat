@@ -10,7 +10,7 @@ option(BUILD_TOOLS "Build CLI tools (gnsshat-info, gnsshat-probe)" ON)
 option(BUILD_TESTS "Build unit tests (requires GTest)" OFF)
 option(NTRIP_TLS_SUPPORT "Enable TLS for NTRIP connections (requires OpenSSL)" OFF)
 
-set(LIBGPIOD_VERSION 2)
+set(LIBGPIOD_VERSION 1)
 add_compile_definitions(LIBGPIOD_VERSION=${LIBGPIOD_VERSION})
 
 set(CMAKE_CXX_STANDARD 20)

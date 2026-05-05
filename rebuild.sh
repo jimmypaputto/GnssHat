@@ -20,7 +20,7 @@ usage() {
     echo "  help       Show this message"
     echo ""
     echo "Extra arguments are passed to cmake, e.g.:"
-    echo "  ./$(basename "$0") clean install -DCMAKE_BUILD_TYPE=Release"
+    echo "  ./$(basename "$0") clean install -DBUILD_PYTHON=OFF"
     echo ""
     echo "Purge and install require root."
     echo "  sudo ./$(basename "$0") purge install"

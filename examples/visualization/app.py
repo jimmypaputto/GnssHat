@@ -2986,5 +2986,8 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print("\n\nShutdown requested...")
     finally:
+        if _EVENTLET_ACTIVE:
+            import eventlet.tpool as _tpool
+            _tpool.killall()
         stop_gps()
         print("Server stopped. Goodbye!")

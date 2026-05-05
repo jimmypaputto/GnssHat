@@ -16,9 +16,6 @@
 namespace JimmyPaputto
 {
 
-/// CRC-24Q checksum used by RTCM 3.x framing (table-driven).
-uint32_t crc24q(const uint8_t* data, size_t length);
-
 class Rtcm3Parser final
 {
 public:
@@ -29,6 +26,7 @@ public:
         std::vector<uint8_t>& unfinishedFrame
     );
 
+    static uint32_t crc24q(const uint8_t* data, size_t length);
 private:
     void extractFrames(
         std::span<uint8_t> buffer,

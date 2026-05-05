@@ -61,7 +61,7 @@ namespace
         frame.push_back(0x00);
 
         size_t crcDataLen = 3 + dataLength;
-        uint32_t crc = crc24q(frame.data(), crcDataLen);
+        uint32_t crc = Rtcm3Parser::crc24q(frame.data(), crcDataLen);
         frame.push_back((crc >> 16) & 0xFF);
         frame.push_back((crc >> 8) & 0xFF);
         frame.push_back(crc & 0xFF);

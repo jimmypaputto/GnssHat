@@ -51,13 +51,7 @@ public:
     virtual std::optional<TimeMark> timeMark() const = 0;
     virtual TimeMark waitAndGetFreshTimeMark() = 0;
 
-    // UBX-MON-SYS snapshot (CPU/mem/IO load, temperature, run time, error
-    // counts). Returned struct has `valid == false` if no MON-SYS frame has
-    // been received yet.
     virtual SystemHealth systemHealth() const = 0;
-
-    // UBX-MON-VER receiver/firmware identification. Empty strings until the
-    // first MON-VER reply has been parsed (typically arrives during start()).
     virtual std::string swVersion() const = 0;
     virtual std::string hwVersion() const = 0;
     virtual std::vector<std::string> monVerExtensions() const = 0;
@@ -74,14 +68,14 @@ public:
 
 namespace Hat
 {
-    // Reads /proc/device-tree/hat/<field>. Returns empty string if the field
-    // is missing or the HAT EEPROM device-tree entry is not present. Does NOT
-    // touch hardware.
-    std::string readEepromField(const std::string& field);
+// Reads /proc/device-tree/hat/<field>. Returns empty string if the field
+// is missing or the HAT EEPROM device-tree entry is not present. Does NOT
+// touch hardware.
+std::string readEepromField(const std::string& field);
 
-    // Convenience: returns the HAT product name (e.g. "L1/L5 GNSS RTK HAT"),
-    // or an empty string if no HAT is detected.
-    std::string detectProduct();
+// Convenience: returns the HAT product name (e.g. "L1/L5 GNSS RTK HAT"),
+// or an empty string if no HAT is detected.
+std::string detectProduct();
 }
 
 namespace Utils

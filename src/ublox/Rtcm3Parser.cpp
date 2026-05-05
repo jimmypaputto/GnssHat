@@ -118,9 +118,9 @@ uint16_t Rtcm3Parser::getFrameId(std::span<const uint8_t> frame)
     return msgId;
 }
 
-uint32_t crc24q(const uint8_t* data, size_t length)
+uint32_t Rtcm3Parser::crc24q(const uint8_t* data, size_t length)
 {
-    static const uint32_t table[256] = {
+    static constexpr uint32_t table[256] = {
         0x000000,0x864CFB,0x8AD50D,0x0C99F6,0x93E6E1,0x15AA1A,0x1933EC,0x9F7F17,
         0xA18139,0x27CDC2,0x2B5434,0xAD18CF,0x3267D8,0xB42B23,0xB8B2D5,0x3EFE2E,
         0xC54E89,0x430272,0x4F9B84,0xC9D77F,0x56A868,0xD0E493,0xDC7D65,0x5A319E,

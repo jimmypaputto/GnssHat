@@ -5,10 +5,7 @@
 #ifndef GNSS_HAT_HPP_
 #define GNSS_HAT_HPP_
 
-#define GNSS_HAT_VERSION_MAJOR 1
-#define GNSS_HAT_VERSION_MINOR 0
-#define GNSS_HAT_VERSION_PATCH 0
-#define GNSS_HAT_VERSION "1.0.0"
+#include "Version.hpp"
 
 #include <string>
 #include <string_view>
@@ -17,8 +14,12 @@
 #include "ublox/GnssConfig.hpp"
 #include "ublox/Navigation.hpp"
 #include "ublox/RTK.hpp"
+#include "ublox/SystemHealth.hpp"
 #include "ublox/TimeMark.hpp"
 
+#include "ntrip/NtripCaster.hpp"
+#include "ntrip/NtripClient.hpp"
+#include "ntrip/NtripServer.hpp"
 
 namespace JimmyPaputto
 {
@@ -50,6 +51,11 @@ public:
     virtual std::optional<TimeMark> timeMark() const = 0;
     virtual TimeMark waitAndGetFreshTimeMark() = 0;
 
+    virtual SystemHealth systemHealth() const = 0;
+    virtual std::string swVersion() const = 0;
+    virtual std::string hwVersion() const = 0;
+    virtual std::vector<std::string> monVerExtensions() const = 0;
+
     virtual bool enableTimeMarkTrigger() = 0;
     virtual void disableTimeMarkTrigger() = 0;
     virtual void triggerTimeMark(
@@ -59,6 +65,18 @@ public:
 
     virtual ~IGnssHat() = default;
 };
+
+namespace Hat
+{
+// Reads /proc/device-tree/hat/<field>. Returns empty string if the field
+// is missing or the HAT EEPROM device-tree entry is not present. Does NOT
+// touch hardware.
+std::string readEepromField(const std::string& field);
+
+// Convenience: returns the HAT product name (e.g. "L1/L5 GNSS RTK HAT"),
+// or an empty string if no HAT is detected.
+std::string detectProduct();
+}
 
 namespace Utils
 {

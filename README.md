@@ -1,4 +1,9 @@
-# JP_GNSS_HAT
+# Gnsshat Library
+
+| Branch | Debian | Pi 4 | Pi 5 |
+|--------|--------|------|------|
+| `master` | [![Debian CI](https://img.shields.io/github/actions/workflow/status/jimmypaputto/gnssHat/generic-ci.yml?branch=master&label=Debian%20CI&logo=debian)](https://github.com/jimmypaputto/gnssHat/actions/workflows/generic-ci.yml) | [![Pi 4 CI](https://img.shields.io/github/actions/workflow/status/jimmypaputto/gnssHat/pi4-ci.yml?branch=master&label=Pi%204%20CI&logo=raspberrypi)](https://github.com/jimmypaputto/gnssHat/actions/workflows/pi4-ci.yml) | [![Pi 5 CI](https://img.shields.io/github/actions/workflow/status/jimmypaputto/gnssHat/pi5-ci.yml?branch=master&label=Pi%205%20CI&logo=raspberrypi)](https://github.com/jimmypaputto/gnssHat/actions/workflows/pi5-ci.yml) |
+| `develop` | [![Debian CI](https://img.shields.io/github/actions/workflow/status/jimmypaputto/gnssHat/generic-ci.yml?branch=develop&label=Debian%20CI&logo=debian)](https://github.com/jimmypaputto/gnssHat/actions/workflows/generic-ci.yml) | [![Pi 4 CI](https://img.shields.io/github/actions/workflow/status/jimmypaputto/gnssHat/pi4-ci.yml?branch=develop&label=Pi%204%20CI&logo=raspberrypi)](https://github.com/jimmypaputto/gnssHat/actions/workflows/pi4-ci.yml) | [![Pi 5 CI](https://img.shields.io/github/actions/workflow/status/jimmypaputto/gnssHat/pi5-ci.yml?branch=develop&label=Pi%205%20CI&logo=raspberrypi)](https://github.com/jimmypaputto/gnssHat/actions/workflows/pi5-ci.yml) |
 
 Driver library for Jimmy Paputto GNSS HATs on Raspberry Pi. Handles the full u-blox UBX protocol and provides a high-level API in C++, C and Python. Buy our HATs at [jimmypaputto.com](https://jimmypaputto.com) - if you have custom u-blox hardware, most of the code will still be useful.
 
@@ -26,6 +31,19 @@ For Python bindings you also need:
 sudo apt-get install python3-dev
 ```
 
+For CLI tools (`gnsshat-rtk-base`) you also need **toml11** (TOML config parser):
+
+```sh
+# If packaged on your distro:
+sudo apt-get install libtoml11-dev
+
+# Or install from source:
+git clone https://github.com/ToruNiina/toml11.git -b v4.2.0
+cd toml11
+cmake -B build
+sudo cmake --install build
+```
+
 ### Build & install
 
 ```sh
@@ -35,15 +53,16 @@ mkdir -p build && cd build
 cmake .. -DBUILD_PYTHON=ON -DBUILD_EXAMPLES=ON
 make
 sudo make install
-sudo ldconfig
 ```
 
-| Flag | Description |
-|------|-------------|
-| `BUILD_PYTHON` | Build and install the Python CPython extension module |
-| `BUILD_EXAMPLES` | Build all C and C++ examples. Binaries are symlinked into `examples/BinariesSymlinks/` for convenience |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `BUILD_PYTHON` | OFF | Build and install the Python CPython extension module |
+| `BUILD_EXAMPLES` | OFF | Build all C and C++ examples. Binaries are symlinked into `examples/bin/` for convenience |
+| `BUILD_TOOLS` | ON | Build CLI tools (`gnsshat-info`, `gnsshat-probe`, `gnsshat-rtk-base`). Requires toml11 |
+| `BUILD_TESTS` | OFF | Build unit tests (requires GTest). Run with `ctest` |
 
-Both flags are optional.
+All flags are optional.
 
 ### Build/First run troubleshooting
 
@@ -205,6 +224,8 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 
 Utility functions in `JimmyPaputto::Utils`: `eFixQuality2string()`, `jammingState2string()`, `utcTimeFromGnss_ISO8601()`, etc.
 
+HAT detection helpers in `JimmyPaputto::Hat`: `detectProduct()` (returns the HAT product name from the device-tree EEPROM without instantiating `IGnssHat`) and `readEepromField(field)` (generic EEPROM field reader).
+
 ### C
 
 Include `<jimmypaputto/GnssHat.h>`. All functions are prefixed with `jp_gnss_hat_` (lifecycle/navigation) or `jp_gnss_` (config helpers, string converters). See the C example above and the header for the full list.
@@ -262,7 +283,7 @@ auto frame = hat->rtk()->base()->getRtcm3Frame(1077);         // specific messag
 hat->rtk()->rover()->applyCorrections(corrections);
 ```
 
-See the RTK examples in `examples/CPP/RTK/` and `examples/Python/rtk_base.py` / `rtk_rover.py` for complete base+rover setups including NTRIP client usage.
+See the RTK examples in `examples/cpp/rtk/` and `examples/python/rtk_base.py` / `rtk_rover.py` for complete base+rover setups including NTRIP client usage.
 
 ### Time Base (L1/L5 TIME HAT only)
 
@@ -295,7 +316,7 @@ GnssConfig config {
 };
 ```
 
-See the TimeBase examples in `examples/CPP/TimeBase/`, `examples/C/TimeBase/` and `examples/Python/time_base.py`.
+See the TimeBase examples in `examples/cpp/time-base/`, `examples/c/time-base/` and `examples/python/time_base.py`.
 
 ### TimeMark (L1/L5 TIME HAT only)
 
@@ -330,7 +351,7 @@ printf("rising TOW: %u ms + %u ns, accuracy: %u ns\n",
     tm.towRising_ms, tm.towSubRising_ns, tm.accuracyEstimate_ns);
 ```
 
-See the TimeMark examples in `examples/CPP/TimeMark/`, `examples/C/TimeMark/` and `examples/Python/time_mark.py`.
+See the TimeMark examples in `examples/cpp/time-mark/`, `examples/c/time-mark/` and `examples/python/time_mark.py`.
 
 ### Geofencing
 
@@ -346,30 +367,40 @@ The library can forward NMEA sentences (GGA, RMC, GSA, GSV, ZDA) to a virtual se
 
 **USB shortcut (L1 HAT & RTK HAT):** The L1 GNSS HAT and L1/L5 RTK HAT have an exposed USB port connected directly to the u-blox module. Plug a USB cable from the HAT to the Raspberry Pi and the module appears as `/dev/ttyACM0` - gpsd can read it directly without the bridge daemon or the library. This is the simplest way to get gpsd running on these two HATs.
 
-See [`examples/GpsdIntegration/`](examples/GpsdIntegration/) for a ready-to-use systemd daemon, USB setup, and configuration scripts.
+See [`examples/gpsd-integration/`](examples/gpsd-integration/) for a ready-to-use systemd daemon, USB setup, and configuration scripts.
 
 ### Time Server
 
-A complete guide for setting up a PPS-disciplined time server using chrony + gpsd is available in [`examples/TimeServer/`](examples/TimeServer/).
+A complete guide for setting up a PPS-disciplined time server using chrony + gpsd is available in [`examples/time-server/`](examples/time-server/).
+
+### RTK Base Station service
+
+The `gnsshat-rtk-base` CLI tool ([`tools/gnsshat-rtk-base.cpp`](tools/gnsshat-rtk-base.cpp)) runs a full RTK base station with a local NTRIP caster or a remote NTRIP server. It takes a TOML config file (see [`tools/example-rtk-base.toml`](tools/example-rtk-base.toml)) with CLI overrides. Install as a systemd service with:
+
+```bash
+sudo tools/scripts/install-rtk-base-service.sh
+sudo systemctl start gnsshat-rtk-base
+journalctl -u gnsshat-rtk-base -f
+```
 
 ## Examples
 
 | Directory | Language | Description |
 |-----------|----------|-------------|
-| `examples/CPP/PrintNavigation` | C++ | Print position, speed, time, fix info |
-| `examples/CPP/PrintSatellites` | C++ | Per-satellite table with signal quality |
-| `examples/CPP/Geofencing` | C++ | Configure and monitor geofences |
-| `examples/CPP/JammingDetector` | C++ | RF interference monitoring |
-| `examples/CPP/TimepulseInterrupt` | C++ | Timepulse synchronization |
-| `examples/CPP/HotStart` | C++ | Cold vs hot start timing benchmark |
-| `examples/CPP/RTK` | C++ | RTK base station and rover |
-| `examples/CPP/TimeBase` | C++ | Time base mode for improved time accuracy |
-| `examples/CPP/TimeMark` | C++ | EXTINT time mark event timestamping |
-| `examples/C/` | C | Same set of examples using the C API |
-| `examples/Python/` | Python | Same set + JSON config loader + NTRIP rover ([README](examples/Python/README.md)) |
-| `examples/GpsdIntegration/` | C++ | Systemd daemon for gpsd bridging ([README](examples/GpsdIntegration/README.md)) |
-| `examples/TimeServer/` | -- | PPS time server setup guide ([README](examples/TimeServer/README.md)) |
-| `examples/Visualization/` | Python/JS | Flask web app with live maps, skyview, and config editor ([README](examples/Visualization/README.md)) |
+| `examples/cpp/print-navigation` | C++ | Print position, speed, time, fix info |
+| `examples/cpp/print-satellites` | C++ | Per-satellite table with signal quality |
+| `examples/cpp/geofencing` | C++ | Configure and monitor geofences |
+| `examples/cpp/jamming-detector` | C++ | RF interference monitoring |
+| `examples/cpp/timepulse-interrupt` | C++ | Timepulse synchronization |
+| `examples/cpp/hot-start` | C++ | Cold vs hot start timing benchmark |
+| `examples/cpp/rtk` | C++ | RTK base station and rover |
+| `examples/cpp/time-base` | C++ | Time base mode for improved time accuracy |
+| `examples/cpp/time-mark` | C++ | EXTINT time mark event timestamping |
+| `examples/c/` | C | Same set of examples using the C API |
+| `examples/python/` | Python | Same set + JSON config loader + NTRIP server/rover ([README](examples/python/README.md)) |
+| `examples/gpsd-integration/` | C++ | Systemd daemon for gpsd bridging ([README](examples/gpsd-integration/README.md)) |
+| `examples/time-server/` | -- | PPS time server setup guide ([README](examples/time-server/README.md)) |
+| `examples/visualization/` | Python/JS | Flask web app with live maps, skyview, and config editor ([README](examples/visualization/README.md)) |
 
 ## Architecture
 
@@ -394,7 +425,7 @@ GnssHat/
 │   └── common/                      GPIO, synchronization, utilities
 ├── python/                          Python CPython extension module
 ├── examples/                        C, C++, Python examples + Visualization + GPSD + TimeServer
-│   └── BinariesSymlinks/            Symlinks to C++ binaries (created by BUILD_EXAMPLES)
+│   └── bin/                         Symlinks to C++ binaries (created by BUILD_EXAMPLES)
 └── scripts/                         Build and dependency scripts
 ```
 

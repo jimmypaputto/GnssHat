@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jimmy Paputto GNSS</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><img src="/res/NazwaStos.svg" alt="Logo" class="header-logo"> 🛰️ GNSS Real-Time Visualization</h1>
+            <div class="status-bar">
+                <div class="status-item">
+                    <span class="status-label">Connection:</span>
+                    <span id="connection-status" class="status-value disconnected">Disconnected</span>
+                    <span id="connection-latency" class="status-latency latency-unknown" title="Round-trip time browser ↔ server">— ms</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Fix:</span>
+                    <span id="fix-status" class="status-value">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Satellites:</span>
+                    <span id="satellites" class="status-value">0</span>
+                </div>
+                <div class="header-info-stack">
+                    <span class="badge badge-mode">{{ mode }}</span>
+                    {% if hat_name %}
+                    <span class="badge badge-hat">{{ hat_name }}</span>
+                    {% endif %}
+                </div>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- Left side: Maps with Tabs -->
+            <div class="map-container">
+                <div class="map-header">
+                    <button type="button" class="map-tab-nav" id="map-tab-prev" aria-label="Previous tab">‹</button>
+                    <div class="map-tabs">
+                        <button class="map-tab active" data-tab="relative">📐 Relative Map</button>
+                        <button class="map-tab" data-tab="altitude">📏 Altitude</button>
+                        <button class="map-tab" data-tab="terrain">🗺️ Terrain Map</button>
+                        {% if hat_name != 'L1/L5 GNSS TIME HAT' %}
+                        <button class="map-tab" data-tab="skyview">🛰️ Sky View</button>
+                        {% endif %}
+                        {% if mode in ['native', 'ros2'] %}
+                        <button class="map-tab" data-tab="rfanalyzer">📊 RF Analyzer</button>
+                        {% endif %}
+                        {% if mode == 'native' %}
+                        <button class="map-tab" data-tab="system">🖥️ System</button>
+                        {% endif %}
+                    </div>
+                    <button type="button" class="map-tab-nav" id="map-tab-next" aria-label="Next tab">›</button>
+                </div>
+                
+                <!-- Relative Canvas Map -->
+                <div id="relative-map" class="map-view active">
+                    <div class="map-info">
+                        <span id="scale-info">Scale: ±20.0m</span>
+                        <div class="scale-slider-container">
+                            <label for="scale-slider">Range:</label>
+                            <button type="button" class="btn-zoom" data-zoom="relative" data-dir="down" title="Decrease range (zoom in)" aria-label="Decrease range">−</button>
+                            <input type="range" id="scale-slider" class="scale-slider" min="0" max="11" value="8" step="1" list="scale-slider-ticks">
+                            <datalist id="scale-slider-ticks">
+                                <option value="0"></option><option value="1"></option><option value="2"></option><option value="3"></option><option value="4"></option><option value="5"></option><option value="6"></option><option value="7"></option><option value="8"></option><option value="9"></option><option value="10"></option><option value="11"></option>
+                            </datalist>
+                            <button type="button" class="btn-zoom" data-zoom="relative" data-dir="up" title="Increase range (zoom out)" aria-label="Increase range">+</button>
+                            <span id="scale-value">20m</span>
+                        </div>
+                        <button id="recenter-btn" class="btn-reset" title="Recenter view (or double-click the map)" style="display:none;">
+                            ⌖ Recenter
+                        </button>
+                        <button id="reset-btn" class="btn-reset" title="Reset reference position">
+                            🎯 Reset Origin
+                        </button>
+                        <button class="btn-theme" data-chart-theme="relative" title="Toggle light / dark">
+                            🌙
+                        </button>
+                        <button class="btn-fullscreen" data-fullscreen="#relative-map" title="Toggle fullscreen" aria-label="Toggle fullscreen">⛶</button>
+                    </div>
+                    <div class="canvas-wrapper">
+                        <canvas id="gps-map"></canvas>
+                    </div>
+                    <div class="map-footer">
+                        <div class="position-display">
+                            <div class="coord-item">
+                                <span class="coord-label">X (East):</span>
+                                <span id="pos-x" class="coord-value">0.00 m</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Y (North):</span>
+                                <span id="pos-y" class="coord-value">0.00 m</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Distance:</span>
+                                <span id="distance" class="coord-value">0.00 m</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Altitude Tape - one-axis altimeter relative to a reference -->
+                <div id="altitude-map" class="map-view" style="display: none;">
+                    <div class="map-info">
+                        <span id="altitude-scale-info">Scale: ±20.0m</span>
+                        <div class="scale-slider-container">
+                            <label for="altitude-scale-slider">Range:</label>
+                            <button type="button" class="btn-zoom" data-zoom="altitude" data-dir="down" title="Decrease range (zoom in)" aria-label="Decrease range">−</button>
+                            <input type="range" id="altitude-scale-slider" class="scale-slider" min="0" max="10" value="8" step="1" list="altitude-scale-slider-ticks">
+                            <datalist id="altitude-scale-slider-ticks">
+                                <option value="0"></option><option value="1"></option><option value="2"></option><option value="3"></option><option value="4"></option><option value="5"></option><option value="6"></option><option value="7"></option><option value="8"></option><option value="9"></option><option value="10"></option>
+                            </datalist>
+                            <button type="button" class="btn-zoom" data-zoom="altitude" data-dir="up" title="Increase range (zoom out)" aria-label="Increase range">+</button>
+                            <span id="altitude-scale-value">20m</span>
+                        </div>
+                        <div class="alt-source-toggle" role="group" aria-label="Altitude source">
+                            <button type="button" class="alt-source-btn active" data-alt-source="msl">MSL</button>
+                            {% if mode in ['native', 'ros2'] %}
+                            <button type="button" class="alt-source-btn" data-alt-source="wgs84">WGS84</button>
+                            {% endif %}
+                        </div>
+                        <button id="alt-reset-btn" class="btn-reset" title="Reset reference altitude">
+                            🎯 Reset Origin
+                        </button>
+                        <button class="btn-theme" data-chart-theme="altitude" title="Toggle light / dark">
+                            🌙
+                        </button>
+                        <button class="btn-fullscreen" data-fullscreen="#altitude-map" title="Toggle fullscreen" aria-label="Toggle fullscreen">⛶</button>
+                    </div>
+                    <div class="canvas-wrapper">
+                        <canvas id="altitude-tape"></canvas>
+                    </div>
+                    <div class="map-footer">
+                        <div class="position-display">
+                            <div class="coord-item">
+                                <span class="coord-label">Δ Altitude:</span>
+                                <span id="alt-delta" class="coord-value">0.00 m</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Absolute:</span>
+                                <span id="alt-absolute" class="coord-value">0.00 m</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Vert. accuracy:</span>
+                                <span id="alt-vacc" class="coord-value">—</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {% if hat_name != 'L1/L5 GNSS TIME HAT' %}
+                <!-- Sky View - Satellite polar plot -->
+                <div id="skyview-map" class="map-view" style="display: none;">
+                    <div class="map-info">
+                        <button class="btn-theme" data-chart-theme="skyview" title="Toggle light / dark">
+                            🌙
+                        </button>
+                    </div>
+                    <div class="skyview-layout">
+                        <div class="skyview-plot-wrap">
+                            <canvas id="sky-canvas"></canvas>
+                        </div>
+                        <div class="skyview-table-wrap">
+                            <div class="skyview-summary">
+                                <span id="sky-total">0</span> tracked &nbsp;|&nbsp;
+                                <span id="sky-used">0</span> used in fix
+                            </div>
+                            <div class="skyview-table-scroll">
+                                <table class="data-table sat-table" id="sat-table">
+                                    <thead>
+                                        <tr>
+                                            <th>GNSS</th>
+                                            <th>SV</th>
+                                            <th>C/N₀</th>
+                                            <th>El°</th>
+                                            <th>Az°</th>
+                                            <th>Used</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="sat-table-body">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="skyview-legend">
+                        <span class="legend-item"><span class="legend-dot" style="background:#4fc3f7"></span>GPS</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#81c784"></span>Galileo</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#e57373"></span>GLONASS</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#ffb74d"></span>BeiDou</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#ce93d8"></span>SBAS</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#fff176"></span>QZSS</span>
+                        <span class="legend-sep">|</span>
+                        <span class="legend-item"><span class="legend-dot legend-dot-filled"></span>Used</span>
+                        <span class="legend-item"><span class="legend-dot legend-dot-outline"></span>Not used</span>
+                    </div>
+                    <div class="skyview-constellation-summary" id="constellation-summary">
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if mode in ['native', 'ros2'] %}
+                <!-- RF Analyzer - Spectrum from MON-SPAN + RF status from MON-RF -->
+                <div id="rfanalyzer-map" class="map-view" style="display: none;">
+                    <div class="map-info">
+                        <button class="btn-theme" data-chart-theme="spectrum" title="Toggle light / dark">
+                            🌙
+                        </button>
+                    </div>
+                    <div class="rfanalyzer-layout">
+                        <div class="rfanalyzer-chart-wrap">
+                            <div id="spectrum-charts-container"></div>
+                        </div>
+                        <div class="rfanalyzer-info-wrap">
+                            <div id="rfanalyzer-rf-status">
+                                <p class="rf-no-data">Waiting for data...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if mode == 'native' %}
+                <!-- System - UBX-MON-SYS health + UBX-MON-VER firmware -->
+                <div id="system-map" class="map-view" style="display: none;">
+                    <div class="system-layout">
+                        {% if hat_name != 'L1 GNSS HAT' %}
+                        <div class="system-card" id="system-health-card">
+                            <h3>📈 Receiver Health <span class="system-card-sub" id="system-runtime">—</span></h3>
+                            <div class="system-stats-grid">
+                                <div class="system-stat" id="sys-cpu">
+                                    <div class="system-stat-label">CPU Load</div>
+                                    <div class="system-stat-value"><span class="sys-val">—</span><span class="sys-unit">%</span></div>
+                                    <div class="system-stat-bar"><div class="system-stat-bar-fill"></div></div>
+                                    <div class="system-stat-max">peak <span class="sys-max">—</span>%</div>
+                                </div>
+                                <div class="system-stat" id="sys-mem">
+                                    <div class="system-stat-label">Memory</div>
+                                    <div class="system-stat-value"><span class="sys-val">—</span><span class="sys-unit">%</span></div>
+                                    <div class="system-stat-bar"><div class="system-stat-bar-fill"></div></div>
+                                    <div class="system-stat-max">peak <span class="sys-max">—</span>%</div>
+                                </div>
+                                <div class="system-stat" id="sys-io">
+                                    <div class="system-stat-label">I/O</div>
+                                    <div class="system-stat-value"><span class="sys-val">—</span><span class="sys-unit">%</span></div>
+                                    <div class="system-stat-bar"><div class="system-stat-bar-fill"></div></div>
+                                    <div class="system-stat-max">peak <span class="sys-max">—</span>%</div>
+                                </div>
+                                <div class="system-stat" id="sys-temp">
+                                    <div class="system-stat-label">Temperature</div>
+                                    <div class="system-stat-value"><span class="sys-val">—</span><span class="sys-unit">°C</span></div>
+                                </div>
+                            </div>
+                            <table class="system-counters">
+                                <tr><td>Boot type</td><td id="sys-boot-type">—</td></tr>
+                                <tr><td>Notices</td><td id="sys-notice-count">0</td></tr>
+                                <tr><td>Warnings</td><td id="sys-warn-count">0</td></tr>
+                                <tr><td>Errors</td><td id="sys-error-count">0</td></tr>
+                                <tr><td>MON-SYS msg version</td><td id="sys-msg-version">—</td></tr>
+                            </table>
+                        </div>
+                        {% endif %}
+                        <div class="system-card" id="system-version-card">
+                            <h3>🧩 Receiver Information</h3>
+                            <table class="system-info">
+                                <tr><td>Software version</td><td id="sys-sw-version">—</td></tr>
+                                <tr><td>Hardware version</td><td id="sys-hw-version">—</td></tr>
+                            </table>
+                            <h4>Extensions</h4>
+                            <ul id="sys-extensions" class="system-extensions">
+                                <li class="sys-no-data">Waiting for MON-VER…</li>
+                            </ul>
+                        </div>
+
+                        {% if ui_info %}
+                        <div class="system-card" id="system-uiapp-card">
+                            <h3>🐍 UI Application</h3>
+                            <table class="system-info">
+                                <tr><td>Python</td><td>{{ ui_info.python }}</td></tr>
+                                <tr><td>Platform</td><td>{{ ui_info.platform }}</td></tr>
+                                <tr><td>Flask</td><td>{{ ui_info.flask or '—' }}</td></tr>
+                                <tr><td>Flask-SocketIO</td><td>{{ ui_info.flask_socketio or '—' }}</td></tr>
+                                <tr><td>python-socketio</td><td>{{ ui_info.python_socketio or '—' }}</td></tr>
+                                <tr><td>Engine.IO</td><td>{{ ui_info.engineio or '—' }}</td></tr>
+                                <tr>
+                                    <td>JSON encoder</td>
+                                    <td>
+                                        {{ ui_info.json_encoder }}{% if ui_info.orjson_version %} (v{{ ui_info.orjson_version }}){% endif %}
+                                    </td>
+                                </tr>
+                                <tr><td>Socket.IO async mode</td>
+                                    <td>
+                                        {{ ui_info.async_mode }}
+                                        {% if ui_info.eventlet_active %}
+                                            <span class="badge-good">eventlet active{% if ui_info.eventlet_version %} v{{ ui_info.eventlet_version }}{% endif %}</span>
+                                        {% elif ui_info.async_mode_requested == 'eventlet' %}
+                                            <span class="badge-bad" title="{{ ui_info.eventlet_error or 'monkey-patch did not engage' }}">eventlet requested but inactive</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr><td>WebSocket transport only</td><td>{{ 'yes' if ui_info.ws_transport_only else 'no' }}</td></tr>
+                                <tr><td>NTRIP push period</td><td>{{ ui_info.ntrip_tick_period_s }} s</td></tr>
+                                <tr><td>Process PID</td><td>{{ ui_info.gps_pid }}</td></tr>
+                            </table>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- OpenStreetMap Terrain Map -->
+                <div id="terrain-map" class="map-view" style="display: none;">
+                    <div id="osm-map" class="osm-map-wrapper"></div>
+                    <div class="map-footer">
+                        <div class="position-display">
+                            <div class="coord-item">
+                                <span class="coord-label">Lat:</span>
+                                <span id="osm-lat" class="coord-value">0.000000°</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Lon:</span>
+                                <span id="osm-lon" class="coord-value">0.000000°</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Zoom:</span>
+                                <span id="osm-zoom" class="coord-value">18</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right side: Data panel -->
+            <div class="data-container">
+                <div class="data-header">
+                    {% if mode in ['native', 'ros2'] %}
+                    <button type="button" class="data-tab-nav" id="data-tab-prev" aria-label="Previous tab">‹</button>
+                    <div class="data-tabs">
+                        <button class="data-tab active" data-dtab="navdata">📊 Navigation Data</button>
+                        <button class="data-tab" data-dtab="config">⚙️ Configuration</button>
+                        {% if mode == 'native' and hat_name == 'L1/L5 GNSS RTK HAT' %}
+                        <button class="data-tab" data-dtab="ntrip">📡 NTRIP</button>
+                        {% endif %}
+                    </div>
+                    <button type="button" class="data-tab-nav" id="data-tab-next" aria-label="Next tab">›</button>
+                    {% else %}
+                    <h2>GPS Data (PVT)</h2>
+                    {% endif %}
+                </div>
+
+                <!-- Navigation Data pane -->
+                <div id="navdata-pane" class="data-pane active">
+                <div class="data-content {% if mode in ['native', 'ros2'] %}two-columns{% endif %}">
+                    <!-- Column 1: PVT -->
+                    <div class="data-column">
+                    <table class="data-table">
+                        <tbody>
+                            <tr class="section-header">
+                                <td colspan="2">⏰ Time & Date</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">UTC Time</td>
+                                <td class="data-value" id="data-utc-time">--:--:--</td>
+                            </tr>
+                            {% if mode in ['native', 'ros2'] %}
+                            <tr>
+                                <td class="data-label">Time Accuracy</td>
+                                <td class="data-value" id="data-time-accuracy">-</td>
+                            </tr>
+                            {% endif %}
+                            <tr>
+                                <td class="data-label">Date</td>
+                                <td class="data-value" id="data-date">----/--/--</td>
+                            </tr>
+
+                            <tr class="section-header">
+                                <td colspan="2">🔧 Fix Information</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Fix Quality</td>
+                                <td class="data-value" id="data-fix-quality">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Fix Status</td>
+                                <td class="data-value" id="data-fix-status">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Fix Type</td>
+                                <td class="data-value" id="data-fix-type">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Satellites</td>
+                                <td class="data-value" id="data-satellites">0</td>
+                            </tr>
+
+                            <tr class="section-header">
+                                <td colspan="2">📍 Position</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Latitude</td>
+                                <td class="data-value" id="data-latitude">0.000000°</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Longitude</td>
+                                <td class="data-value" id="data-longitude">0.000000°</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Altitude (MSL)</td>
+                                <td class="data-value" id="data-altitude-msl">0.0 m</td>
+                            </tr>
+                            {% if mode in ['native', 'ros2'] %}
+                            <tr>
+                                <td class="data-label">Altitude (WGS84)</td>
+                                <td class="data-value" id="data-altitude">0.0 m</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td class="data-label">HDOP</td>
+                                <td class="data-value" id="data-hdop">0.0</td>
+                            </tr>
+                            {% endif %}
+
+                            <tr class="section-header">
+                                <td colspan="2">🚀 Velocity</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Speed (Ground)</td>
+                                <td class="data-value" id="data-speed">0.00 m/s</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Heading</td>
+                                <td class="data-value" id="data-heading">0.0°</td>
+                            </tr>
+
+                            {% if mode in ['native', 'ros2'] %}
+                            <tr class="section-header">
+                                <td colspan="2">🎯 Accuracy</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Horizontal</td>
+                                <td class="data-value" id="data-hacc">- m</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Vertical</td>
+                                <td class="data-value" id="data-vacc">- m</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Speed</td>
+                                <td class="data-value" id="data-sacc">- m/s</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Heading</td>
+                                <td class="data-value" id="data-headacc">-°</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                    </div>
+
+                    {% if mode in ['native', 'ros2'] %}
+                    <!-- Column 2: DOP + Geofencing + RF -->
+                    <div class="data-column">
+                    <table class="data-table">
+                        <tbody>
+                            <tr class="section-header">
+                                <td colspan="2">📊 Dilution of Precision</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Geometric</td>
+                                <td class="data-value" id="data-gdop">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Position</td>
+                                <td class="data-value" id="data-pdop">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Horizontal</td>
+                                <td class="data-value" id="data-hdop">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Vertical</td>
+                                <td class="data-value" id="data-vdop">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Time</td>
+                                <td class="data-value" id="data-tdop">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Northing</td>
+                                <td class="data-value" id="data-ndop">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Easting</td>
+                                <td class="data-value" id="data-edop">-</td>
+                            </tr>
+
+                            {% if hat_name != 'L1/L5 GNSS TIME HAT' %}
+                            <tr class="section-header">
+                                <td colspan="2">🔲 Geofencing</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Status</td>
+                                <td class="data-value" id="data-geo-status">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Geofences</td>
+                                <td class="data-value" id="data-geo-count">0</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Combined State</td>
+                                <td class="data-value" id="data-geo-combined">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Fence States</td>
+                                <td class="data-value data-value-wrap" id="data-geo-fences" style="white-space:pre-line;overflow:visible;text-overflow:clip;word-break:break-word;">-</td>
+                            </tr>
+                            {% endif %}
+
+                            <tr class="section-header">
+                                <td colspan="2">📡 RF / Antenna</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div id="rf-blocks-container">
+                        <p class="rf-no-data">Waiting for data...</p>
+                    </div>
+
+                    {% if hat_name == 'L1/L5 GNSS TIME HAT' %}
+                    <table class="data-table">
+                        <tbody>
+                            <tr class="section-header">
+                                <td colspan="2">⏱️ Time Mark</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Status</td>
+                                <td class="data-value" id="data-tm-status">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Mode</td>
+                                <td class="data-value" id="data-tm-mode">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Run</td>
+                                <td class="data-value" id="data-tm-run">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Time Base</td>
+                                <td class="data-value" id="data-tm-timebase">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Time Valid</td>
+                                <td class="data-value" id="data-tm-timevalid">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">UTC Available</td>
+                                <td class="data-value" id="data-tm-utc">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Count</td>
+                                <td class="data-value" id="data-tm-count">0</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Accuracy</td>
+                                <td class="data-value" id="data-tm-accuracy">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Rising Edge</td>
+                                <td class="data-value" id="data-tm-rising">-</td>
+                            </tr>
+                            <tr>
+                                <td class="data-label">Falling Edge</td>
+                                <td class="data-value" id="data-tm-falling">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    {% endif %}
+
+                    </div>
+                    {% endif %}
+                </div>
+                </div><!-- end navdata-pane -->
+
+                {% if mode in ['native', 'ros2'] %}
+                <!-- Configuration pane -->
+                <div id="config-pane" class="data-pane" style="display:none;">
+                    <div class="config-form">
+
+                        <!-- Progress overlay -->
+                        <div id="config-progress" class="config-progress" style="display:none;">
+                            <div class="config-progress-inner">
+                                <div class="config-progress-bar-wrap">
+                                    <div id="config-progress-bar" class="config-progress-bar"></div>
+                                </div>
+                                <p id="config-progress-msg" class="config-progress-msg">Initializing...</p>
+                            </div>
+                        </div>
+
+                        <!-- Status banner -->
+                        <div id="config-status" class="config-status" style="display:none;"></div>
+
+                        <!-- Measurement Rate -->
+                        <fieldset class="cfg-section">
+                            <legend>📏 Measurement Rate</legend>
+                            <div class="cfg-row">
+                                <label for="cfg-rate">Rate (Hz)</label>
+                                <input type="number" id="cfg-rate" min="1" max="25" value="1" class="cfg-input cfg-input-sm">
+                            </div>
+                        </fieldset>
+
+                        <!-- Dynamic Model -->
+                        <fieldset class="cfg-section">
+                            <legend>🚗 Dynamic Model</legend>
+                            <div class="cfg-row">
+                                <label for="cfg-dynmodel">Model</label>
+                                <select id="cfg-dynmodel" class="cfg-input">
+                                    <option value="0">Portable</option>
+                                    <option value="2" selected>Stationary</option>
+                                    <option value="3">Pedestrian</option>
+                                    <option value="4">Automotive</option>
+                                    <option value="5">Sea</option>
+                                    <option value="6">Airborne 1G</option>
+                                    <option value="7">Airborne 2G</option>
+                                    <option value="8">Airborne 4G</option>
+                                    <option value="9">Wrist</option>
+                                    <option value="10">Bike</option>
+                                    <option value="11">Mower</option>
+                                    <option value="12">E-Scooter</option>
+                                </select>
+                            </div>
+                        </fieldset>
+
+                        <!-- Navigation Filters (CFG-NAVSPG-INFIL_*) -->
+                        <fieldset class="cfg-section">
+                            <legend>🛰️ Navigation Filters <span class="cfg-experimental" title="This feature is experimental and may change or behave unexpectedly.">experimental</span></legend>
+                            <div class="cfg-row">
+                                <label for="cfg-navfilt-minelev">Elevation Mask</label>
+                                <input type="range" id="cfg-navfilt-minelev"
+                                       min="0" max="60" step="1" value="5"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-minelev-num"
+                                       min="-90" max="90" step="1" value="5"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">deg</span>
+                                <button type="button" id="cfg-navfilt-minelev-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (5°)">↺ Default</button>
+                            </div>
+                            <p class="cfg-help">
+                                Satellites below this elevation angle are
+                                excluded from the navigation solution. For
+                                RTK a moderate mask (10°–15°) reduces
+                                multipath from low-elevation signals.
+                            </p>
+                            <div class="cfg-navfilt-preview-wrap">
+                                <canvas id="cfg-navfilt-preview"></canvas>
+                            </div>
+
+                            <!-- Fix Mode (CFG-NAVSPG-FIXMODE) -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-fixmode"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-FIXMODE — dimensionality of the position fix.&#10;&#10;• Auto 2D/3D (default): receiver picks a 3D fix when enough SVs are available, falls back to 2D otherwise.&#10;• 3D only: rejects fixes without vertical observability.&#10;• 2D only: clamps altitude, for fixed-height platforms.">Fix Mode <span class="cfg-tip-icon">&#9432;</span></label>
+                                <select id="cfg-navfilt-fixmode" class="cfg-input">
+                                    <option value="3" selected>Auto 2D/3D</option>
+                                    <option value="2">3D only</option>
+                                    <option value="1">2D only</option>
+                                </select>
+                                <button type="button" id="cfg-navfilt-fixmode-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (Auto)">↺ Default</button>
+                            </div>
+
+                            <!-- OUTFIL_PDOP -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-pdop"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-OUTFIL_PDOP — maximum Position DOP allowed in a valid fix.&#10;&#10;PDOP reflects satellite-geometry quality (lower is better). Fixes exceeding this threshold are flagged invalid.&#10;&#10;Unit: DOP (unitless, 0.1 steps).&#10;Default: 25.0 DOP. Set 0 to disable.">PDOP Mask <span class="cfg-tip-icon">&#9432;</span></label>
+                                <input type="range" id="cfg-navfilt-pdop"
+                                       min="1" max="99.9" step="0.1" value="25"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-pdop-num"
+                                       min="1" max="99.9" step="0.1" value="25"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">DOP</span>
+                                <button type="button" id="cfg-navfilt-pdop-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (25.0)">↺ Default</button>
+                            </div>
+
+                            <!-- OUTFIL_TDOP -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-tdop"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-OUTFIL_TDOP — maximum Time DOP allowed in a valid fix.&#10;&#10;TDOP captures how well the satellite geometry constrains the receiver clock, mainly affecting time-transfer and timepulse accuracy.&#10;&#10;Unit: DOP (unitless).&#10;Default: 25.0 DOP. Set 0 to disable.">TDOP Mask <span class="cfg-tip-icon">&#9432;</span></label>
+                                <input type="range" id="cfg-navfilt-tdop"
+                                       min="1" max="99.9" step="0.1" value="25"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-tdop-num"
+                                       min="1" max="99.9" step="0.1" value="25"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">DOP</span>
+                                <button type="button" id="cfg-navfilt-tdop-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (25.0)">↺ Default</button>
+                            </div>
+
+                            <!-- OUTFIL_PACC -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-pacc"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-OUTFIL_PACC — maximum estimated horizontal position error (1-sigma) allowed in a valid fix.&#10;&#10;Fixes whose computed position accuracy is worse than this are flagged invalid.&#10;&#10;Unit: metres.&#10;Default: 100 m. Set 0 to disable.">Position Accuracy Mask <span class="cfg-tip-icon">&#9432;</span></label>
+                                <input type="range" id="cfg-navfilt-pacc"
+                                       min="1" max="500" step="1" value="100"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-pacc-num"
+                                       min="0" max="65535" step="1" value="100"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">m</span>
+                                <button type="button" id="cfg-navfilt-pacc-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (100 m)">↺ Default</button>
+                            </div>
+
+                            <!-- OUTFIL_TACC -->
+                            <div class="cfg-row cfg-row-spaced">
+                                <label for="cfg-navfilt-tacc"
+                                       class="cfg-label-tip"
+                                       title="CFG-NAVSPG-OUTFIL_TACC — maximum estimated time-solution error (1-sigma) allowed in a valid fix.&#10;&#10;Caps how much timing jitter is tolerated before the PVT / timepulse output is flagged invalid.&#10;&#10;Unit: metres (light-travel equivalent, as u-blox encodes it).&#10;Default: 300 m. Set 0 to disable.">Time Accuracy Mask <span class="cfg-tip-icon">&#9432;</span></label>
+                                <input type="range" id="cfg-navfilt-tacc"
+                                       min="1" max="1000" step="1" value="300"
+                                       class="cfg-input cfg-slider">
+                                <input type="number" id="cfg-navfilt-tacc-num"
+                                       min="0" max="65535" step="1" value="300"
+                                       class="cfg-input cfg-num-narrow">
+                                <span class="cfg-unit">m</span>
+                                <button type="button" id="cfg-navfilt-tacc-reset"
+                                        class="cfg-btn cfg-btn-secondary cfg-btn-inline"
+                                        title="Reset to u-blox default (300 m)">↺ Default</button>
+                            </div>
+                        </fieldset>
+
+                        <!-- Timepulse -->
+                        <fieldset class="cfg-section">
+                            <legend>⏱️ Timepulse Pin</legend>
+                            <div class="cfg-row">
+                                <label for="cfg-tp-active">Active</label>
+                                <input type="checkbox" id="cfg-tp-active" checked class="cfg-checkbox">
+                            </div>
+                            <div id="cfg-tp-details">
+                                <div class="cfg-row">
+                                    <label for="cfg-tp-freq">Frequency (Hz)</label>
+                                    <input type="number" id="cfg-tp-freq" min="1" max="24000000" value="1" class="cfg-input cfg-input-sm">
+                                </div>
+                                <div class="cfg-row">
+                                    <label for="cfg-tp-pw">Pulse Width (0-0.99)</label>
+                                    <input type="number" id="cfg-tp-pw" min="0" max="0.99" step="0.01" value="0.1" class="cfg-input cfg-input-sm">
+                                </div>
+                                <div class="cfg-row">
+                                    <label for="cfg-tp-polarity">Polarity</label>
+                                    <select id="cfg-tp-polarity" class="cfg-input">
+                                        <option value="0">Falling Edge</option>
+                                        <option value="1" selected>Rising Edge</option>
+                                    </select>
+                                </div>
+                                <div class="cfg-row">
+                                    <label>
+                                        <input type="checkbox" id="cfg-tp-nofix-en" class="cfg-checkbox">
+                                        Pulse When No Fix
+                                    </label>
+                                </div>
+                                <div id="cfg-tp-nofix-details" style="display:none;">
+                                    <div class="cfg-row">
+                                        <label for="cfg-tp-nofix-freq">No-Fix Freq (Hz)</label>
+                                        <input type="number" id="cfg-tp-nofix-freq" min="1" max="24000000" value="1" class="cfg-input cfg-input-sm">
+                                    </div>
+                                    <div class="cfg-row">
+                                        <label for="cfg-tp-nofix-pw">No-Fix Pulse Width</label>
+                                        <input type="number" id="cfg-tp-nofix-pw" min="0" max="0.99" step="0.01" value="0.1" class="cfg-input cfg-input-sm">
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        {% if hat_name != 'L1/L5 GNSS TIME HAT' %}
+                        <!-- Geofencing -->
+                        <fieldset class="cfg-section">
+                            <legend>🔲 Geofencing</legend>
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-geo-en" class="cfg-checkbox">
+                                    Enable Geofencing
+                                </label>
+                            </div>
+                            <div id="cfg-geo-details" style="display:none;">
+                                <div class="cfg-row">
+                                    <label for="cfg-geo-conf">Confidence Level (0-5)</label>
+                                    <input type="number" id="cfg-geo-conf" min="0" max="5" value="3" class="cfg-input cfg-input-sm">
+                                </div>
+                                <div class="cfg-row">
+                                    <label>
+                                        <input type="checkbox" id="cfg-geo-pin-en" class="cfg-checkbox">
+                                        Enable PIO Pin Output
+                                    </label>
+                                </div>
+                                <div id="cfg-geo-pin-details" style="display:none;">
+                                    <div class="cfg-row">
+                                        <label for="cfg-geo-pin-pol">Pin Polarity</label>
+                                        <select id="cfg-geo-pin-pol" class="cfg-input">
+                                            <option value="0">Low = Inside</option>
+                                            <option value="1">Low = Outside</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div id="cfg-geo-fences">
+                                    <!-- Fence rows added dynamically -->
+                                </div>
+                                <button type="button" id="cfg-geo-add" class="cfg-btn cfg-btn-sm">+ Add Geofence</button>
+                            </div>
+                        </fieldset>
+                        {% endif %}
+
+                        {% if hat_name == 'L1/L5 GNSS RTK HAT' %}
+                        <!-- RTK -->
+                        <fieldset class="cfg-section">
+                            <legend>📡 RTK</legend>
+
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-rtk-en" class="cfg-checkbox">
+                                    Enable RTK
+                                </label>
+                            </div>
+                            <div id="cfg-rtk-details" style="display:none;">
+                                <div class="cfg-row">
+                                    <label for="cfg-rtk-mode">Mode</label>
+                                    <select id="cfg-rtk-mode" class="cfg-input">
+                                        <option value="0">Base</option>
+                                        <option value="1" selected>Rover</option>
+                                    </select>
+                                </div>
+                                <div id="cfg-rtk-base-details" style="display:none;">
+                                    <div class="cfg-row">
+                                        <label for="cfg-rtk-basemode">Base Mode</label>
+                                        <select id="cfg-rtk-basemode" class="cfg-input">
+                                            <option value="0" selected>Survey-In</option>
+                                            <option value="1">Fixed Position</option>
+                                        </select>
+                                    </div>
+                                    <!-- Survey-In -->
+                                    <div id="cfg-rtk-si-details">
+                                        <div class="cfg-row">
+                                            <label for="cfg-rtk-si-obs">Min Observation Time (s)</label>
+                                            <input type="number" id="cfg-rtk-si-obs" min="1" max="86400" value="120" class="cfg-input cfg-input-sm">
+                                        </div>
+                                        <div class="cfg-row">
+                                            <label for="cfg-rtk-si-acc">Required Accuracy (m)</label>
+                                            <input type="number" id="cfg-rtk-si-acc" min="0.1" max="1000" step="0.1" value="50.0" class="cfg-input cfg-input-sm">
+                                        </div>
+                                    </div>
+                                    <!-- Fixed Position -->
+                                    <div id="cfg-rtk-fp-details" style="display:none;">
+                                        <div class="cfg-row">
+                                            <label for="cfg-rtk-fp-type">Position Type</label>
+                                            <select id="cfg-rtk-fp-type" class="cfg-input">
+                                                <option value="0">ECEF</option>
+                                                <option value="1" selected>LLA</option>
+                                            </select>
+                                        </div>
+                                        <div class="cfg-row">
+                                            <label for="cfg-rtk-fp-acc">Position Accuracy (m)</label>
+                                            <input type="number" id="cfg-rtk-fp-acc" min="0.001" max="1000" step="0.001" value="0.5" class="cfg-input cfg-input-sm">
+                                        </div>
+                                        <!-- ECEF -->
+                                        <div id="cfg-rtk-ecef-details" style="display:none;">
+                                            <div class="cfg-row">
+                                                <label for="cfg-rtk-ecef-x">X (m)</label>
+                                                <input type="number" id="cfg-rtk-ecef-x" step="0.001" value="0" class="cfg-input cfg-input-sm">
+                                            </div>
+                                            <div class="cfg-row">
+                                                <label for="cfg-rtk-ecef-y">Y (m)</label>
+                                                <input type="number" id="cfg-rtk-ecef-y" step="0.001" value="0" class="cfg-input cfg-input-sm">
+                                            </div>
+                                            <div class="cfg-row">
+                                                <label for="cfg-rtk-ecef-z">Z (m)</label>
+                                                <input type="number" id="cfg-rtk-ecef-z" step="0.001" value="0" class="cfg-input cfg-input-sm">
+                                            </div>
+                                        </div>
+                                        <!-- LLA -->
+                                        <div id="cfg-rtk-lla-details">
+                                            <div class="cfg-row">
+                                                <label for="cfg-rtk-lla-lat">Latitude (°)</label>
+                                                <input type="number" id="cfg-rtk-lla-lat" step="0.000000001" value="0" class="cfg-input cfg-input-sm">
+                                            </div>
+                                            <div class="cfg-row">
+                                                <label for="cfg-rtk-lla-lon">Longitude (°)</label>
+                                                <input type="number" id="cfg-rtk-lla-lon" step="0.000000001" value="0" class="cfg-input cfg-input-sm">
+                                            </div>
+                                            <div class="cfg-row">
+                                                <label for="cfg-rtk-lla-h">Height (m)</label>
+                                                <input type="number" id="cfg-rtk-lla-h" step="0.001" value="0" class="cfg-input cfg-input-sm">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        {% endif %}
+
+                        {% if hat_name == 'L1/L5 GNSS TIME HAT' %}
+                        <!-- Time Base -->
+                        <fieldset class="cfg-section">
+                            <legend>⏱️ Time Base</legend>
+
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-tb-en" class="cfg-checkbox">
+                                    Enable Time Base
+                                </label>
+                            </div>
+                            <div id="cfg-tb-details" style="display:none;">
+                                <div class="cfg-row">
+                                    <label for="cfg-tb-basemode">Base Mode</label>
+                                    <select id="cfg-tb-basemode" class="cfg-input">
+                                        <option value="0" selected>Survey-In</option>
+                                        <option value="1">Fixed Position</option>
+                                    </select>
+                                </div>
+                                <!-- Survey-In -->
+                                <div id="cfg-tb-si-details">
+                                    <div class="cfg-row">
+                                        <label for="cfg-tb-si-obs">Min Observation Time (s)</label>
+                                        <input type="number" id="cfg-tb-si-obs" min="1" max="86400" value="120" class="cfg-input cfg-input-sm">
+                                    </div>
+                                    <div class="cfg-row">
+                                        <label for="cfg-tb-si-acc">Required Accuracy (m)</label>
+                                        <input type="number" id="cfg-tb-si-acc" min="0.1" max="1000" step="0.1" value="50.0" class="cfg-input cfg-input-sm">
+                                    </div>
+                                </div>
+                                <!-- Fixed Position -->
+                                <div id="cfg-tb-fp-details" style="display:none;">
+                                    <div class="cfg-row">
+                                        <label for="cfg-tb-fp-type">Position Type</label>
+                                        <select id="cfg-tb-fp-type" class="cfg-input">
+                                            <option value="0">ECEF</option>
+                                            <option value="1" selected>LLA</option>
+                                        </select>
+                                    </div>
+                                    <div class="cfg-row">
+                                        <label for="cfg-tb-fp-acc">Position Accuracy (m)</label>
+                                        <input type="number" id="cfg-tb-fp-acc" min="0.001" max="1000" step="0.001" value="0.5" class="cfg-input cfg-input-sm">
+                                    </div>
+                                    <!-- ECEF -->
+                                    <div id="cfg-tb-ecef-details" style="display:none;">
+                                        <div class="cfg-row">
+                                            <label for="cfg-tb-ecef-x">X (m)</label>
+                                            <input type="number" id="cfg-tb-ecef-x" step="0.001" value="0" class="cfg-input cfg-input-sm">
+                                        </div>
+                                        <div class="cfg-row">
+                                            <label for="cfg-tb-ecef-y">Y (m)</label>
+                                            <input type="number" id="cfg-tb-ecef-y" step="0.001" value="0" class="cfg-input cfg-input-sm">
+                                        </div>
+                                        <div class="cfg-row">
+                                            <label for="cfg-tb-ecef-z">Z (m)</label>
+                                            <input type="number" id="cfg-tb-ecef-z" step="0.001" value="0" class="cfg-input cfg-input-sm">
+                                        </div>
+                                    </div>
+                                    <!-- LLA -->
+                                    <div id="cfg-tb-lla-details">
+                                        <div class="cfg-row">
+                                            <label for="cfg-tb-lla-lat">Latitude (°)</label>
+                                            <input type="number" id="cfg-tb-lla-lat" step="0.000000001" value="0" class="cfg-input cfg-input-sm">
+                                        </div>
+                                        <div class="cfg-row">
+                                            <label for="cfg-tb-lla-lon">Longitude (°)</label>
+                                            <input type="number" id="cfg-tb-lla-lon" step="0.000000001" value="0" class="cfg-input cfg-input-sm">
+                                        </div>
+                                        <div class="cfg-row">
+                                            <label for="cfg-tb-lla-h">Height (m)</label>
+                                            <input type="number" id="cfg-tb-lla-h" step="0.001" value="0" class="cfg-input cfg-input-sm">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <!-- Time Mark -->
+                        <fieldset class="cfg-section">
+                            <legend>📌 Time Mark</legend>
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-tm-en" class="cfg-checkbox">
+                                    Enable Time Mark
+                                </label>
+                            </div>
+                        </fieldset>
+                        {% endif %}
+
+                        {% if mode == 'ros2' %}
+                        <!-- ROS 2 specific options -->
+                        <fieldset class="cfg-section">
+                            <legend>🤖 ROS 2</legend>
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-ros2-stdtopics" checked class="cfg-checkbox">
+                                    Publish Standard Topics
+                                </label>
+                            </div>
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-ros2-ntrip" class="cfg-checkbox">
+                                    Use NTRIP RTCM
+                                </label>
+                            </div>
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-ros2-save-yaml" class="cfg-checkbox">
+                                    Save to YAML
+                                </label>
+                            </div>
+                        </fieldset>
+                        {% endif %}
+
+                        <!-- Save to Flash -->
+                        <fieldset class="cfg-section">
+                            <legend>💾 Flash</legend>
+                            <div class="cfg-row">
+                                <label>
+                                    <input type="checkbox" id="cfg-save-flash" class="cfg-checkbox">
+                                    Save configuration to flash
+                                </label>
+                            </div>
+                            <div class="cfg-hint">When enabled, configuration is saved to the u-blox module's flash memory. Use sparingly — flash has limited write cycles.</div>
+                        </fieldset>
+
+                        <!-- Action buttons -->
+                        <div class="cfg-actions">
+                            <button type="button" id="cfg-load-btn" class="cfg-btn cfg-btn-secondary">📥 Load Config</button>
+                            <button type="button" id="cfg-send-btn" class="cfg-btn cfg-btn-primary">🚀 Send Config</button>
+                        </div>
+
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if mode == 'native' and hat_name == 'L1/L5 GNSS RTK HAT' %}
+                <!-- NTRIP pane (Client for Rover, Caster for Base) -->
+                <div id="ntrip-pane" class="data-pane" style="display:none;">
+                    <div class="config-form">
+
+                        <!-- No RTK message -->
+                        <div id="ntrip-no-rtk" style="display:none;">
+                            <p style="padding:1em;color:#888;">Enable RTK in the Configuration tab to use NTRIP.</p>
+                        </div>
+
+                        <!-- NTRIP Client section (Rover mode) -->
+                        <fieldset class="cfg-section" id="cfg-ntrip-client-section" style="display:none;">
+                            <legend>📡 NTRIP Client (RTK Corrections)</legend>
+
+                            <div class="cfg-row">
+                                <label>Status</label>
+                                <span id="ntrip-status" class="ntrip-status-badge disconnected">Disconnected</span>
+                            </div>
+
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-caster">Caster Address</label>
+                                <input type="text" id="cfg-ntrip-caster" placeholder="caster.example.com" class="cfg-input">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-port">Port</label>
+                                <input type="number" id="cfg-ntrip-port" min="1" max="65535" value="2101" class="cfg-input cfg-input-sm">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-mount">Mountpoint</label>
+                                <div style="display:flex;gap:0.5em;align-items:center;">
+                                    <input type="text" id="cfg-ntrip-mount" placeholder="NEAREST" class="cfg-input" style="flex:1;">
+                                    <button type="button" id="ntrip-fetch-mounts-btn" class="cfg-btn cfg-btn-sm" title="Fetch mountpoints from caster">🔍</button>
+                                </div>
+                            </div>
+                            <div id="ntrip-mountpoint-list" style="display:none;max-height:150px;overflow-y:auto;margin:-0.3em 0 0.5em;padding:0.3em;border:1px solid #555;border-radius:4px;font-size:0.85em;"></div>
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-user">Username</label>
+                                <input type="text" id="cfg-ntrip-user" class="cfg-input">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-pass">Password</label>
+                                <input type="password" id="cfg-ntrip-pass" class="cfg-input">
+                            </div>
+
+                            <!-- Auto-reconnect with collapsible parameters -->
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-auto-reconnect">Auto-Reconnect</label>
+                                <input type="checkbox" id="cfg-ntrip-auto-reconnect">
+                            </div>
+                            <details class="cfg-collapse" id="ntrip-reconnect-params" style="display:none;">
+                                <summary>Reconnect Settings</summary>
+                                <div class="cfg-collapse-body">
+                                    <div class="cfg-row">
+                                        <label for="cfg-ntrip-reconnect-initial">Initial Delay (ms)</label>
+                                        <input type="number" id="cfg-ntrip-reconnect-initial" min="100" max="60000" value="1000" class="cfg-input cfg-input-sm">
+                                    </div>
+                                    <div class="cfg-row">
+                                        <label for="cfg-ntrip-reconnect-max">Max Delay (ms)</label>
+                                        <input type="number" id="cfg-ntrip-reconnect-max" min="1000" max="300000" value="30000" class="cfg-input cfg-input-sm">
+                                    </div>
+                                </div>
+                            </details>
+
+                            {% if tls_available %}
+                            <div class="cfg-row">
+                                <label for="cfg-ntrip-use-tls">Use TLS</label>
+                                <input type="checkbox" id="cfg-ntrip-use-tls">
+                            </div>
+                            <details class="cfg-collapse" id="ntrip-tls-params" style="display:none;">
+                                <summary>TLS Settings</summary>
+                                <div class="cfg-collapse-body">
+                                    <div class="cfg-row">
+                                        <label for="cfg-ntrip-verify-cert">Verify Certificate</label>
+                                        <input type="checkbox" id="cfg-ntrip-verify-cert" checked>
+                                    </div>
+                                </div>
+                            </details>
+                            {% endif %}
+
+                            <div class="cfg-actions">
+                                <button type="button" id="ntrip-connect-btn" class="cfg-btn cfg-btn-primary">Connect</button>
+                                <button type="button" id="ntrip-disconnect-btn" class="cfg-btn cfg-btn-secondary" disabled>Disconnect</button>
+                            </div>
+
+                            <div id="ntrip-client-stats" class="ntrip-stats-grid" style="display:none;">
+                                <div class="cfg-row"><label>Uptime</label><span id="nc-stat-uptime">—</span></div>
+                                <div class="cfg-row"><label>Bytes Rx</label><span id="nc-stat-bytes-rx">—</span></div>
+                                <div class="cfg-row"><label>Frames Rx</label><span id="nc-stat-frames-rx">—</span></div>
+                                <div class="cfg-row"><label>Last Frame</label><span id="nc-stat-last-frame">—</span></div>
+                                <div class="cfg-row"><label>Avg Interval</label><span id="nc-stat-avg-interval">—</span></div>
+                                <div class="cfg-row"><label>Message Types</label><span id="nc-stat-msg-types">—</span></div>
+                            </div>
+
+                            <div class="cfg-row" style="margin-top:0.5em;">
+                                <label>Log</label>
+                                <div id="ntrip-client-log" class="ntrip-log-panel"></div>
+                            </div>
+                        </fieldset>
+
+                        <!-- NTRIP Caster section (Base mode) -->
+                        <fieldset class="cfg-section" id="cfg-ntrip-caster-section" style="display:none;">
+                            <legend>📡 NTRIP Caster (Broadcast Corrections)</legend>
+
+                            <div class="cfg-row">
+                                <label>Status</label>
+                                <span id="caster-status" class="ntrip-status-badge disconnected">Stopped</span>
+                            </div>
+
+                            <div class="cfg-row">
+                                <label for="cfg-caster-port">Port</label>
+                                <input type="number" id="cfg-caster-port" min="1" max="65535" value="2101" class="cfg-input cfg-input-sm">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-caster-mount">Mountpoint</label>
+                                <input type="text" id="cfg-caster-mount" value="GNSS" placeholder="GNSS" class="cfg-input">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-caster-user">Username</label>
+                                <input type="text" id="cfg-caster-user" class="cfg-input" placeholder="(optional)">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-caster-pass">Password</label>
+                                <input type="password" id="cfg-caster-pass" class="cfg-input" placeholder="(optional)">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-caster-local-source">Local HAT Source</label>
+                                <div style="display:flex;align-items:center;gap:0.5em;">
+                                    <input type="checkbox" id="cfg-caster-local-source">
+                                    <small style="color:#999;">Feed corrections directly from HAT (skip NtripServer)</small>
+                                </div>
+                            </div>
+
+                            {% if tls_available %}
+                            <div class="cfg-row">
+                                <label for="cfg-caster-use-tls">Use TLS</label>
+                                <input type="checkbox" id="cfg-caster-use-tls">
+                            </div>
+                            <details class="cfg-collapse" id="caster-tls-params" style="display:none;">
+                                <summary>TLS Settings</summary>
+                                <div class="cfg-collapse-body">
+                                    <div class="cfg-row">
+                                        <label for="cfg-caster-tls-cert">Certificate File</label>
+                                        <input type="text" id="cfg-caster-tls-cert" class="cfg-input" placeholder="/path/to/cert.pem">
+                                    </div>
+                                    <div class="cfg-row">
+                                        <label for="cfg-caster-tls-key">Key File</label>
+                                        <input type="text" id="cfg-caster-tls-key" class="cfg-input" placeholder="/path/to/key.pem">
+                                    </div>
+                                </div>
+                            </details>
+                            {% endif %}
+
+                            <div class="cfg-row">
+                                <label>Connected Clients</label>
+                                <span id="caster-client-count">0</span>
+                            </div>
+
+                            <div class="cfg-actions">
+                                <button type="button" id="caster-start-btn" class="cfg-btn cfg-btn-primary">Start Caster</button>
+                                <button type="button" id="caster-stop-btn" class="cfg-btn cfg-btn-secondary" disabled>Stop Caster</button>
+                            </div>
+
+                            <div id="ntrip-caster-stats" class="ntrip-stats-grid" style="display:none;">
+                                <div class="cfg-row"><label>Uptime</label><span id="cs-stat-uptime">—</span></div>
+                                <div class="cfg-row"><label>Bytes Tx</label><span id="cs-stat-bytes-tx">—</span></div>
+                                <div class="cfg-row"><label>Frames Tx</label><span id="cs-stat-frames-tx">—</span></div>
+                                <div class="cfg-row"><label>Last Frame</label><span id="cs-stat-last-frame">—</span></div>
+                                <div class="cfg-row"><label>Avg Interval</label><span id="cs-stat-avg-interval">—</span></div>
+                                <div class="cfg-row"><label>Message Types</label><span id="cs-stat-msg-types">—</span></div>
+                            </div>
+
+                            <div class="cfg-row" style="margin-top:0.5em;">
+                                <label>Log</label>
+                                <div id="ntrip-caster-log" class="ntrip-log-panel"></div>
+                            </div>
+                        </fieldset>
+
+                        <!-- NTRIP Server section (Base mode – push to remote caster) -->
+                        <fieldset class="cfg-section" id="cfg-ntrip-server-section" style="display:none;">
+                            <legend>🔼 NTRIP Server (Push to Remote Caster)</legend>
+
+                            <div class="cfg-row">
+                                <label>Status</label>
+                                <span id="server-status" class="ntrip-status-badge disconnected">Stopped</span>
+                            </div>
+
+                            <div class="cfg-row">
+                                <label for="cfg-server-host">Caster Host</label>
+                                <input type="text" id="cfg-server-host" class="cfg-input" placeholder="e.g. caster.example.com">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-server-port">Caster Port</label>
+                                <input type="number" id="cfg-server-port" min="1" max="65535" value="2101" class="cfg-input cfg-input-sm">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-server-mount">Mountpoint</label>
+                                <input type="text" id="cfg-server-mount" value="GNSS" placeholder="GNSS" class="cfg-input">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-server-user">Username</label>
+                                <input type="text" id="cfg-server-user" class="cfg-input" placeholder="Caster username">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-server-pass">Password</label>
+                                <input type="password" id="cfg-server-pass" class="cfg-input" placeholder="Caster source password">
+                            </div>
+                            <div class="cfg-row">
+                                <label for="cfg-server-auto-reconnect">Auto-Reconnect</label>
+                                <input type="checkbox" id="cfg-server-auto-reconnect" checked>
+                            </div>
+                            <details class="cfg-collapse" id="server-reconnect-params" style="display:none;">
+                                <summary>Reconnect Settings</summary>
+                                <div class="cfg-collapse-body">
+                                    <div class="cfg-row">
+                                        <label for="cfg-server-reconnect-initial">Initial Delay (ms)</label>
+                                        <input type="number" id="cfg-server-reconnect-initial" min="100" max="60000" value="1000" class="cfg-input cfg-input-sm">
+                                    </div>
+                                    <div class="cfg-row">
+                                        <label for="cfg-server-reconnect-max">Max Delay (ms)</label>
+                                        <input type="number" id="cfg-server-reconnect-max" min="1000" max="300000" value="30000" class="cfg-input cfg-input-sm">
+                                    </div>
+                                </div>
+                            </details>
+
+                            {% if tls_available %}
+                            <div class="cfg-row">
+                                <label for="cfg-server-use-tls">Use TLS</label>
+                                <input type="checkbox" id="cfg-server-use-tls">
+                            </div>
+                            <details class="cfg-collapse" id="server-tls-params" style="display:none;">
+                                <summary>TLS Settings</summary>
+                                <div class="cfg-collapse-body">
+                                    <div class="cfg-row">
+                                        <label for="cfg-server-verify-cert">Verify Certificate</label>
+                                        <input type="checkbox" id="cfg-server-verify-cert" checked>
+                                    </div>
+                                </div>
+                            </details>
+                            {% endif %}
+
+                            <div class="cfg-actions">
+                                <button type="button" id="server-start-btn" class="cfg-btn cfg-btn-primary">Start Server</button>
+                                <button type="button" id="server-stop-btn" class="cfg-btn cfg-btn-secondary" disabled>Stop Server</button>
+                            </div>
+
+                            <div id="ntrip-server-stats" class="ntrip-stats-grid" style="display:none;">
+                                <div class="cfg-row"><label>Uptime</label><span id="sv-stat-uptime">—</span></div>
+                                <div class="cfg-row"><label>Bytes Tx</label><span id="sv-stat-bytes-tx">—</span></div>
+                                <div class="cfg-row"><label>Frames Tx</label><span id="sv-stat-frames-tx">—</span></div>
+                                <div class="cfg-row"><label>Last Frame</label><span id="sv-stat-last-frame">—</span></div>
+                                <div class="cfg-row"><label>Avg Interval</label><span id="sv-stat-avg-interval">—</span></div>
+                                <div class="cfg-row"><label>Message Types</label><span id="sv-stat-msg-types">—</span></div>
+                            </div>
+
+                            <div class="cfg-row" style="margin-top:0.5em;">
+                                <label>Log</label>
+                                <div id="ntrip-server-log" class="ntrip-log-panel"></div>
+                            </div>
+                        </fieldset>
+
+                    </div>
+                </div>
+                {% endif %}
+
+            </div>
+        </div>
+
+        <footer>
+            <p>Jimmy Paputto GNSS HAT - Visualization System © 2025</p>
+        </footer>
+    </div>
+
+    <script>
+        window.APP_MODE = '{{ mode }}';
+        window.HAT_NAME = '{{ hat_name or '' }}';
+    </script>
+    <script src="{{ url_for('static', filename='js/map.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/altitude.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav-filter-preview.js') }}"></script>
+    {% if mode == 'native' %}
+    <script src="{{ url_for('static', filename='js/system.js') }}"></script>
+    {% endif %}
+</body>
+</html>

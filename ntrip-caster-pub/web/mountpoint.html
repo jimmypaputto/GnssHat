@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mountpoint — NTRIP Caster</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .sv-chips { display: flex; flex-wrap: wrap; gap: 4px; max-width: 520px; }
+        .sv-chip {
+            display: inline-block;
+            border: 1px solid var(--text-secondary);
+            border-radius: 3px;
+            padding: 1px 6px;
+            font-size: 11px;
+            font-variant-numeric: tabular-nums;
+            background: rgba(255,255,255,0.03);
+        }
+        .gnss-dot {
+            display: inline-block; width: 9px; height: 9px;
+            border-radius: 50%; margin-right: 6px;
+            vertical-align: middle;
+        }
+        .sky-wrap {
+            display: flex; align-items: center; justify-content: center;
+            min-height: 360px;
+        }
+        canvas#sky-canvas { display: block; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Mountpoint</h1>
+        <span class="subtitle"><a href="/">&larr; back to caster</a></span>
+    </header>
+    <main>
+        <div class="error-banner" id="error-banner"></div>
+
+        <div class="card">
+            <h2 id="mp-title">—</h2>
+            <div class="kv">
+                <div class="k">Connected rovers</div><div class="v" id="mp-clients">—</div>
+                <div class="k">Uptime</div>          <div class="v" id="mp-uptime">—</div>
+                <div class="k">Last frame</div>      <div class="v" id="mp-last">—</div>
+                <div class="k">Bytes from source</div><div class="v" id="mp-bytes">—</div>
+                <div class="k">Frames forwarded</div><div class="v" id="mp-frames">—</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Base station ARP</h2>
+            <div id="arp-block"><span class="v muted">—</span></div>
+        </div>
+
+        <div class="card">
+            <h2>Sky view</h2>
+            <div class="sky-wrap">
+                <canvas id="sky-canvas"></canvas>
+            </div>
+            <div class="v muted" id="sky-status">waiting for ephemerides…</div>
+        </div>
+
+        <div class="card">
+            <h2>Visible satellites</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Constellation</th>
+                        <th>MSM</th>
+                        <th>Sats</th>
+                        <th>Signals</th>
+                        <th>SV IDs</th>
+                    </tr>
+                </thead>
+                <tbody id="sat-tbody">
+                    <tr><td colspan="5" class="v muted">loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>RTCM3 message types</h2>
+            <div class="msg-grid" id="msg-grid">
+                <div class="v muted">loading…</div>
+            </div>
+        </div>
+    </main>
+
+    <footer>ntrip-caster &middot; <a id="api-link" href="#">/api/mountpoint/&hellip;</a></footer>
+
+    <script>
+        (function () {
+            const p = new URLSearchParams(window.location.search);
+            const n = p.get('name') || '';
+            const a = document.getElementById('api-link');
+            a.href = '/api/mountpoint/' + encodeURIComponent(n);
+            a.textContent = '/api/mountpoint/' + n;
+        })();
+    </script>
+    <script src="/js/skyplot.js"></script>
+    <script src="/js/mountpoint.js"></script>
+</body>
+</html>

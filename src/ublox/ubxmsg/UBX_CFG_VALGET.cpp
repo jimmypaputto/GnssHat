@@ -58,6 +58,13 @@ std::unordered_map<uint32_t, uint8_t> ConfigKeySizeMap::keySizes_ = {
 
     {UbxCfgKeys::CFG_NAVSPG_DYNMODEL, 1},
 
+    {UbxCfgKeys::CFG_NAVSPG_INFIL_MINSVS,    1},
+    {UbxCfgKeys::CFG_NAVSPG_INFIL_MAXSVS,    1},
+    {UbxCfgKeys::CFG_NAVSPG_INFIL_MINCNO,    1},
+    {UbxCfgKeys::CFG_NAVSPG_INFIL_MINELEV,   1},
+    {UbxCfgKeys::CFG_NAVSPG_INFIL_NCNOTHRS,  1},
+    {UbxCfgKeys::CFG_NAVSPG_INFIL_CNOTHRS,   1},
+
     {UbxCfgKeys::CFG_TP_TP1_ENA,          1},
     {UbxCfgKeys::CFG_TP_PULSE_DEF,        1},
     {UbxCfgKeys::CFG_TP_PULSE_LENGTH_DEF, 1},
@@ -71,6 +78,7 @@ std::unordered_map<uint32_t, uint8_t> ConfigKeySizeMap::keySizes_ = {
     {UbxCfgKeys::CFG_TP_TIMEGRID_TP1,     1},
 
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_UART1,  1},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_UART1, 1},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_UART1, 1},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_UART1, 1},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_UART1, 1},
@@ -79,6 +87,7 @@ std::unordered_map<uint32_t, uint8_t> ConfigKeySizeMap::keySizes_ = {
 
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_SPAN_SPI,     1},
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_SPI,       1},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_SPI,      1},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_SPI,      1},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_SPI,      1},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_SPI,      1},

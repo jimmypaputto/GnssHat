@@ -1,0 +1,2993 @@
+#!/usr/bin/env python3
+# Jimmy Paputto 2025
+# GPS Visualization Web Application
+# Modes: native (GnssHat library), external_tty (NMEA serial), or ros2 (ROS 2 topic)
+
+# ─── Optional eventlet runtime (must run BEFORE any stdlib import that ─────
+#     pulls socket/ssl/threading, otherwise monkey_patch() can't replace
+#     them). Opt in by exporting GNSSHAT_ASYNC_MODE=eventlet. The default
+#     stays 'threading' so users without eventlet aren't surprised.
+import os as _os_bootstrap
+_REQUESTED_ASYNC_MODE = _os_bootstrap.environ.get(
+    'GNSSHAT_ASYNC_MODE', 'threading').strip().lower()
+_EVENTLET_ACTIVE = False
+_EVENTLET_VERSION = None
+_EVENTLET_ERROR = None
+if _REQUESTED_ASYNC_MODE == 'eventlet':
+    try:
+        # Eventlet 0.40+ emits a noisy `EventletDeprecationWarning` from
+        # its package __init__ via warnings.warn, *and* registers its own
+        # filter that re-enables it (so a plain simplefilter('ignore')
+        # before the import gets overridden during the import itself).
+        # `catch_warnings()` saves+restores the entire filter stack, so
+        # any filters eventlet installs at import time are rolled back.
+        import warnings as _w
+        with _w.catch_warnings():
+            _w.simplefilter('ignore')
+            import eventlet  # type: ignore
+        # Patch ssl/select/socket/thread/time/os via the default arg-less
+        # call. Older eventlet (≤0.33) accepted per-module kwargs; 0.41+
+        # removed them and patches everything supported by default.
+        eventlet.monkey_patch()
+        _EVENTLET_ACTIVE = True
+        _EVENTLET_VERSION = getattr(eventlet, '__version__', None)
+    except Exception as _e:  # pragma: no cover
+        _EVENTLET_ERROR = repr(_e)
+        # Fall back silently to threading; record the error for the
+        # System tab so the user can see why eventlet didn't engage.
+
+# Pre-resolve a *real* OS-thread `threading` module. Under eventlet the
+# patched `threading.Thread` is a greenlet, which is fatal for our
+# reader threads: they call blocking C++ bindings
+# (`wait_and_get_fresh_navigation`, `pyserial.readline`, RTCM feeders)
+# that don't yield to eventlet's hub, so the entire event loop —
+# including Socket.IO I/O and HTTP requests — would freeze. Routing
+# those reader threads through the unpatched `threading` keeps them on
+# real OS threads, which can run concurrently with the green hub
+# whenever the C++ side releases the GIL.
+if _EVENTLET_ACTIVE:
+    import eventlet.patcher as _eventlet_patcher  # type: ignore
+    _native_threading = _eventlet_patcher.original('threading')
+    _native_queue = _eventlet_patcher.original('queue')
+else:
+    import threading as _native_threading  # noqa: F401  (alias)
+    import queue as _native_queue          # noqa: F401  (alias)
+
+# ─── Cross-runtime emit bridge ─────────────────────────────────────────────
+# Under eventlet, `socketio.emit()` ultimately writes to a green-patched
+# socket via the hub. That call is only safe from inside a greenlet —
+# invoking it from a real OS thread (our blocking GnssHat / NMEA / NTRIP
+# feed readers) deadlocks the hub on its first emit, which is exactly the
+# "stalls after a few seconds" symptom we hit. The bridge below decouples
+# producers from the hub:
+#
+#   producer thread -> _safe_emit(...) -> _emit_queue.put(...)
+#                                                          |
+#                                                          v
+#   green emitter <- tpool.execute(queue.get)  (blocks in real OS thread,
+#                                               so the hub stays responsive)
+#                 -> socketio.emit(...)         (always on a greenlet now)
+#
+# Without eventlet the queue is bypassed and `_safe_emit` collapses to a
+# direct `socketio.emit` call, so the threading async_mode path is
+# unchanged.
+_emit_queue = _native_queue.Queue() if _EVENTLET_ACTIVE else None
+
+import sys
+import os
+import argparse
+import threading
+import time
+import json
+import logging
+
+# orjson is 5–10× faster than stdlib json for the dicts we ship over
+# Socket.IO (gps_update, spectrum, rf_blocks, ntrip_tick). Falling back to
+# stdlib if not installed keeps the example runnable in stripped-down envs.
+try:
+    import orjson  # type: ignore
+    _HAS_ORJSON = True
+except ImportError:
+    orjson = None  # type: ignore
+    _HAS_ORJSON = False
+
+
+class _SocketIOJsonAdapter:
+    """Minimal `json`-module-shaped adapter for python-socketio.
+
+    python-socketio expects an object with `dumps(obj) -> str` and
+    `loads(s) -> obj`. orjson.dumps returns bytes (no separators kwarg),
+    so we wrap it. `default=str` swallows the rare non-JSON-native value
+    (e.g. IntEnum subclasses, datetime, numpy scalars) instead of raising
+    inside the emit path.
+    """
+    _OPTS = (
+        orjson.OPT_NON_STR_KEYS
+        | orjson.OPT_SERIALIZE_NUMPY
+    ) if _HAS_ORJSON else 0
+
+    @staticmethod
+    def dumps(obj, *args, **kwargs):  # python-socketio passes positional only
+        return orjson.dumps(
+            obj,
+            default=str,
+            option=_SocketIOJsonAdapter._OPTS,
+        ).decode('utf-8')
+
+    @staticmethod
+    def loads(s, *args, **kwargs):
+        if isinstance(s, str):
+            s = s.encode('utf-8')
+        return orjson.loads(s)
+
+
+_socketio_kwargs = {
+    'cors_allowed_origins': '*',
+    # Use eventlet only if the monkey-patch actually succeeded; otherwise
+    # we'd hand python-socketio an async_mode whose runtime isn't really
+    # patched and weird "RuntimeError: cannot use synchronous IO" surface
+    # at the worst time (mid-emit under load).
+    'async_mode': 'eventlet' if _EVENTLET_ACTIVE else 'threading',
+}
+if _HAS_ORJSON:
+    _socketio_kwargs['json'] = _SocketIOJsonAdapter
+
+# Ensure GnssHat Python bindings are findable when running as root (sudo)
+# The module is installed in the pi user's site-packages
+_pi_user_site = '/home/pi/.local/lib/python3.13/site-packages'
+if _pi_user_site not in sys.path and os.path.isdir(_pi_user_site):
+    sys.path.insert(0, _pi_user_site)
+
+from flask import Flask, render_template, jsonify, request, send_from_directory
+from flask_socketio import SocketIO, emit
+from geopy.distance import geodesic
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'gnss-visualization-secret'
+# Disable static-file caching: this is a development/demo dashboard, and
+# stale CSS/JS in the browser cache routinely confuses users after edits.
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+@app.after_request
+def _no_cache(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+socketio = SocketIO(app, **_socketio_kwargs)
+
+
+def _safe_emit(event, data=None, namespace='/', **kwargs):
+    """Bridged replacement for `socketio.emit`, callable from any thread.
+
+    Under eventlet, hands the event off to the green emitter via a
+    real-OS-thread-safe queue (see `_emit_queue` above). Without
+    eventlet, calls `socketio.emit` directly — identical behaviour to
+    today's `async_mode='threading'` path.
+    """
+    if _emit_queue is None:
+        return socketio.emit(event, data, namespace=namespace, **kwargs)
+    # The queue is unbounded (memory pressure on a backed-up emitter is
+    # easier to spot than a silently dropped frame), and `put` on a
+    # native queue.Queue with no maxsize never blocks the producer.
+    _emit_queue.put((event, data, namespace, kwargs))
+
+
+def _emitter_loop():
+    """Green-thread drainer for `_emit_queue`.
+
+    Started once via `socketio.start_background_task` when eventlet is
+    active. `eventlet.tpool.execute` parks the blocking `queue.get` on a
+    real OS worker thread, so the hub keeps servicing Socket.IO frames
+    while we wait for producers.
+    """
+    import eventlet.tpool as _tpool  # type: ignore
+    while True:
+        try:
+            item = _tpool.execute(_emit_queue.get)
+        except Exception as e:
+            # tpool can raise on shutdown; back off briefly and retry.
+            print(f"emitter tpool error: {e}")
+            socketio.sleep(0.1)
+            continue
+        if item is None:  # poison pill (unused today, future-proof)
+            break
+        event, data, namespace, kwargs = item
+        try:
+            socketio.emit(event, data, namespace=namespace, **kwargs)
+        except Exception as e:
+            print(f"emitter dispatch error ({event}): {e}")
+
+# ─── Quieten werkzeug access log for high-frequency polling endpoints ──────
+# The dashboard polls /api/ntrip/* /api/caster/* /api/ntrip-server/* every
+# 1.5 s, which would otherwise drown the terminal in 200-OK lines. Drop
+# successful (2xx) accesses to those paths; keep errors and other routes.
+class _NtripPollLogFilter(logging.Filter):
+    _NOISY_PREFIXES = (
+        '/api/ntrip/',
+        '/api/caster/',
+        '/api/ntrip-server/',
+    )
+    def filter(self, record):
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return True
+        # Werkzeug access lines look like:
+        #   127.0.0.1 - - [..] "GET /api/ntrip/status HTTP/1.1" 200 -
+        if any(p in msg for p in self._NOISY_PREFIXES):
+            # Suppress only successful GETs; let 4xx/5xx through.
+            if '" 2' in msg or '" 304' in msg:
+                return False
+        return True
+
+logging.getLogger('werkzeug').addFilter(_NtripPollLogFilter())
+
+
+# ─── Suppress Werkzeug WS-upgrade race traceback ───────────────────────────
+# When a client disconnects mid-WebSocket-upgrade (common on tab close,
+# hard refresh, or VPN reconnects), Werkzeug's dev-server WSGI bookkeeping
+# trips an internal assertion:
+#
+#   AssertionError: write() before start_response
+#
+# It's cosmetic — the connection is already torn down and other clients
+# are unaffected — but the multi-line traceback drowns the console. We
+# drop just that exact pattern (matched on the assertion message and the
+# werkzeug.serving frame) and let every other werkzeug error through.
+class _WerkzeugWsRaceFilter(logging.Filter):
+    _MARKERS = (
+        'write() before start_response',
+        'werkzeug/serving.py',
+    )
+    def filter(self, record):
+        try:
+            msg = record.getMessage()
+        except Exception:
+            msg = ''
+        # Match the "Error on request:" header line and any traceback
+        # frames carrying the markers.
+        if any(m in msg for m in self._MARKERS):
+            return False
+        if record.exc_info:
+            exc = record.exc_info[1]
+            if isinstance(exc, AssertionError) and \
+               'write() before start_response' in str(exc):
+                return False
+        return True
+
+# Werkzeug logs the traceback under both 'werkzeug' and the root logger
+# depending on the path; attach the filter to both to be safe.
+logging.getLogger('werkzeug').addFilter(_WerkzeugWsRaceFilter())
+logging.getLogger().addFilter(_WerkzeugWsRaceFilter())
+
+# Serial port configuration (external_tty mode)
+SERIAL_PORT = '/dev/jimmypaputto/gnss'
+BAUD_RATE = 9600
+
+# Operating mode: 'native' or 'external_tty'
+RUN_MODE = 'native'
+
+# Optional ROS 2 node name (e.g. 'rover', 'base') — changes topic prefix
+ROS2_NODE_NAME = None
+
+# Whitelist of valid HAT names sourced from the firmware (src/GnssHat.cpp).
+# Only frame_id values that match one of these strings will be accepted.
+KNOWN_HAT_NAMES = frozenset({
+    'L1 GNSS HAT',
+    'L1/L5 GNSS TIME HAT',
+    'L1/L5 GNSS RTK HAT',
+})
+
+# Global state
+gps_state = {
+    'serial_port': None,
+    'hat': None,           # GnssHat object (native mode)
+    'ros2_node': None,     # rclpy Node (ros2 mode)
+    'running': False,
+    'thread': None,
+    'reference_position': None,  # (lat, lon) of starting position
+    'current_data': None,
+    'last_gga': None,  # Last GGA sentence
+    'last_rmc': None,  # Last RMC sentence
+    'last_gsa': [],    # Last GSA sentences (one per constellation)
+    'last_gsv': [],    # Accumulated GSV sentences (multi-part, multi-constellation)
+    'gsv_collector': {},  # {talker: {total_msgs, msgs: {num: msg}}} for multi-part GSV
+    'current_config': None,  # Current GnssHat config dict
+    'hat_name': None,  # HAT name string (native mode only)
+    'config_lock': threading.Lock(),  # Lock for config changes
+    'system_data': None,  # Last system_update payload (MON-SYS + MON-VER)
+}
+
+# NTRIP client state (native mode, RTK HAT rover only)
+ntrip_state = {
+    'client': None,              # gnsshat.NtripClient instance
+    'corrections_thread': None,  # Thread applying RTCM3 frames to HAT
+    'stop_event': None,          # threading.Event to signal shutdown
+    'connected': False,
+    'config': None,              # Last-used NTRIP connection parameters
+}
+
+# NTRIP caster state (native mode, RTK HAT base only)
+caster_state = {
+    'caster': None,              # gnsshat.NtripCaster instance
+    'feed_thread': None,         # Thread feeding RTCM3 corrections
+    'stop_event': None,          # threading.Event to signal shutdown
+    'running': False,
+    'config': None,              # Last-used caster parameters
+}
+
+# NTRIP server state (native mode, RTK HAT base — push to remote caster)
+server_state = {
+    'server': None,              # gnsshat.NtripServer instance
+    'feed_thread': None,         # Thread feeding RTCM3 corrections
+    'stop_event': None,          # threading.Event to signal shutdown
+    'running': False,
+    'config': None,              # Last-used server parameters
+}
+
+
+# Log level names matching ENtripLogLevel / jp_ntrip_log_level_t
+_LOG_LEVEL_NAMES = {0: 'error', 1: 'warning', 2: 'info', 3: 'debug'}
+
+import queue
+_ntrip_log_queue = queue.SimpleQueue()   # thread-safe, non-blocking put()
+
+
+def _make_ntrip_log_callback(source):
+    """Return a logging callback that queues log entries.
+    Called from C++ threads — must be lightweight and never touch socketio."""
+    def _cb(level, message):
+        _ntrip_log_queue.put({
+            'source': source,
+            'level': _LOG_LEVEL_NAMES.get(level, 'info'),
+            'message': message,
+        })
+    return _cb
+
+
+def _ntrip_corrections_thread():
+    """Background thread: receives RTCM3 frames and applies them to the
+    GNSS receiver.  Also feeds current position for auto-GGA.
+    No socketio calls — status is polled via REST."""
+
+    stop_event = ntrip_state['stop_event']
+    client = ntrip_state['client']
+    config = ntrip_state.get('config') or {}
+    auto_reconnect = config.get('auto_reconnect', False)
+
+    while not stop_event.is_set():
+        if not client.is_connected():
+            if not auto_reconnect:
+                ntrip_state['connected'] = False
+                break
+            stop_event.wait(0.5)
+            continue
+
+        # Update position for auto-GGA from latest navigation
+        hat = gps_state.get('hat')
+        if hat is not None:
+            try:
+                nav = hat.get_navigation()
+                if nav and nav.pvt.latitude != 0.0:
+                    client.update_position(
+                        float(nav.pvt.latitude),
+                        float(nav.pvt.longitude),
+                        float(nav.pvt.altitude))
+            except Exception:
+                pass
+
+        try:
+            frames = client.receive()
+        except Exception as e:
+            print(f"NTRIP receive error: {e}")
+            stop_event.wait(0.2)
+            continue
+
+        if not frames:
+            stop_event.wait(0.05)
+            continue
+
+        if hat is None:
+            continue
+
+        try:
+            hat.rtk_apply_corrections(frames)
+        except Exception as e:
+            print(f"Error applying RTCM3 corrections: {e}")
+
+
+def _caster_feed_thread():
+    """Background thread: waits for TIME_ONLY_FIX, then feeds RTCM3
+    corrections from the HAT to the NTRIP caster (same pattern as
+    examples/Python/rtk_base.py)."""
+    from jimmypaputto import gnsshat
+
+    stop_event = caster_state['stop_event']
+    caster = caster_state['caster']
+
+    # Wait for TIME_ONLY_FIX before pulling corrections
+    print("Caster: waiting for TIME_ONLY_FIX...")
+    while not stop_event.is_set():
+        hat = gps_state.get('hat')
+        if hat is None:
+            time.sleep(1)
+            continue
+        try:
+            nav = hat.get_navigation()
+            if nav and nav.pvt.fix_type == int(gnsshat.FixType.TIME_ONLY_FIX):
+                print("Caster: TIME_ONLY_FIX acquired, starting correction feed")
+                break
+        except Exception:
+            pass
+        time.sleep(1)
+
+    # Feed corrections loop
+    while not stop_event.is_set():
+        hat = gps_state.get('hat')
+        if hat is None:
+            time.sleep(1)
+            continue
+
+        try:
+            frames = hat.rtk_get_full_corrections()
+            if frames:
+                caster.feed(frames)
+                # Update caster position from latest navigation
+                nav = hat.get_navigation()
+                if nav:
+                    caster.update_position(
+                        float(nav.pvt.latitude),
+                        float(nav.pvt.longitude))
+                # Emit client count update
+                _safe_emit('caster_status', {
+                    'state': 'running',
+                    'client_count': caster.client_count(),
+                }, namespace='/')
+        except Exception as e:
+            print(f"Caster feed error: {e}")
+
+        time.sleep(1)
+
+
+def start_ntrip(config):
+    """Start native NTRIP client and corrections thread.
+
+    config: dict with keys caster, port, mountpoint, username, password,
+            auto_reconnect, reconnect_initial_delay, reconnect_max_delay.
+    Returns (success: bool, error_message: str | None).
+    """
+    from jimmypaputto import gnsshat
+
+    if ntrip_state['connected']:
+        stop_ntrip()
+
+    hat = gps_state.get('hat')
+    if hat is None:
+        return False, 'GNSS HAT not initialized'
+
+    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
+        return False, 'NTRIP requires L1/L5 GNSS RTK HAT'
+
+    caster_host = config.get('caster', '')
+    port = int(config.get('port', 2101))
+    mountpoint = config.get('mountpoint', '')
+    username = config.get('username', '')
+    password = config.get('password', '')
+
+    print(f"NTRIP: connecting to {caster_host}:{port}/{mountpoint}")
+
+    try:
+        client = gnsshat.NtripClient(caster_host, port, mountpoint, username, password)
+
+        # Wire up log callback (queues entries, never touches socketio)
+        client.set_log_level(2)  # Info
+        client.set_log_callback(_make_ntrip_log_callback('client'))
+
+        # Auto-reconnect
+        if config.get('auto_reconnect', False):
+            initial_delay = int(config.get('reconnect_initial_delay', 1000))
+            max_delay = int(config.get('reconnect_max_delay', 30000))
+            client.set_auto_reconnect(True, initial_delay, max_delay)
+
+        # TLS
+        if config.get('use_tls', False):
+            client.set_tls(True, config.get('verify_peer', True))
+
+        # Auto-GGA: periodically send position to caster for VRS / nearest base
+        auto_gga_ms = int(config.get('auto_gga_interval_ms', 10000))
+        if auto_gga_ms > 0:
+            client.set_auto_gga(auto_gga_ms)
+
+        client.connect()
+    except RuntimeError as e:
+        err_msg = str(e)
+        if '401' in err_msg or 'Unauthorized' in err_msg:
+            return False, 'Authentication failed (401 Unauthorized)'
+        elif '404' in err_msg or 'Not Found' in err_msg:
+            return False, f'Mountpoint "{mountpoint}" not found (404)'
+        elif 'Connection refused' in err_msg:
+            return False, f'Connection refused to {caster_host}:{port}'
+        elif 'resolve' in err_msg.lower() or 'getaddrinfo' in err_msg.lower():
+            return False, f'Cannot resolve hostname: {caster_host}'
+        return False, f'NTRIP client error: {err_msg}'
+    except Exception as e:
+        return False, f'NTRIP client error: {e}'
+
+    stop_event = threading.Event()
+    ntrip_state['client'] = client
+    ntrip_state['stop_event'] = stop_event
+    ntrip_state['connected'] = True
+    ntrip_state['config'] = config
+
+    t = _native_threading.Thread(target=_ntrip_corrections_thread, daemon=True)
+    t.start()
+    ntrip_state['corrections_thread'] = t
+
+    print("NTRIP: connected, streaming RTCM3 corrections")
+    return True, None
+
+
+def stop_ntrip():
+    """Stop NTRIP client and corrections thread."""
+    if ntrip_state['stop_event']:
+        ntrip_state['stop_event'].set()
+
+    if ntrip_state['corrections_thread']:
+        ntrip_state['corrections_thread'].join(timeout=3)
+
+    if ntrip_state['client']:
+        try:
+            ntrip_state['client'].disconnect()
+        except Exception as e:
+            print(f"NTRIP: error stopping client: {e}")
+
+    was_connected = ntrip_state['connected']
+    _reset_ntrip_state()
+
+    if was_connected:
+        print("NTRIP: disconnected")
+
+
+def _reset_ntrip_state():
+    """Reset ntrip_state to defaults."""
+    ntrip_state['client'] = None
+    ntrip_state['corrections_thread'] = None
+    ntrip_state['stop_event'] = None
+    ntrip_state['connected'] = False
+    ntrip_state['config'] = None
+
+
+def start_caster(config):
+    """Start native NTRIP caster and feed thread.
+
+    config: dict with keys port, mountpoint.
+    Returns (success: bool, error_message: str | None).
+    """
+    from jimmypaputto import gnsshat
+
+    if caster_state['running']:
+        stop_caster()
+
+    hat = gps_state.get('hat')
+    if hat is None:
+        return False, 'GNSS HAT not initialized'
+
+    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
+        return False, 'Caster requires L1/L5 GNSS RTK HAT'
+
+    port = int(config.get('port', 2101))
+    mountpoint = config.get('mountpoint', 'GNSS')
+    username = config.get('username', '').strip()
+    password = config.get('password', '').strip()
+
+    print(f"Caster: starting on 0.0.0.0:{port}/{mountpoint}")
+
+    try:
+        caster = gnsshat.NtripCaster("0.0.0.0", port, mountpoint)
+        if username:
+            caster.set_credentials(username, password)
+        if config.get('use_tls', False):
+            cert = config.get('tls_cert', '')
+            key = config.get('tls_key', '')
+            if not cert or not key:
+                return False, 'TLS requires both cert and key file paths'
+            if not caster.set_tls(cert, key):
+                return False, 'Failed to load TLS cert/key files'
+        caster.start()
+    except Exception as e:
+        return False, f'Caster start error: {e}'
+
+    caster_state['caster'] = caster
+    caster_state['stop_event'] = None
+
+    # Wire up log callback to emit Socket.IO events
+    caster.set_log_level(2)  # Info
+    caster.set_log_callback(_make_ntrip_log_callback('caster'))
+
+    caster_state['running'] = True
+    caster_state['config'] = config
+
+    # Only start the direct HAT feed thread when local_source is enabled.
+    # By default, the caster is a pure relay — data arrives from an
+    # NtripServer (POST) or external source.
+    if config.get('local_source', False):
+        stop_event = threading.Event()
+        caster_state['stop_event'] = stop_event
+        t = _native_threading.Thread(target=_caster_feed_thread, daemon=True)
+        t.start()
+        caster_state['feed_thread'] = t
+
+    print(f"Caster: running on port {port}, mountpoint '{mountpoint}'")
+    return True, None
+
+
+def stop_caster():
+    """Stop NTRIP caster and feed thread."""
+    if caster_state['stop_event']:
+        caster_state['stop_event'].set()
+
+    if caster_state['caster']:
+        try:
+            caster_state['caster'].stop()
+        except Exception as e:
+            print(f"Caster: error stopping: {e}")
+
+    if caster_state['feed_thread']:
+        caster_state['feed_thread'].join(timeout=5)
+
+    was_running = caster_state['running']
+    _reset_caster_state()
+
+    if was_running:
+        print("Caster: stopped")
+
+
+def _reset_caster_state():
+    """Reset caster_state to defaults."""
+    caster_state['caster'] = None
+    caster_state['feed_thread'] = None
+    caster_state['stop_event'] = None
+    caster_state['running'] = False
+    caster_state['config'] = None
+
+
+def _server_feed_thread():
+    """Background thread: pushes RTCM3 corrections from the HAT to a
+    remote NTRIP caster via NtripServer."""
+    from jimmypaputto import gnsshat
+
+    stop_event = server_state['stop_event']
+    server = server_state['server']
+
+    # Wait for TIME_ONLY_FIX before pulling corrections
+    print("NtripServer: waiting for TIME_ONLY_FIX...")
+    while not stop_event.is_set():
+        hat = gps_state.get('hat')
+        if hat is None:
+            time.sleep(1)
+            continue
+        try:
+            nav = hat.get_navigation()
+            if nav and nav.pvt.fix_type == int(gnsshat.FixType.TIME_ONLY_FIX):
+                print("NtripServer: TIME_ONLY_FIX acquired, starting correction feed")
+                break
+        except Exception:
+            pass
+        time.sleep(1)
+
+    while not stop_event.is_set():
+        hat = gps_state.get('hat')
+        if hat is None:
+            time.sleep(1)
+            continue
+        try:
+            frames = hat.rtk_get_full_corrections()
+            if frames:
+                server.feed(frames)
+        except Exception as e:
+            print(f"NtripServer feed error: {e}")
+        time.sleep(1)
+
+
+def start_server(config):
+    """Start NtripServer (push corrections to remote caster).
+
+    config: dict with keys host, port, mountpoint, password,
+            auto_reconnect, reconnect_initial_delay, reconnect_max_delay.
+    Returns (success: bool, error_message: str | None).
+    """
+    from jimmypaputto import gnsshat
+
+    if server_state['running']:
+        stop_server()
+
+    hat = gps_state.get('hat')
+    if hat is None:
+        return False, 'GNSS HAT not initialized'
+
+    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
+        return False, 'NtripServer requires L1/L5 GNSS RTK HAT'
+
+    host = config.get('host', '').strip()
+    port = int(config.get('port', 2101))
+    mountpoint = config.get('mountpoint', '').strip()
+    username = config.get('username', '').strip()
+    password = config.get('password', '').strip()
+
+    if not host or not mountpoint:
+        return False, 'Host and mountpoint are required'
+
+    print(f"NtripServer: connecting to {host}:{port}/{mountpoint}")
+
+    try:
+        server = gnsshat.NtripServer(host, port, mountpoint, username, password)
+        server.set_log_level(2)
+        server.set_log_callback(_make_ntrip_log_callback('server'))
+
+        if config.get('auto_reconnect', False):
+            initial_delay = int(config.get('reconnect_initial_delay', 1000))
+            max_delay = int(config.get('reconnect_max_delay', 30000))
+            server.set_auto_reconnect(True, initial_delay, max_delay)
+
+        if config.get('use_tls', False):
+            server.set_tls(True, config.get('verify_peer', True))
+
+        server.connect()
+    except RuntimeError as e:
+        return False, f'NtripServer error: {e}'
+    except Exception as e:
+        return False, f'NtripServer error: {e}'
+
+    stop_event = threading.Event()
+    server_state['server'] = server
+    server_state['stop_event'] = stop_event
+    server_state['running'] = True
+    server_state['config'] = config
+
+    t = _native_threading.Thread(target=_server_feed_thread, daemon=True)
+    t.start()
+    server_state['feed_thread'] = t
+
+    print(f"NtripServer: connected to {host}:{port}/{mountpoint}")
+    return True, None
+
+
+def stop_server():
+    """Stop NtripServer and feed thread."""
+    if server_state['stop_event']:
+        server_state['stop_event'].set()
+
+    if server_state['server']:
+        try:
+            server_state['server'].disconnect()
+        except Exception as e:
+            print(f"NtripServer: error stopping: {e}")
+
+    if server_state['feed_thread']:
+        server_state['feed_thread'].join(timeout=5)
+
+    was_running = server_state['running']
+    _reset_server_state()
+
+    if was_running:
+        print("NtripServer: stopped")
+
+
+def _reset_server_state():
+    """Reset server_state to defaults."""
+    server_state['server'] = None
+    server_state['feed_thread'] = None
+    server_state['stop_event'] = None
+    server_state['running'] = False
+    server_state['config'] = None
+
+
+def calculate_offset_meters(ref_pos, current_pos):
+    """
+    Calculate offset in meters from reference position.
+    Returns: (x_meters, y_meters) where x is East-West, y is North-South
+    """
+    if ref_pos is None or current_pos is None:
+        return (0.0, 0.0)
+    
+    ref_lat, ref_lon = ref_pos
+    curr_lat, curr_lon = current_pos
+    
+    # North-South distance (y-axis)
+    north_point = (curr_lat, ref_lon)
+    y_meters = geodesic(ref_pos, north_point).meters
+    if curr_lat < ref_lat:
+        y_meters = -y_meters
+    
+    # East-West distance (x-axis)
+    east_point = (ref_lat, curr_lon)
+    x_meters = geodesic(ref_pos, east_point).meters
+    if curr_lon < ref_lon:
+        x_meters = -x_meters
+    
+    return (x_meters, y_meters)
+
+
+def _nmea_talker_to_gnss_id(talker):
+    """Map NMEA talker ID (GP, GA, GL, GB, GQ) to human-readable GNSS name"""
+    mapping = {
+        'GP': 'GPS',
+        'GA': 'Galileo',
+        'GL': 'GLONASS',
+        'GB': 'BeiDou',
+        'GQ': 'QZSS',
+        'GN': 'GPS',     # GN = combined (fallback to GPS)
+    }
+    return mapping.get(talker, 'GPS')
+
+
+def _nmea_system_id_to_gnss_id(system_id):
+    """Map NMEA 4.11 system ID from GSA to human-readable GNSS name"""
+    mapping = {
+        1: 'GPS',
+        2: 'GLONASS',
+        3: 'Galileo',
+        4: 'BeiDou',
+        5: 'QZSS',
+    }
+    return mapping.get(system_id, 'GPS')
+
+
+def parse_gsv_satellites():
+    """Parse accumulated GSV sentences into satellite data list for skyview.
+    Returns list of dicts with keys: gnss_id, sv_id, cno, elevation, azimuth,
+    used_in_fix, quality, healthy."""
+
+    # Collect used satellite PRNs from GSA sentences (per constellation)
+    used_prns = set()  # set of (gnss_name, prn)
+    gsa_list = gps_state['last_gsa']
+    for gsa in gsa_list:
+        # Determine GNSS system from GSA
+        # NMEA 4.11 provides system ID in field after VDOP
+        gnss_name = 'GPS'
+        if hasattr(gsa, 'data') and len(gsa.data) >= 18:
+            try:
+                sys_id = int(gsa.data[17])
+                gnss_name = _nmea_system_id_to_gnss_id(sys_id)
+            except (ValueError, IndexError):
+                pass
+
+        for i in range(1, 13):
+            attr = f'sv_id{i:02d}'
+            prn = getattr(gsa, attr, None) or getattr(gsa, f'sv_id{i}', None)
+            if prn:
+                try:
+                    used_prns.add((gnss_name, int(prn)))
+                except (ValueError, TypeError):
+                    pass
+
+    # Parse GSV sentences
+    satellites = []
+    gsv_sentences = gps_state['last_gsv']
+
+    for msg in gsv_sentences:
+        talker = msg.talker if hasattr(msg, 'talker') else 'GP'
+        gnss_name = _nmea_talker_to_gnss_id(talker)
+
+        # Each GSV sentence has up to 4 satellite entries
+        # Fields: sv_prn_num_X, elevation_deg_X, azimuth_X, snr_X  (X = 1..4)
+        for i in range(1, 5):
+            prn = getattr(msg, f'sv_prn_num_{i}', None)
+            if prn is None or prn == '':
+                continue
+            try:
+                sv_id = int(prn)
+            except (ValueError, TypeError):
+                continue
+
+            try:
+                elevation = int(getattr(msg, f'elevation_deg_{i}', 0) or 0)
+            except (ValueError, TypeError):
+                elevation = 0
+            try:
+                azimuth = int(getattr(msg, f'azimuth_{i}', 0) or 0)
+            except (ValueError, TypeError):
+                azimuth = 0
+            try:
+                cno = int(getattr(msg, f'snr_{i}', 0) or 0)
+            except (ValueError, TypeError):
+                cno = 0
+
+            # Determine if satellite is used in fix
+            is_used = (gnss_name, sv_id) in used_prns
+
+            satellites.append({
+                'gnss_id': gnss_name,
+                'sv_id': sv_id,
+                'cno': cno,
+                'elevation': elevation,
+                'azimuth': azimuth,
+                'quality': 'Code Locked' if cno > 0 else 'No Signal',
+                'used_in_fix': is_used,
+                'healthy': True,
+            })
+
+    return satellites
+
+
+def parse_nmea_data():
+    """Combine data from NMEA sentences to create GPS data dictionary"""
+    gga = gps_state['last_gga']
+    rmc = gps_state['last_rmc']
+    gsa_list = gps_state['last_gsa']
+    # Use first GSA for fix type (all share the same fix mode)
+    gsa = gsa_list[0] if gsa_list else None
+    
+    if not gga and not rmc:
+        return None
+    
+    # Use GGA as primary source, fallback to RMC
+    primary = gga if gga else rmc
+
+    latitude = float(primary.latitude) if hasattr(primary, 'latitude') and primary.latitude else 0.0
+    longitude = float(primary.longitude) if hasattr(primary, 'longitude') and primary.longitude else 0.0
+    
+    # Extract altitude (only from GGA)
+    altitude_msl = float(gga.altitude) if gga and hasattr(gga, 'altitude') and gga.altitude else 0.0
+    
+    # Extract speed and heading (from RMC)
+    speed_knots = float(rmc.spd_over_grnd) if rmc and hasattr(rmc, 'spd_over_grnd') and rmc.spd_over_grnd else 0.0
+    speed_mps = speed_knots * 0.514444  # Convert knots to m/s
+    
+    heading = float(rmc.true_course) if rmc and hasattr(rmc, 'true_course') and rmc.true_course else 0.0
+    
+    # Extract fix quality (from GGA)
+    gps_qual = int(gga.gps_qual) if gga and hasattr(gga, 'gps_qual') else 0
+    fix_quality_map = {
+        0: "Invalid",
+        1: "2D3DFix",
+        2: "DGPS Fix",
+        4: "RTK Fixed",
+        5: "RTK Float",
+        6: "Dead Reckoning"
+    }
+    fix_quality = fix_quality_map.get(gps_qual, "Unknown")
+    
+    # Extract number of satellites (from GGA)
+    num_sats = int(gga.num_sats) if gga and hasattr(gga, 'num_sats') and gga.num_sats else 0
+    
+    # Extract HDOP (from GGA or GSA)
+    hdop = float(gga.horizontal_dil) if gga and hasattr(gga, 'horizontal_dil') and gga.horizontal_dil else 0.0
+    
+    # Extract fix type from GSA (2D/3D)
+    fix_type = "No Fix"
+    if gsa and hasattr(gsa, 'mode_fix_type'):
+        fix_type_map = {
+            '1': 'No Fix',
+            '2': '2D Fix',
+            '3': '3D Fix'
+        }
+        fix_type = fix_type_map.get(str(gsa.mode_fix_type), "Unknown")
+    
+    # Extract time (from GGA or RMC)
+    utc_time = "N/A"
+    if primary and hasattr(primary, 'timestamp') and primary.timestamp:
+        utc_time = primary.timestamp.strftime("%H:%M:%S")
+    
+    # Extract date (from RMC)
+    date = "N/A"
+    if rmc and hasattr(rmc, 'datestamp') and rmc.datestamp:
+        date = rmc.datestamp.strftime("%Y-%m-%d")
+    
+    # Status (A=Active, V=Void from RMC)
+    fix_status = "Void"
+    if rmc and hasattr(rmc, 'status') and rmc.status == 'A':
+        fix_status = "Active"
+    elif gga and gps_qual > 0:
+        fix_status = "Active"
+    
+    return {
+        'latitude': float(latitude),
+        'longitude': float(longitude),
+        'altitude_msl': float(altitude_msl),
+        'speed_over_ground': float(speed_mps),
+        'heading': float(heading),
+        'visible_satellites': int(num_sats),
+        'hdop': float(hdop),
+        'fix_quality': fix_quality,
+        'fix_status': fix_status,
+        'fix_type': fix_type,
+        'utc_time': utc_time,
+        'date': date,
+    }
+
+
+# ─── Native mode: GnssHat reader thread ─────────────────────────────────────
+
+def create_default_config():
+    """Create default GnssHat configuration"""
+    from jimmypaputto import gnsshat
+    return {
+        'measurement_rate_hz': 1,
+        'dynamic_model': gnsshat.DynamicModel.STATIONARY,
+        'timepulse_pin_config': {
+            'active': True,
+            'fixed_pulse': {
+                'frequency': 1,
+                'pulse_width': 0.1
+            },
+            'polarity': gnsshat.TimepulsePolarity.RISING_EDGE
+        },
+        'geofencing': None,
+        'rtk': None,
+        'timing': None,
+        'navigation_filters': None,
+        'save_to_flash': False,
+    }
+
+
+def format_time_accuracy(accuracy_ns):
+    """Format time accuracy from nanoseconds to a human-readable string"""
+    if accuracy_ns < 1000:
+        return f"{accuracy_ns} ns"
+    elif accuracy_ns < 1_000_000:
+        return f"{accuracy_ns / 1000:.1f} µs"
+    else:
+        return f"{accuracy_ns / 1_000_000:.1f} ms"
+
+
+def time_mark_to_data(tm):
+    """Convert TimeMark object from GnssHat to dict for the frontend"""
+    from jimmypaputto import gnsshat
+
+    mode_map = {
+        int(gnsshat.TimeMarkMode.SINGLE): "Single",
+        int(gnsshat.TimeMarkMode.RUNNING): "Running",
+    }
+    run_map = {
+        int(gnsshat.TimeMarkRun.ARMED): "Armed",
+        int(gnsshat.TimeMarkRun.STOPPED): "Stopped",
+    }
+    time_base_map = {
+        int(gnsshat.TimeMarkTimeBase.RECEIVER): "Receiver",
+        int(gnsshat.TimeMarkTimeBase.GNSS): "GNSS",
+        int(gnsshat.TimeMarkTimeBase.UTC): "UTC",
+    }
+
+    return {
+        'channel': int(tm.channel),
+        'mode': mode_map.get(tm.mode, "Unknown"),
+        'run': run_map.get(tm.run, "Unknown"),
+        'new_falling_edge': bool(tm.new_falling_edge),
+        'time_base': time_base_map.get(tm.time_base, "Unknown"),
+        'utc_available': bool(tm.utc_available),
+        'time_valid': bool(tm.time_valid),
+        'new_rising_edge': bool(tm.new_rising_edge),
+        'count': int(tm.count),
+        'week_number_rising': int(tm.week_number_rising),
+        'week_number_falling': int(tm.week_number_falling),
+        'tow_rising_ms': int(tm.tow_rising_ms),
+        'tow_sub_rising_ns': int(tm.tow_sub_rising_ns),
+        'tow_falling_ms': int(tm.tow_falling_ms),
+        'tow_sub_falling_ns': int(tm.tow_sub_falling_ns),
+        'accuracy_estimate_ns': int(tm.accuracy_estimate_ns),
+        'accuracy_estimate': format_time_accuracy(int(tm.accuracy_estimate_ns)),
+    }
+
+
+def nav_to_pvt_data(nav):
+    """Convert Navigation object from GnssHat to pvt data dict for the frontend"""
+    from jimmypaputto import gnsshat
+
+    pvt = nav.pvt
+    dop = nav.dop
+
+    fix_quality_map = {
+        int(gnsshat.FixQuality.INVALID): "Invalid",
+        int(gnsshat.FixQuality.GPS_FIX_2D_3D): "Gps Fix 2D3D",
+        int(gnsshat.FixQuality.DGNSS): "DGPS Fix",
+        int(gnsshat.FixQuality.PPS_FIX): "PPS Fix",
+        int(gnsshat.FixQuality.FIXED_RTK): "RTK Fixed",
+        int(gnsshat.FixQuality.FLOAT_RTK): "RTK Float",
+        int(gnsshat.FixQuality.DEAD_RECKONING): "Dead Reckoning",
+    }
+
+    fix_status_map = {
+        int(gnsshat.FixStatus.VOID): "Void",
+        int(gnsshat.FixStatus.ACTIVE): "Active",
+    }
+
+    fix_type_map = {
+        int(gnsshat.FixType.NO_FIX): "No Fix",
+        int(gnsshat.FixType.DEAD_RECKONING_ONLY): "Dead Reckoning Only",
+        int(gnsshat.FixType.FIX_2D): "Fix 2D",
+        int(gnsshat.FixType.FIX_3D): "Fix 3D",
+        int(gnsshat.FixType.GNSS_WITH_DEAD_RECKONING): "GNSS+DR",
+        int(gnsshat.FixType.TIME_ONLY_FIX): "Time Only Fix",
+    }
+
+    utc_time = "N/A"
+    time_accuracy = "N/A"
+    if pvt.utc_time and pvt.utc_time.valid:
+        utc_time = f"{pvt.utc_time.hours:02d}:{pvt.utc_time.minutes:02d}:{pvt.utc_time.seconds:02d}"
+        time_accuracy = format_time_accuracy(pvt.utc_time.accuracy)
+
+    date = "N/A"
+    if pvt.date and pvt.date.valid:
+        date = f"{pvt.date.year:04d}-{pvt.date.month:02d}-{pvt.date.day:02d}"
+
+    pvt_data = {
+        'latitude': float(pvt.latitude),
+        'longitude': float(pvt.longitude),
+        'altitude': float(pvt.altitude),
+        'altitude_msl': float(pvt.altitude_msl),
+        'speed_over_ground': float(pvt.speed_over_ground),
+        'heading': float(pvt.heading),
+        'visible_satellites': int(pvt.visible_satellites),
+        'hdop': float(dop.horizontal),
+        'fix_quality': fix_quality_map.get(pvt.fix_quality, "Unknown"),
+        'fix_status': fix_status_map.get(pvt.fix_status, "Void"),
+        'fix_type': fix_type_map.get(pvt.fix_type, "Unknown"),
+        'utc_time': utc_time,
+        'date': date,
+        'time_accuracy': time_accuracy,
+        'horizontal_accuracy': float(pvt.horizontal_accuracy),
+        'vertical_accuracy': float(pvt.vertical_accuracy),
+        'speed_accuracy': float(pvt.speed_accuracy),
+        'heading_accuracy': float(pvt.heading_accuracy),
+    }
+
+    return pvt_data
+
+
+def nav_to_full_data(nav):
+    """Serialize Navigation data (DOP, Geofencing, Satellites) for native mode"""
+    from jimmypaputto import gnsshat
+
+    dop = nav.dop
+    dop_data = {
+        'geometric': float(dop.geometric),
+        'position': float(dop.position),
+        'time': float(dop.time),
+        'vertical': float(dop.vertical),
+        'horizontal': float(dop.horizontal),
+        'northing': float(dop.northing),
+        'easting': float(dop.easting),
+    }
+
+    geofencing_nav = nav.geofencing.nav
+    geofencing_status_map = {
+        int(gnsshat.GeofencingStatus.NOT_AVAILABLE): "Not Available",
+        int(gnsshat.GeofencingStatus.ACTIVE): "Active",
+    }
+    geofence_state_map = {
+        int(gnsshat.GeofenceStatus.UNKNOWN): "Unknown",
+        int(gnsshat.GeofenceStatus.INSIDE): "Inside",
+        int(gnsshat.GeofenceStatus.OUTSIDE): "Outside",
+    }
+    geofencing_data = {
+        'status': geofencing_status_map.get(geofencing_nav.status, "Unknown"),
+        'number_of_geofences': int(geofencing_nav.number_of_geofences),
+        'combined_state': geofence_state_map.get(geofencing_nav.combined_state, "Unknown"),
+        'geofences': [geofence_state_map.get(int(s), "Unknown") for s in geofencing_nav.geofences],
+    }
+
+    gnss_id_map = {
+        int(gnsshat.GnssId.GPS): "GPS",
+        int(gnsshat.GnssId.SBAS): "SBAS",
+        int(gnsshat.GnssId.GALILEO): "Galileo",
+        int(gnsshat.GnssId.BEIDOU): "BeiDou",
+        int(gnsshat.GnssId.IMES): "IMES",
+        int(gnsshat.GnssId.QZSS): "QZSS",
+        int(gnsshat.GnssId.GLONASS): "GLONASS",
+    }
+    quality_map = {
+        int(gnsshat.SvQuality.NO_SIGNAL): "No Signal",
+        int(gnsshat.SvQuality.SEARCHING): "Searching",
+        int(gnsshat.SvQuality.SIGNAL_ACQUIRED): "Acquired",
+        int(gnsshat.SvQuality.SIGNAL_DETECTED_BUT_UNUSABLE): "Unusable",
+        int(gnsshat.SvQuality.CODE_LOCKED_AND_TIME_SYNCHRONIZED): "Code Locked",
+        int(gnsshat.SvQuality.CODE_AND_CARRIER_LOCKED_1): "Carrier Lock 1",
+        int(gnsshat.SvQuality.CODE_AND_CARRIER_LOCKED_2): "Carrier Lock 2",
+        int(gnsshat.SvQuality.CODE_AND_CARRIER_LOCKED_3): "Carrier Lock 3",
+    }
+
+    satellites_data = []
+    for sat in nav.satellites:
+        satellites_data.append({
+            'gnss_id': gnss_id_map.get(sat.gnss_id, "Unknown"),
+            'sv_id': int(sat.sv_id),
+            'cno': int(sat.cno),
+            'elevation': int(sat.elevation),
+            'azimuth': int(sat.azimuth),
+            'quality': quality_map.get(sat.quality, "Unknown"),
+            'used_in_fix': bool(sat.used_in_fix),
+            'healthy': bool(sat.healthy),
+        })
+
+    spectrum_data = []
+    if hasattr(nav, 'rf_blocks_spectrum') and nav.rf_blocks_spectrum:
+        for spec in nav.rf_blocks_spectrum:
+            spectrum_data.append({
+                'id': int(spec.id),
+                'data': list(spec.spectrum_data) if spec.spectrum_data else [],
+                'span': int(spec.span),
+                'resolution': int(spec.resolution),
+                'center_freq': int(spec.center_freq),
+                'gain': int(spec.gain),
+            })
+
+    return {
+        'dop': dop_data,
+        'geofencing': geofencing_data,
+        'satellites': satellites_data,
+        'spectrum': spectrum_data,
+    }
+
+
+def nav_to_rf_data(nav):
+    """Serialize RF Blocks from Navigation object (throttled separately)"""
+    from jimmypaputto import gnsshat
+
+    jamming_map = {
+        int(gnsshat.JammingState.UNKNOWN): "Unknown",
+        int(gnsshat.JammingState.OK_NO_SIGNIFICANT_JAMMING): "OK",
+        int(gnsshat.JammingState.WARNING_INTERFERENCE_VISIBLE_BUT_FIX_OK): "Warning",
+        int(gnsshat.JammingState.CRITICAL_INTERFERENCE_VISIBLE_AND_NO_FIX): "Critical",
+    }
+    antenna_status_map = {
+        int(gnsshat.AntennaStatus.INIT): "Init",
+        int(gnsshat.AntennaStatus.DONT_KNOW): "Unknown",
+        int(gnsshat.AntennaStatus.OK): "OK",
+        int(gnsshat.AntennaStatus.SHORT): "Short",
+        int(gnsshat.AntennaStatus.OPEN): "Open",
+    }
+    antenna_power_map = {
+        int(gnsshat.AntennaPower.OFF): "Off",
+        int(gnsshat.AntennaPower.ON): "On",
+        int(gnsshat.AntennaPower.DONT_KNOW): "Unknown",
+    }
+    band_map = {
+        int(gnsshat.RfBand.UNKNOWN): "UNKNOWN",
+        int(gnsshat.RfBand.L1): "L1",
+        int(gnsshat.RfBand.L2): "L2",
+        int(gnsshat.RfBand.L3): "L3",
+        int(gnsshat.RfBand.L5): "L5",
+        int(gnsshat.RfBand.L2_OR_L5): "L2/L5",
+    }
+
+    rf_blocks_data = []
+    for rf in nav.rf_blocks:
+        rf_blocks_data.append({
+            'band': band_map.get(rf.gnss_band, "Unknown"),
+            'jamming_state': jamming_map.get(rf.jamming_state, "Unknown"),
+            'antenna_status': antenna_status_map.get(rf.antenna_status, "Unknown"),
+            'antenna_power': antenna_power_map.get(rf.antenna_power, "Unknown"),
+            'noise_per_ms': int(rf.noise_per_ms),
+            'agc_monitor': float(rf.agc_monitor),
+            'cw_suppression': float(rf.cw_interference_suppression_level),
+        })
+
+    return rf_blocks_data
+
+def native_reader_thread():
+    """Background thread that reads navigation data from GnssHat (blocking)"""
+    print("Native GnssHat reader thread started")
+
+    hat = gps_state['hat']
+    last_rf_time = 0.0
+    last_sys_time = 0.0
+    last_emit_time = 0.0
+    # Cap UI emit rate to min(nav_rate, UI_MAX_HZ). The nav loop can be
+    # configured 1–25 Hz; emitting much faster than the browser can repaint
+    # only inflates the Socket.IO send-queue under async_mode='threading'
+    # and delays every other event (including ui_ping) on the same socket.
+    # At nav_rate ≤ UI_MAX_HZ every frame is forwarded; above that we
+    # subsample. Recomputed each loop so config changes take effect live.
+    UI_MAX_HZ = 10.0
+    cached_mon_ver = None  # MON-VER is essentially static after boot
+
+    while gps_state['running']:
+        try:
+            nav = hat.wait_and_get_fresh_navigation()
+            pvt_data = nav_to_pvt_data(nav)
+
+            if not pvt_data:
+                continue
+
+            data = {
+                'pvt': pvt_data,
+            }
+
+            # Pull the heavy spectrum array out of every-frame emits and
+            # piggy-back it on the 1 Hz RF throttle below.
+            spectrum_payload = None
+            try:
+                extra = nav_to_full_data(nav)
+                spectrum_payload = extra.pop('spectrum', None)
+                data.update(extra)
+            except Exception as e:
+                print(f"Error serializing extra nav data: {e}")
+
+            now = time.monotonic()
+            if now - last_rf_time >= 1.0:
+                last_rf_time = now
+                try:
+                    data['rf_blocks'] = nav_to_rf_data(nav)
+                    # Spectrum is large; only ship it on the 1 Hz RF tick.
+                    if spectrum_payload is not None:
+                        data['spectrum'] = spectrum_payload
+                except Exception as e:
+                    print(f"Error serializing RF data: {e}")
+
+            # MON-SYS + MON-VER throttled to 1 Hz on a separate `system_update`
+            # event so the System tab can render independently of GPS data.
+            # NEO-M9N (L1 GNSS HAT) does not support UBX-MON-SYS, so the
+            # health block is skipped for that HAT; MON-VER is still emitted.
+            if now - last_sys_time >= 1.0:
+                last_sys_time = now
+                supports_mon_sys = (
+                    gps_state.get('hat_name') != 'L1 GNSS HAT')
+                try:
+                    if cached_mon_ver is None:
+                        try:
+                            mv = hat.get_mon_ver()
+                            if mv.valid:
+                                cached_mon_ver = {
+                                    'sw_version': str(mv.sw_version),
+                                    'hw_version': str(mv.hw_version),
+                                    'extensions': [
+                                        str(e) for e in (mv.extensions or [])
+                                    ],
+                                }
+                        except Exception as e:
+                            print(f"Error reading MON-VER: {e}")
+
+                    sys_payload = {'version': cached_mon_ver}
+
+                    if supports_mon_sys:
+                        sh = hat.get_system_health()
+                        if sh.valid:
+                            sys_payload['system'] = {
+                                'msg_version':    int(sh.msg_version),
+                                'boot_type':      int(sh.boot_type),
+                                'cpu_load':       int(sh.cpu_load),
+                                'cpu_load_max':   int(sh.cpu_load_max),
+                                'mem_usage':      int(sh.mem_usage),
+                                'mem_usage_max':  int(sh.mem_usage_max),
+                                'io_usage':       int(sh.io_usage),
+                                'io_usage_max':   int(sh.io_usage_max),
+                                'run_time_s':     int(sh.run_time_s),
+                                'notice_count':   int(sh.notice_count),
+                                'warn_count':     int(sh.warn_count),
+                                'error_count':    int(sh.error_count),
+                                'temperature_c':  int(sh.temperature_c),
+                            }
+
+                    if 'system' in sys_payload or cached_mon_ver is not None:
+                        gps_state['system_data'] = sys_payload
+                        _safe_emit(
+                            'system_update', sys_payload, namespace='/')
+                except Exception as e:
+                    print(f"Error reading system health: {e}")
+
+            # Check for time mark data (non-blocking)
+            if gps_state.get('time_mark_enabled'):
+                try:
+                    tm = hat.get_time_mark()
+                    if tm is not None:
+                        data['time_mark'] = time_mark_to_data(tm)
+                except Exception as e:
+                    print(f"Error reading time mark: {e}")
+
+            gps_state['current_data'] = data
+
+            # Throttle the per-frame broadcast. `gps_state['current_data']`
+            # is always kept fresh so newly connected clients still receive
+            # the latest snapshot on connect. Force-flush whenever the heavy
+            # 1 Hz payload (rf_blocks / spectrum) is attached so the RF tab
+            # is never starved by the throttle.
+            cfg = gps_state.get('current_config') or {}
+            try:
+                nav_hz = float(cfg.get('measurement_rate_hz') or 1)
+            except (TypeError, ValueError):
+                nav_hz = 1.0
+            emit_hz = min(max(nav_hz, 1.0), UI_MAX_HZ)
+            emit_period_s = 1.0 / emit_hz
+            # Small slack so floating-point jitter doesn't drop every other
+            # frame when nav_rate ≈ UI_MAX_HZ.
+            if ('rf_blocks' in data
+                    or (now - last_emit_time) >= (emit_period_s * 0.95)):
+                last_emit_time = now
+                _safe_emit('gps_update', data, namespace='/')
+
+        except Exception as e:
+            print(f"Error in native reader thread: {e}")
+            if gps_state['running']:
+                time.sleep(1)
+
+    print("Native GnssHat reader thread stopped")
+
+
+# ─── External TTY mode: NMEA serial reader thread ───────────────────────────
+
+def gps_reader_thread():
+    """Background thread that reads NMEA sentences from serial port"""
+    import serial
+    import pynmea2
+
+    print("GPS NMEA reader thread started")
+    
+    while gps_state['running']:
+        try:
+            if not gps_state['serial_port'] or not gps_state['serial_port'].is_open:
+                print("Serial port not open, waiting...")
+                time.sleep(1)
+                continue
+            
+            # Read line from serial port
+            line = gps_state['serial_port'].readline()
+            
+            if not line:
+                continue
+            
+            try:
+                # Decode and parse NMEA sentence
+                line_str = line.decode('ascii', errors='ignore').strip()
+                
+                if not line_str.startswith('$'):
+                    continue
+                
+                msg = pynmea2.parse(line_str)
+                
+                # Store sentences by type
+                if isinstance(msg, pynmea2.types.talker.GGA):
+                    # GGA starts a new NMEA cycle — reset GSA/GSV accumulators
+                    gps_state['last_gsa'] = []
+                    gps_state['last_gsv'] = []
+                    gps_state['last_gga'] = msg
+                elif isinstance(msg, pynmea2.types.talker.RMC):
+                    gps_state['last_rmc'] = msg
+                elif isinstance(msg, pynmea2.types.talker.GSA):
+                    # GSA: multiple sentences, one per constellation.
+                    # A new block of GSA starts when we see the same talker+system
+                    # or when GGA arrives. Collect until GGA triggers emit.
+                    gps_state['last_gsa'].append(msg)
+                elif isinstance(msg, pynmea2.types.talker.GSV):
+                    # GSV: multi-part per constellation.
+                    # Collect all parts; a new GGA triggers reset.
+                    gps_state['last_gsv'].append(msg)
+                
+                # Parse combined data
+                pvt_data = parse_nmea_data()
+                
+                if not pvt_data:
+                    continue
+                
+                # Set reference position on first valid fix
+                if gps_state['reference_position'] is None:
+                    if pvt_data['fix_status'] == 'Active':
+                        gps_state['reference_position'] = (
+                            pvt_data['latitude'],
+                            pvt_data['longitude']
+                        )
+                        print(f"Reference position set: {gps_state['reference_position']}")
+                
+                # Prepare data for transmission
+                data = {
+                    'pvt': pvt_data,
+                }
+
+                # Add satellite data from GSV sentences
+                try:
+                    satellites = parse_gsv_satellites()
+                    if satellites:
+                        data['satellites'] = satellites
+                except Exception as e:
+                    print(f"Error parsing GSV satellite data: {e}")
+
+                # Add DOP data from GSA sentences
+                try:
+                    gsa_list = gps_state['last_gsa']
+                    if gsa_list:
+                        first_gsa = gsa_list[0]
+                        pdop = float(getattr(first_gsa, 'pdop', 0) or 0)
+                        hdop_gsa = float(getattr(first_gsa, 'hdop', 0) or 0)
+                        vdop = float(getattr(first_gsa, 'vdop', 0) or 0)
+                        data['dop'] = {
+                            'geometric': pdop,  # closest approx from NMEA
+                            'position': pdop,
+                            'time': 0.0,
+                            'vertical': vdop,
+                            'horizontal': hdop_gsa if hdop_gsa > 0 else pvt_data['hdop'],
+                            'northing': 0.0,
+                            'easting': 0.0,
+                        }
+                except Exception as e:
+                    print(f"Error parsing GSA DOP data: {e}")
+                
+                gps_state['current_data'] = data
+                
+                # Emit to all connected clients on RMC (arrives after GGA, GSA, GSV
+                # in NmeaForwarder cycle, so satellite data is complete)
+                if isinstance(msg, pynmea2.types.talker.RMC):
+                    _safe_emit('gps_update', data, namespace='/')
+                
+            except pynmea2.ParseError as e:
+                # Ignore parse errors (incomplete/corrupted sentences)
+                pass
+            except Exception as e:
+                print(f"Error parsing NMEA: {e}")
+            
+        except serial.SerialException as e:
+            print(f"Serial error: {e}")
+            if gps_state['running']:
+                time.sleep(1)
+        except Exception as e:
+            print(f"Error in GPS reader thread: {e}")
+            if gps_state['running']:
+                time.sleep(1)
+    
+    print("GPS NMEA reader thread stopped")
+
+
+# ─── ROS 2 mode: subscribe to /gnss/navigation ───────────────────────────
+
+def ros2_nav_to_pvt_data(nav_msg):
+    """Convert jp_gnss_hat/msg/Navigation ROS message to pvt data dict"""
+    pvt = nav_msg.pvt
+
+    fix_quality_map = {
+        0: "Invalid",
+        1: "Gps Fix 2D3D",
+        2: "DGPS Fix",
+        3: "PPS Fix",
+        4: "RTK Fixed",
+        5: "RTK Float",
+        6: "Dead Reckoning",
+    }
+
+    fix_status_map = {0: "Void", 1: "Active"}
+
+    fix_type_map = {
+        0: "No Fix",
+        1: "Dead Reckoning Only",
+        2: "Fix 2D",
+        3: "Fix 3D",
+        4: "GNSS+DR",
+        5: "Time Only Fix",
+    }
+
+    utc_time = "N/A"
+    time_accuracy = "N/A"
+    if pvt.utc_valid:
+        utc_time = f"{pvt.utc_hours:02d}:{pvt.utc_minutes:02d}:{pvt.utc_seconds:02d}"
+        if hasattr(pvt, 'utc_accuracy'):
+            time_accuracy = format_time_accuracy(pvt.utc_accuracy)
+
+    date = "N/A"
+    if pvt.date_valid:
+        date = f"{pvt.date_year:04d}-{pvt.date_month:02d}-{pvt.date_day:02d}"
+
+    dop = nav_msg.dop
+
+    return {
+        'latitude': float(pvt.latitude),
+        'longitude': float(pvt.longitude),
+        'altitude': float(pvt.altitude),
+        'altitude_msl': float(pvt.altitude_msl),
+        'speed_over_ground': float(pvt.speed_over_ground),
+        'heading': float(pvt.heading),
+        'visible_satellites': int(pvt.visible_satellites),
+        'hdop': float(dop.horizontal),
+        'fix_quality': fix_quality_map.get(pvt.fix_quality, "Unknown"),
+        'fix_status': fix_status_map.get(pvt.fix_status, "Void"),
+        'fix_type': fix_type_map.get(pvt.fix_type, "Unknown"),
+        'utc_time': utc_time,
+        'date': date,
+        'time_accuracy': time_accuracy,
+        'horizontal_accuracy': float(pvt.horizontal_accuracy),
+        'vertical_accuracy': float(pvt.vertical_accuracy),
+        'speed_accuracy': float(pvt.speed_accuracy),
+        'heading_accuracy': float(pvt.heading_accuracy),
+    }
+
+
+def ros2_nav_to_full_data(nav_msg):
+    """Convert jp_gnss_hat/msg/Navigation ROS message to full data dict (DOP, RF, etc.)"""
+    dop = nav_msg.dop
+    dop_data = {
+        'geometric': float(dop.geometric),
+        'position': float(dop.position),
+        'time': float(dop.time),
+        'vertical': float(dop.vertical),
+        'horizontal': float(dop.horizontal),
+        'northing': float(dop.northing),
+        'easting': float(dop.easting),
+    }
+
+    geo = nav_msg.geofencing
+    geofencing_status_map = {0: "Not Available", 1: "Active"}
+    geofence_state_map = {0: "Unknown", 1: "Inside", 2: "Outside"}
+    geofencing_data = {
+        'status': geofencing_status_map.get(geo.geofencing_status, "Unknown"),
+        'number_of_geofences': int(geo.number_of_geofences),
+        'combined_state': geofence_state_map.get(int(geo.combined_state), "Unknown"),
+        'geofences': [geofence_state_map.get(int(s), "Unknown") for s in geo.geofences_status[:int(geo.number_of_geofences)]],
+    }
+
+    jamming_map = {0: "Unknown", 1: "OK", 2: "Warning", 3: "Critical"}
+    antenna_status_map = {0: "Init", 1: "Unknown", 2: "OK", 3: "Short", 4: "Open"}
+    antenna_power_map = {0: "Off", 1: "On", 2: "Unknown"}
+    band_map = {0: "L1", 1: "L2/L5"}
+
+    rf_blocks_data = []
+    for rf in nav_msg.rf_blocks:
+        rf_blocks_data.append({
+            'band': band_map.get(rf.band, "Unknown"),
+            'jamming_state': jamming_map.get(rf.jamming_state, "Unknown"),
+            'antenna_status': antenna_status_map.get(rf.antenna_status, "Unknown"),
+            'antenna_power': antenna_power_map.get(rf.antenna_power, "Unknown"),
+            'noise_per_ms': int(rf.noise_per_ms),
+            'agc_monitor': float(rf.agc_monitor),
+            'cw_suppression': float(rf.cw_interference_suppression_level),
+        })
+
+    gnss_id_map = {0: "GPS", 1: "SBAS", 2: "Galileo", 3: "BeiDou", 4: "IMES", 5: "QZSS", 6: "GLONASS"}
+    quality_map = {
+        0: "No Signal", 1: "Searching", 2: "Acquired", 3: "Unusable",
+        4: "Code Locked", 5: "Carrier Lock 1", 6: "Carrier Lock 2", 7: "Carrier Lock 3",
+    }
+
+    satellites_data = []
+    for sat in nav_msg.satellites:
+        satellites_data.append({
+            'gnss_id': gnss_id_map.get(sat.gnss_id, "Unknown"),
+            'sv_id': int(sat.sv_id),
+            'cno': int(sat.cno),
+            'elevation': int(sat.elevation),
+            'azimuth': int(sat.azimuth),
+            'quality': quality_map.get(sat.quality, "Unknown"),
+            'used_in_fix': bool(sat.used_in_fix),
+            'healthy': bool(sat.healthy),
+        })
+
+    return {
+        'dop': dop_data,
+        'geofencing': geofencing_data,
+        'rf_blocks': rf_blocks_data,
+        'satellites': satellites_data,
+        'spectrum': [],
+    }
+
+
+def ros2_config_msg_to_json(config_msg):
+    """Convert jp_gnss_hat/msg/GnssConfig ROS message to JSON-serializable dict"""
+    result = {
+        'measurement_rate_hz': int(config_msg.measurement_rate_hz),
+        'dynamic_model': int(config_msg.dynamic_model),
+    }
+
+    if config_msg.timepulse_active:
+        tp = {
+            'active': True,
+            'fixed_pulse': {
+                'frequency': int(config_msg.timepulse_frequency),
+                'pulse_width': float(config_msg.timepulse_pulse_width),
+            },
+            'polarity': int(config_msg.timepulse_polarity),
+        }
+        if config_msg.timepulse_has_no_fix_pulse:
+            tp['pulse_when_no_fix'] = {
+                'frequency': int(config_msg.timepulse_no_fix_frequency),
+                'pulse_width': float(config_msg.timepulse_no_fix_pulse_width),
+            }
+        result['timepulse_pin_config'] = tp
+    else:
+        result['timepulse_pin_config'] = None
+
+    if config_msg.geofencing_enabled and len(config_msg.geofences) > 0:
+        fences = []
+        for g in config_msg.geofences:
+            fences.append({'lat': float(g.lat), 'lon': float(g.lon), 'radius': float(g.radius)})
+        result['geofencing'] = {
+            'geofences': fences,
+            'confidence_level': int(config_msg.geofencing_confidence_level),
+        }
+        if config_msg.geofencing_has_pio_pin_polarity:
+            result['geofencing']['pin_polarity'] = int(config_msg.geofencing_pio_pin_polarity)
+    else:
+        result['geofencing'] = None
+
+    # RTK
+    if config_msg.rtk_enabled:
+        rtk_mode = int(config_msg.rtk_mode)
+        rtk = {'mode': rtk_mode}
+        if rtk_mode == 0:  # Base
+            base_type = int(config_msg.rtk_base_type)
+            if base_type == 0:  # Survey-In
+                rtk['base'] = {
+                    'base_mode': 0,
+                    'survey_in': {
+                        'minimum_observation_time_s': int(config_msg.rtk_min_observation_time_s),
+                        'required_position_accuracy_m': float(config_msg.rtk_required_accuracy_m),
+                    },
+                }
+            elif base_type == 1:  # Fixed ECEF
+                rtk['base'] = {
+                    'base_mode': 1,
+                    'fixed_position': {
+                        'position_type': 0,
+                        'ecef': {
+                            'x_m': float(config_msg.rtk_ecef_x_m),
+                            'y_m': float(config_msg.rtk_ecef_y_m),
+                            'z_m': float(config_msg.rtk_ecef_z_m),
+                        },
+                        'position_accuracy_m': float(config_msg.rtk_position_accuracy_m),
+                    },
+                }
+            else:  # Fixed LLA (base_type == 2)
+                rtk['base'] = {
+                    'base_mode': 1,
+                    'fixed_position': {
+                        'position_type': 1,
+                        'lla': {
+                            'latitude_deg': float(config_msg.rtk_lla_latitude_deg),
+                            'longitude_deg': float(config_msg.rtk_lla_longitude_deg),
+                            'height_m': float(config_msg.rtk_lla_height_m),
+                        },
+                        'position_accuracy_m': float(config_msg.rtk_position_accuracy_m),
+                    },
+                }
+        result['rtk'] = rtk
+    else:
+        result['rtk'] = None
+
+    # ROS 2 specific fields
+    result['publish_standard_topics'] = bool(config_msg.publish_standard_topics)
+    result['use_ntrip_rtcm'] = bool(config_msg.use_ntrip_rtcm)
+    result['save_to_flash'] = bool(config_msg.save_to_flash)
+
+    return result
+
+
+def json_to_ros2_config_msg(data):
+    """Convert JSON config from frontend to jp_gnss_hat/msg/GnssConfig ROS message"""
+    from jp_gnss_hat.msg import GnssConfig as GnssConfigMsg, Geofence as GeofenceMsg
+
+    msg = GnssConfigMsg()
+    msg.measurement_rate_hz = int(data['measurement_rate_hz'])
+    msg.dynamic_model = int(data['dynamic_model'])
+
+    tp = data.get('timepulse_pin_config')
+    if tp and tp.get('active'):
+        msg.timepulse_active = True
+        msg.timepulse_frequency = int(tp['fixed_pulse']['frequency'])
+        msg.timepulse_pulse_width = float(tp['fixed_pulse']['pulse_width'])
+        msg.timepulse_polarity = int(tp.get('polarity', 1))
+        if tp.get('pulse_when_no_fix') and tp['pulse_when_no_fix'].get('frequency') is not None:
+            msg.timepulse_has_no_fix_pulse = True
+            msg.timepulse_no_fix_frequency = int(tp['pulse_when_no_fix']['frequency'])
+            msg.timepulse_no_fix_pulse_width = float(tp['pulse_when_no_fix']['pulse_width'])
+    else:
+        msg.timepulse_active = False
+
+    geo = data.get('geofencing')
+    if geo and geo.get('geofences') and len(geo['geofences']) > 0:
+        msg.geofencing_enabled = True
+        msg.geofencing_confidence_level = int(geo.get('confidence_level', 3))
+        pin_pol = geo.get('pin_polarity')
+        if pin_pol is not None:
+            msg.geofencing_has_pio_pin_polarity = True
+            msg.geofencing_pio_pin_polarity = int(pin_pol)
+        else:
+            msg.geofencing_has_pio_pin_polarity = False
+        for f in geo['geofences'][:4]:
+            if f.get('lat') is not None and f.get('lon') is not None and f.get('radius') is not None:
+                gf = GeofenceMsg()
+                gf.lat = float(f['lat'])
+                gf.lon = float(f['lon'])
+                gf.radius = float(f['radius'])
+                msg.geofences.append(gf)
+    else:
+        msg.geofencing_enabled = False
+
+    # RTK
+    rtk = data.get('rtk')
+    if rtk and rtk.get('mode') is not None:
+        msg.rtk_enabled = True
+        msg.rtk_mode = int(rtk['mode'])
+        base = rtk.get('base')
+        if base and base.get('base_mode') is not None:
+            base_mode = int(base['base_mode'])
+            if base_mode == 0:  # Survey-In
+                msg.rtk_base_type = 0
+                si = base.get('survey_in', {})
+                msg.rtk_min_observation_time_s = int(si.get('minimum_observation_time_s', 120))
+                msg.rtk_required_accuracy_m = float(si.get('required_position_accuracy_m', 50.0))
+            elif base_mode == 1:  # Fixed Position
+                fp = base.get('fixed_position', {})
+                pos_type = int(fp.get('position_type', 1))
+                msg.rtk_position_accuracy_m = float(fp.get('position_accuracy_m', 0.5))
+                if pos_type == 0:  # ECEF
+                    msg.rtk_base_type = 1
+                    ecef = fp.get('ecef', {})
+                    msg.rtk_ecef_x_m = float(ecef.get('x_m', 0.0))
+                    msg.rtk_ecef_y_m = float(ecef.get('y_m', 0.0))
+                    msg.rtk_ecef_z_m = float(ecef.get('z_m', 0.0))
+                else:  # LLA
+                    msg.rtk_base_type = 2
+                    lla = fp.get('lla', {})
+                    msg.rtk_lla_latitude_deg = float(lla.get('latitude_deg', 0.0))
+                    msg.rtk_lla_longitude_deg = float(lla.get('longitude_deg', 0.0))
+                    msg.rtk_lla_height_m = float(lla.get('height_m', 0.0))
+    else:
+        msg.rtk_enabled = False
+
+    # ROS 2 specific fields
+    msg.publish_standard_topics = bool(data.get('publish_standard_topics', True))
+    msg.use_ntrip_rtcm = bool(data.get('use_ntrip_rtcm', False))
+    msg.save_to_flash = bool(data.get('save_to_flash', False))
+
+    return msg
+
+
+def _ros2_topic_prefix():
+    """Return the ROS 2 topic/service prefix, e.g. '/gnss' or '/gnss/rover'."""
+    if ROS2_NODE_NAME:
+        return f'/gnss/{ROS2_NODE_NAME}'
+    return '/gnss'
+
+
+def ros2_reader_thread():
+    """Background thread: spins an rclpy node subscribed to /gnss/[node_name/]navigation"""
+    from rclpy.node import Node as RclpyNode
+    from jp_gnss_hat.msg import Navigation as NavigationMsg
+
+    node = RclpyNode('jp_gnss_hat_viz')
+
+    def nav_callback(nav_msg):
+        try:
+            frame_id = nav_msg.header.frame_id
+            if frame_id in KNOWN_HAT_NAMES and frame_id != gps_state.get('hat_name'):
+                gps_state['hat_name'] = frame_id
+                _safe_emit('hat_changed', {'hat_name': frame_id}, namespace='/')
+
+            pvt_data = ros2_nav_to_pvt_data(nav_msg)
+
+            data = {
+                'pvt': pvt_data,
+            }
+
+            try:
+                extra = ros2_nav_to_full_data(nav_msg)
+                data.update(extra)
+            except Exception as e:
+                print(f"Error serializing extra nav data: {e}")
+
+            gps_state['current_data'] = data
+            _safe_emit('gps_update', data, namespace='/')
+
+        except Exception as e:
+            print(f"Error in ROS 2 nav callback: {e}")
+
+    nav_topic = f'{_ros2_topic_prefix()}/navigation'
+    node.create_subscription(NavigationMsg, nav_topic, nav_callback, 10)
+    gps_state['ros2_node'] = node
+
+    print(f"ROS 2 subscriber node spinning on {nav_topic}")
+
+    import rclpy
+    from rclpy.executors import ExternalShutdownException
+    try:
+        while gps_state['running'] and rclpy.ok():
+            rclpy.spin_once(node, timeout_sec=0.1)
+    except ExternalShutdownException:
+        pass
+
+    node.destroy_node()
+    gps_state['ros2_node'] = None
+    print("ROS 2 subscriber node stopped")
+
+
+@app.route('/res/<path:filename>')
+def serve_res(filename):
+    """Serve files from res/ directory"""
+    return send_from_directory(os.path.join(app.root_path, 'res'), filename)
+
+
+@app.route('/')
+def index():
+    """Serve main page"""
+    tls_available = False
+    try:
+        from jimmypaputto import gnsshat
+        tls_available = gnsshat.NtripCaster.is_tls_available()
+    except Exception:
+        pass
+    return render_template('index.html', mode=RUN_MODE,
+                           hat_name=gps_state.get('hat_name'),
+                           tls_available=tls_available,
+                           ui_info=_build_ui_info())
+
+
+def _build_ui_info():
+    """Static info about the Python UI app, rendered into the System tab."""
+    import platform
+    info = {
+        'python': platform.python_version(),
+        'platform': f"{platform.system()} {platform.release()} ({platform.machine()})",
+        'flask': _safe_pkg_version('flask'),
+        'flask_socketio': _safe_pkg_version('flask_socketio'),
+        'python_socketio': _safe_pkg_version('socketio'),
+        'engineio': _safe_pkg_version('engineio'),
+        'orjson_version': (orjson.__version__ if _HAS_ORJSON else None),
+        'json_encoder': ('orjson' if _HAS_ORJSON else 'stdlib json'),
+        'async_mode': socketio.async_mode,
+        'async_mode_requested': _REQUESTED_ASYNC_MODE,
+        'eventlet_active': _EVENTLET_ACTIVE,
+        'eventlet_version': _EVENTLET_VERSION,
+        'eventlet_error': _EVENTLET_ERROR,
+        'ws_transport_only': True,  # client forces transports: ['websocket']
+        'ntrip_tick_period_s': NTRIP_TICK_PERIOD_S,
+        'gps_pid': os.getpid(),
+    }
+    return info
+
+
+def _safe_pkg_version(modname):
+    """Best-effort version lookup. Prefers `importlib.metadata` (the
+    forward-compatible source of truth — Flask 3.1 deprecates
+    `flask.__version__`, and other packages will follow), and falls back
+    to `module.__version__` for libraries that don't ship metadata
+    under the expected distribution name."""
+    try:
+        from importlib.metadata import version, PackageNotFoundError
+    except ImportError:
+        version = None
+        PackageNotFoundError = Exception  # type: ignore[assignment]
+    dist_candidates = {
+        'flask':            ['Flask', 'flask'],
+        'flask_socketio':   ['Flask-SocketIO', 'flask-socketio'],
+        'socketio':         ['python-socketio', 'socketio'],
+        'engineio':         ['python-engineio', 'engineio'],
+    }.get(modname, [modname])
+    if version is not None:
+        for dist in dist_candidates:
+            try:
+                return version(dist)
+            except PackageNotFoundError:
+                continue
+            except Exception:
+                break
+    # Last resort — some packages only expose __version__. Suppress the
+    # Flask 3.1 deprecation warning so it doesn't pollute the console
+    # for users who still hit this branch.
+    try:
+        import warnings as _w
+        with _w.catch_warnings():
+            _w.simplefilter('ignore', DeprecationWarning)
+            m = __import__(modname)
+            v = getattr(m, '__version__', None)
+        if v:
+            return v
+    except Exception:
+        pass
+    return None
+
+
+@app.route('/api/status')
+def api_status():
+    """Get current GPS status"""
+    return jsonify({
+        'running': gps_state['running'],
+    })
+
+
+@app.route('/api/current')
+def api_current():
+    """Get current GPS data"""
+    if gps_state['current_data']:
+        return jsonify(gps_state['current_data'])
+    return jsonify({'error': 'No data available'}), 404
+
+
+# ─── NTRIP push-tick (replaces 5× HTTP polling from the UI every 1.5 s) ────
+#
+# Instead of having every browser tab fire 5 parallel GETs to /api/ntrip/...
+# every 1.5 s — which serializes against the WebSocket I/O under
+# async_mode='threading' and inflates ui_ping latency — the server emits one
+# combined `ntrip_tick` event over the existing Socket.IO connection.
+NTRIP_TICK_PERIOD_S = 1.5
+_ntrip_clients = 0
+_ntrip_clients_lock = threading.Lock()
+
+
+def _build_ntrip_status_dict():
+    client = ntrip_state['client']
+    if client is None:
+        return {
+            'state': 'disconnected',
+            'connected': False,
+            'config': ntrip_state['config'],
+        }
+    try:
+        connected = client.is_connected()
+    except Exception:
+        connected = False
+    config = ntrip_state.get('config') or {}
+    auto_reconnect = config.get('auto_reconnect', False)
+    if connected:
+        state = 'connected'
+    elif ntrip_state['connected'] and auto_reconnect:
+        state = 'reconnecting'
+    elif ntrip_state['connected']:
+        state = 'error'
+    else:
+        state = 'disconnected'
+    return {'state': state, 'connected': connected, 'config': config}
+
+
+def _drain_ntrip_logs():
+    entries = []
+    while True:
+        try:
+            entries.append(_ntrip_log_queue.get_nowait())
+        except queue.Empty:
+            break
+    return entries
+
+
+def _safe_get_stats(obj):
+    if obj is None:
+        return {}
+    try:
+        return obj.get_stats() or {}
+    except Exception:
+        return {}
+
+
+def _build_ntrip_tick():
+    """Single combined snapshot for the periodic push."""
+    client_stats = {}
+    if ntrip_state['connected'] and ntrip_state['client']:
+        client_stats = _safe_get_stats(ntrip_state['client'])
+
+    caster_stats = {}
+    if caster_state['running'] and caster_state['caster']:
+        caster_stats = _safe_get_stats(caster_state['caster'])
+
+    server_stats = {}
+    if server_state['running'] and server_state['server']:
+        server_stats = _safe_get_stats(server_state['server'])
+
+    return {
+        'status': _build_ntrip_status_dict(),
+        'logs': _drain_ntrip_logs(),
+        'stats': {
+            'client': client_stats,
+            'caster': caster_stats,
+            'server': server_stats,
+        },
+    }
+
+
+def _ntrip_tick_loop():
+    """Background task that pushes `ntrip_tick` while clients are connected."""
+    while True:
+        socketio.sleep(NTRIP_TICK_PERIOD_S)
+        with _ntrip_clients_lock:
+            n = _ntrip_clients
+        if n <= 0:
+            # No subscribers; skip work entirely. Logs will still drain on
+            # the next tick once a client connects (or via the legacy GET).
+            continue
+        try:
+            payload = _build_ntrip_tick()
+            _safe_emit('ntrip_tick', payload, namespace='/')
+        except Exception as e:
+            print(f"ntrip_tick loop error: {e}")
+
+
+@socketio.on('connect')
+def handle_connect():
+    """Handle client connection"""
+    global _ntrip_clients
+    with _ntrip_clients_lock:
+        _ntrip_clients += 1
+    print(f"Client connected")
+    emit('connection_response', {'status': 'connected'})
+
+    # Send current data if available
+    if gps_state['current_data']:
+        emit('gps_update', gps_state['current_data'])
+    if gps_state.get('system_data'):
+        emit('system_update', gps_state['system_data'])
+    # Send a fresh NTRIP snapshot immediately so the new tab doesn't have to
+    # wait up to NTRIP_TICK_PERIOD_S for the first periodic broadcast.
+    try:
+        emit('ntrip_tick', _build_ntrip_tick())
+    except Exception as e:
+        print(f"ntrip_tick (on connect) error: {e}")
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection"""
+    global _ntrip_clients
+    with _ntrip_clients_lock:
+        if _ntrip_clients > 0:
+            _ntrip_clients -= 1
+    print(f"Client disconnected")
+
+
+@socketio.on('ui_ping')
+def handle_ui_ping(_client_t0):
+    """Lightweight RTT probe.
+
+    The client times the round-trip via the Socket.IO ack callback;
+    we just need to acknowledge as fast as possible. No timestamps or
+    clock-sync involved — immune to skew between browser and server.
+    """
+    return True
+
+
+@socketio.on('reset_reference')
+def handle_reset_reference():
+    """Legacy handler — reference is now managed on the frontend"""
+    pass
+
+
+# ─── NTRIP Client API (native mode, RTK HAT only) ───────────────────────────
+
+@app.route('/api/ntrip/start', methods=['POST'])
+def api_ntrip_start():
+    """Start NTRIP client with given connection parameters."""
+    if RUN_MODE != 'native':
+        return jsonify({'error': 'NTRIP client only available in native mode'}), 400
+    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
+        return jsonify({'error': 'NTRIP requires L1/L5 GNSS RTK HAT'}), 400
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON body'}), 400
+
+    for field in ['caster', 'port', 'mountpoint']:
+        if not data.get(field):
+            return jsonify({'error': f'Missing required field: {field}'}), 400
+
+    ok, err = start_ntrip(data)
+    if ok:
+        return jsonify({'success': True})
+    else:
+        return jsonify({'error': err}), 500
+
+
+@app.route('/api/ntrip/stop', methods=['POST'])
+def api_ntrip_stop():
+    """Stop NTRIP client."""
+    if RUN_MODE != 'native':
+        return jsonify({'error': 'NTRIP client only available in native mode'}), 400
+
+    stop_ntrip()
+    return jsonify({'success': True})
+
+
+@app.route('/api/ntrip/status', methods=['GET'])
+def api_ntrip_status():
+    """Get current NTRIP client status — polled by the UI."""
+    client = ntrip_state['client']
+    if client is None:
+        return jsonify({
+            'state': 'disconnected',
+            'connected': False,
+            'config': ntrip_state['config'],
+        })
+
+    connected = client.is_connected()
+    config = ntrip_state.get('config') or {}
+    auto_reconnect = config.get('auto_reconnect', False)
+
+    if connected:
+        state = 'connected'
+    elif ntrip_state['connected'] and auto_reconnect:
+        state = 'reconnecting'
+    elif ntrip_state['connected']:
+        state = 'error'
+    else:
+        state = 'disconnected'
+
+    return jsonify({
+        'state': state,
+        'connected': connected,
+        'config': config,
+    })
+
+
+@app.route('/api/ntrip/logs', methods=['GET'])
+def api_ntrip_logs():
+    """Return and clear queued NTRIP log entries (client + caster)."""
+    entries = []
+    while True:
+        try:
+            entries.append(_ntrip_log_queue.get_nowait())
+        except queue.Empty:
+            break
+    return jsonify(entries)
+
+
+@app.route('/api/ntrip/stats', methods=['GET'])
+def api_ntrip_stats():
+    """Get NTRIP client connection statistics."""
+    if not ntrip_state['connected'] or not ntrip_state['client']:
+        return jsonify({})
+    try:
+        return jsonify(ntrip_state['client'].get_stats())
+    except Exception:
+        return jsonify({})
+
+
+@app.route('/api/ntrip/sourcetable', methods=['GET'])
+def api_ntrip_sourcetable():
+    """Fetch NTRIP sourcetable (mountpoint list) from a caster.
+
+    Query params: host, port, user (optional), password (optional).
+    Returns JSON array of sourcetable entry dicts.
+    """
+    from jimmypaputto import gnsshat
+
+    host = request.args.get('host', '').strip()
+    port = int(request.args.get('port', 2101))
+    user = request.args.get('user', '').strip()
+    password = request.args.get('password', '').strip()
+    use_tls = request.args.get('use_tls', '').lower() in ('1', 'true', 'yes')
+    verify_peer = request.args.get('verify_peer', 'true').lower() not in ('0', 'false', 'no')
+
+    if not host:
+        return jsonify({'error': 'Missing host parameter'}), 400
+
+    try:
+        entries = gnsshat.fetch_sourcetable(
+            host, port=port, username=user, password=password,
+            timeout_ms=10000, use_tls=use_tls, verify_peer=verify_peer)
+    except Exception as e:
+        return jsonify({'error': f'Connection error: {e}'}), 502
+
+    return jsonify(entries)
+
+
+# ─── NTRIP Caster API (native mode, RTK HAT base only) ─────────────────────
+
+@app.route('/api/caster/start', methods=['POST'])
+def api_caster_start():
+    """Start NTRIP caster for RTK base mode"""
+    if RUN_MODE != 'native':
+        return jsonify({'error': 'Caster only available in native mode'}), 400
+    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
+        return jsonify({'error': 'Caster requires L1/L5 GNSS RTK HAT'}), 400
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON body'}), 400
+
+    _safe_emit('caster_status',
+                  {'state': 'starting', 'message': 'Starting NTRIP caster...'},
+                  namespace='/')
+
+    ok, err = start_caster(data)
+    if ok:
+        _safe_emit('caster_status',
+                      {'state': 'running', 'message': 'NTRIP caster running', 'client_count': 0},
+                      namespace='/')
+        return jsonify({'success': True})
+    else:
+        _safe_emit('caster_status',
+                      {'state': 'error', 'message': err},
+                      namespace='/')
+        return jsonify({'error': err}), 500
+
+
+@app.route('/api/caster/stop', methods=['POST'])
+def api_caster_stop():
+    """Stop NTRIP caster"""
+    if RUN_MODE != 'native':
+        return jsonify({'error': 'Caster only available in native mode'}), 400
+
+    stop_caster()
+    _safe_emit('caster_status',
+                  {'state': 'stopped', 'message': 'NTRIP caster stopped'},
+                  namespace='/')
+    return jsonify({'success': True})
+
+
+@app.route('/api/caster/status', methods=['GET'])
+def api_caster_status():
+    """Get current NTRIP caster status"""
+    result = {
+        'running': caster_state['running'],
+        'config': caster_state['config'],
+    }
+    if caster_state['running'] and caster_state['caster']:
+        try:
+            result['client_count'] = caster_state['caster'].client_count()
+        except Exception:
+            result['client_count'] = 0
+    return jsonify(result)
+
+
+@app.route('/api/caster/stats', methods=['GET'])
+def api_caster_stats():
+    """Get NTRIP caster connection statistics."""
+    if not caster_state['running'] or not caster_state['caster']:
+        return jsonify({})
+    try:
+        return jsonify(caster_state['caster'].get_stats())
+    except Exception:
+        return jsonify({})
+
+
+# ─── NTRIP Server API (native mode, RTK HAT base — push to remote) ─────────
+
+@app.route('/api/ntrip-server/start', methods=['POST'])
+def api_server_start():
+    """Start NtripServer to push corrections to a remote caster."""
+    if RUN_MODE != 'native':
+        return jsonify({'error': 'NtripServer only available in native mode'}), 400
+    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
+        return jsonify({'error': 'NtripServer requires L1/L5 GNSS RTK HAT'}), 400
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON body'}), 400
+
+    ok, err = start_server(data)
+    if ok:
+        return jsonify({'success': True})
+    return jsonify({'error': err}), 500
+
+
+@app.route('/api/ntrip-server/stop', methods=['POST'])
+def api_server_stop():
+    """Stop NtripServer."""
+    if RUN_MODE != 'native':
+        return jsonify({'error': 'NtripServer only available in native mode'}), 400
+    stop_server()
+    return jsonify({'success': True})
+
+
+@app.route('/api/ntrip-server/status', methods=['GET'])
+def api_server_status():
+    """Get NtripServer status."""
+    result = {
+        'running': server_state['running'],
+        'config': server_state['config'],
+    }
+    if server_state['running'] and server_state['server']:
+        try:
+            result['connected'] = server_state['server'].is_connected()
+            result['reconnect_count'] = server_state['server'].reconnect_count()
+        except Exception:
+            result['connected'] = False
+    return jsonify(result)
+
+
+@app.route('/api/ntrip-server/stats', methods=['GET'])
+def api_server_stats():
+    """Get NtripServer connection statistics."""
+    if not server_state['running'] or not server_state['server']:
+        return jsonify({})
+    try:
+        return jsonify(server_state['server'].get_stats())
+    except Exception:
+        return jsonify({})
+
+
+# ─── Configuration API (native mode only) ───────────────────────────────────
+
+def config_to_json_safe(config):
+    """Convert config dict (with IntEnum values) to plain JSON-serializable dict"""
+    def convert(obj):
+        if isinstance(obj, dict):
+            return {k: convert(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [convert(i) for i in obj]
+        elif isinstance(obj, int):
+            return int(obj)
+        elif isinstance(obj, float):
+            return float(obj)
+        elif isinstance(obj, bool):
+            return bool(obj)
+        elif obj is None:
+            return None
+        else:
+            return obj
+    return convert(config)
+
+
+def json_to_native_config(data):
+    """Convert JSON config from frontend to config dict with proper IntEnum types"""
+    from jimmypaputto import gnsshat
+
+    config = {
+        'measurement_rate_hz': int(data['measurement_rate_hz']),
+        'dynamic_model': int(data['dynamic_model']),
+    }
+
+    # Timepulse
+    tp = data.get('timepulse_pin_config')
+    if tp and tp.get('active'):
+        config['timepulse_pin_config'] = {
+            'active': True,
+            'fixed_pulse': {
+                'frequency': int(tp['fixed_pulse']['frequency']),
+                'pulse_width': float(tp['fixed_pulse']['pulse_width']),
+            },
+            'polarity': int(tp.get('polarity', 1)),
+        }
+        if tp.get('pulse_when_no_fix') and tp['pulse_when_no_fix'].get('frequency') is not None:
+            config['timepulse_pin_config']['pulse_when_no_fix'] = {
+                'frequency': int(tp['pulse_when_no_fix']['frequency']),
+                'pulse_width': float(tp['pulse_when_no_fix']['pulse_width']),
+            }
+    else:
+        config['timepulse_pin_config'] = None
+
+    # Geofencing
+    geo = data.get('geofencing')
+    if geo and geo.get('geofences') and len(geo['geofences']) > 0:
+        fences = []
+        for f in geo['geofences'][:4]:
+            if f.get('lat') is not None and f.get('lon') is not None and f.get('radius') is not None:
+                fences.append({
+                    'lat': float(f['lat']),
+                    'lon': float(f['lon']),
+                    'radius': float(f['radius']),
+                })
+        if fences:
+            config['geofencing'] = {
+                'geofences': fences,
+                'confidence_level': int(geo.get('confidence_level', 3)),
+            }
+            pin_pol = geo.get('pin_polarity')
+            if pin_pol is not None:
+                config['geofencing']['pin_polarity'] = gnsshat.PioPinPolarity(int(pin_pol))
+        else:
+            config['geofencing'] = None
+    else:
+        config['geofencing'] = None
+
+    # RTK
+    rtk = data.get('rtk')
+    if rtk and rtk.get('mode') is not None:
+        rtk_cfg = {
+            'mode': int(rtk['mode']),
+        }
+        base = rtk.get('base')
+        if base and base.get('base_mode') is not None:
+            base_cfg = {
+                'base_mode': int(base['base_mode']),
+            }
+            if int(base['base_mode']) == 0:  # SURVEY_IN
+                si = base.get('survey_in', {})
+                base_cfg['survey_in'] = {
+                    'minimum_observation_time_s': int(si.get('minimum_observation_time_s', 120)),
+                    'required_position_accuracy_m': float(si.get('required_position_accuracy_m', 50.0)),
+                }
+            else:  # FIXED_POSITION
+                fp = base.get('fixed_position', {})
+                fp_cfg = {
+                    'position_type': int(fp.get('position_type', 1)),
+                    'position_accuracy_m': float(fp.get('position_accuracy_m', 0.5)),
+                }
+                if int(fp.get('position_type', 1)) == 0:  # ECEF
+                    ecef = fp.get('ecef', {})
+                    fp_cfg['ecef'] = {
+                        'x_m': float(ecef.get('x_m', 0.0)),
+                        'y_m': float(ecef.get('y_m', 0.0)),
+                        'z_m': float(ecef.get('z_m', 0.0)),
+                    }
+                else:  # LLA
+                    lla = fp.get('lla', {})
+                    fp_cfg['lla'] = {
+                        'latitude_deg': float(lla.get('latitude_deg', 0.0)),
+                        'longitude_deg': float(lla.get('longitude_deg', 0.0)),
+                        'height_m': float(lla.get('height_m', 0.0)),
+                    }
+                base_cfg['fixed_position'] = fp_cfg
+            rtk_cfg['base'] = base_cfg
+        config['rtk'] = rtk_cfg
+    else:
+        config['rtk'] = None
+
+    # Timing (enable_time_mark + time_base)
+    timing_data = data.get('timing')
+    if timing_data and isinstance(timing_data, dict):
+        timing_cfg = {}
+
+        timing_cfg['enable_time_mark'] = bool(timing_data.get('enable_time_mark', False))
+
+        time_base = timing_data.get('time_base')
+        if time_base and time_base.get('base_mode') is not None:
+            tb_cfg = {
+                'base_mode': int(time_base['base_mode']),
+            }
+            if int(time_base['base_mode']) == 0:  # SURVEY_IN
+                si = time_base.get('survey_in', {})
+                tb_cfg['survey_in'] = {
+                    'minimum_observation_time_s': int(si.get('minimum_observation_time_s', 120)),
+                    'required_position_accuracy_m': float(si.get('required_position_accuracy_m', 50.0)),
+                }
+            else:  # FIXED_POSITION
+                fp = time_base.get('fixed_position', {})
+                fp_cfg = {
+                    'position_type': int(fp.get('position_type', 1)),
+                    'position_accuracy_m': float(fp.get('position_accuracy_m', 0.5)),
+                }
+                if int(fp.get('position_type', 1)) == 0:  # ECEF
+                    ecef = fp.get('ecef', {})
+                    fp_cfg['ecef'] = {
+                        'x_m': float(ecef.get('x_m', 0.0)),
+                        'y_m': float(ecef.get('y_m', 0.0)),
+                        'z_m': float(ecef.get('z_m', 0.0)),
+                    }
+                else:  # LLA
+                    lla = fp.get('lla', {})
+                    fp_cfg['lla'] = {
+                        'latitude_deg': float(lla.get('latitude_deg', 0.0)),
+                        'longitude_deg': float(lla.get('longitude_deg', 0.0)),
+                        'height_m': float(lla.get('height_m', 0.0)),
+                    }
+                tb_cfg['fixed_position'] = fp_cfg
+            timing_cfg['time_base'] = tb_cfg
+        else:
+            timing_cfg['time_base'] = None
+
+        config['timing'] = timing_cfg
+    else:
+        config['timing'] = None
+
+    # Navigation filters (CFG-NAVSPG-INFIL_*). Only keys that are not None
+    # are forwarded to the library — unset keys leave the receiver's
+    # existing value untouched.
+    nf_data = data.get('navigation_filters')
+    if isinstance(nf_data, dict):
+        nf_keys = (
+            'min_svs', 'max_svs', 'min_cno_dbhz',
+            'min_elev_deg', 'n_cno_thrs', 'cno_thrs_dbhz',
+            'fix_mode',
+            'pdop_mask_x10', 'tdop_mask_x10',
+            'p_acc_mask_m', 't_acc_mask_m',
+        )
+        nf_cfg = {}
+        for k in nf_keys:
+            v = nf_data.get(k)
+            if v is not None:
+                nf_cfg[k] = int(v)
+        config['navigation_filters'] = nf_cfg if nf_cfg else None
+    else:
+        config['navigation_filters'] = None
+
+    config['save_to_flash'] = bool(data.get('save_to_flash', False))
+
+    return config
+
+
+@app.route('/api/config', methods=['GET'])
+def api_get_config():
+    """Get current GnssHat configuration"""
+    if RUN_MODE == 'ros2':
+        return _ros2_get_config()
+    if RUN_MODE != 'native':
+        return jsonify({'error': 'Configuration only available in native or ros2 mode'}), 400
+    if gps_state['current_config']:
+        return jsonify(config_to_json_safe(gps_state['current_config']))
+    return jsonify({'error': 'No config loaded'}), 404
+
+
+@app.route('/api/config', methods=['POST'])
+def api_set_config():
+    """Apply new GnssHat configuration — stops reader, destroys hat, creates new one"""
+    if RUN_MODE == 'ros2':
+        return _ros2_set_config()
+    if RUN_MODE != 'native':
+        return jsonify({'error': 'Configuration only available in native or ros2 mode'}), 400
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON body'}), 400
+
+    with gps_state['config_lock']:
+        try:
+            # 0. Stop NTRIP client/caster if running (HAT will be destroyed)
+            if ntrip_state['connected']:
+                stop_ntrip()
+            if caster_state['running']:
+                stop_caster()
+                _safe_emit('caster_status',
+                              {'state': 'stopped', 'message': 'Caster stopped — module configuration changed'},
+                              namespace='/')
+
+            # 1. Stop reader thread
+            _safe_emit('config_progress', {'step': 'stop', 'message': 'Stopping reader...'}, namespace='/')
+            gps_state['running'] = False
+            if gps_state['thread']:
+                gps_state['thread'].join(timeout=5)
+                if gps_state['thread'].is_alive():
+                    print("Warning: reader thread still alive after join timeout")
+                gps_state['thread'] = None
+
+            # 2. Destroy old hat (destructor stops C++ threads & releases HW)
+            _safe_emit('config_progress', {'step': 'destroy', 'message': 'Destroying old GnssHat object...'}, namespace='/')
+            if gps_state['hat']:
+                del gps_state['hat']
+                gps_state['hat'] = None
+
+            # 3. Create new hat
+            _safe_emit('config_progress', {'step': 'create', 'message': 'Creating new GnssHat object...'}, namespace='/')
+            from jimmypaputto import gnsshat
+            hat = gnsshat.GnssHat()
+
+            # 4. Soft hot reset — preserves almanac/ephemeris for fast re-lock
+            _safe_emit('config_progress', {'step': 'reset', 'message': 'Resetting module (hot start)...'}, namespace='/')
+            hat.soft_reset_hot_start()
+            time.sleep(1)
+
+            # 5. Convert and apply config
+            _safe_emit('config_progress', {'step': 'config', 'message': 'Applying configuration...'}, namespace='/')
+            config = json_to_native_config(data)
+
+            if not hat.start(config):
+                del hat
+                _safe_emit('config_progress', {'step': 'error', 'message': 'hat.start() failed!'}, namespace='/')
+                # Try to restart with old config
+                try:
+                    start_gps_native()
+                except Exception:
+                    pass
+                return jsonify({'error': 'hat.start() returned False — configuration rejected by module'}), 500
+
+            # 6. Success — save state and restart reader
+            _safe_emit('config_progress', {'step': 'reader', 'message': 'Starting GNSS reader thread...'}, namespace='/')
+            gps_state['hat'] = hat
+            gps_state['current_config'] = config
+            gps_state['reference_position'] = None  # Reset so map re-calibrates
+
+            # Enable time mark trigger if configured
+            timing = config.get('timing')
+            tm_enabled = bool(timing and timing.get('enable_time_mark'))
+            gps_state['time_mark_enabled'] = tm_enabled
+            if tm_enabled:
+                try:
+                    hat.enable_time_mark_trigger()
+                    print("TimeMark trigger enabled")
+                except Exception as e:
+                    print(f"Warning: could not enable time mark trigger: {e}")
+                    gps_state['time_mark_enabled'] = False
+
+            gps_state['running'] = True
+            gps_state['thread'] = _native_threading.Thread(target=native_reader_thread, daemon=True)
+            gps_state['thread'].start()
+
+            _safe_emit('config_progress', {'step': 'done', 'message': 'Configuration applied successfully!'}, namespace='/')
+            return jsonify({'success': True, 'config': config_to_json_safe(config)})
+
+        except Exception as e:
+            _safe_emit('config_progress', {'step': 'error', 'message': f'Error: {str(e)}'}, namespace='/')
+            # Try to restart with previous config using hot start
+            try:
+                if not gps_state['hat'] and not gps_state['running']:
+                    from jimmypaputto import gnsshat as gs
+                    hat = gs.GnssHat()
+                    hat.soft_reset_hot_start()
+                    time.sleep(1)
+                    old_cfg = gps_state['current_config'] or create_default_config()
+                    if hat.start(old_cfg):
+                        gps_state['hat'] = hat
+                        gps_state['running'] = True
+                        gps_state['thread'] = _native_threading.Thread(target=native_reader_thread, daemon=True)
+                        gps_state['thread'].start()
+                        print("Recovery: restarted with previous config")
+                    else:
+                        del hat
+                        print("Recovery: failed to restart")
+            except Exception as recovery_err:
+                print(f"Recovery failed: {recovery_err}")
+            return jsonify({'error': str(e)}), 500
+
+
+# ─── ROS 2 config service helpers ───────────────────────────────────────────
+
+def _ros2_call_service(srv_type, srv_name, request, timeout=10.0):
+    """Call a ROS 2 service via the subscriber node that is already spinning.
+    The subscriber spin loop processes the response; we just poll future.done()."""
+    node = gps_state.get('ros2_node')
+    if not node:
+        return None
+
+    client = node.create_client(srv_type, srv_name)
+    try:
+        if not client.wait_for_service(timeout_sec=5.0):
+            return None
+        future = client.call_async(request)
+        # The subscriber thread is already spinning the node, so the response
+        # callback will be dispatched there. Just poll until done.
+        deadline = time.monotonic() + timeout
+        while not future.done() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if future.done():
+            return future.result()
+        return None
+    finally:
+        node.destroy_client(client)
+
+
+def _ros2_get_config():
+    """GET /api/config handler for ros2 mode — calls /gnss/get_config service"""
+    try:
+        from jp_gnss_hat.srv import GetGnssConfig
+        srv_name = f'{_ros2_topic_prefix()}/get_config'
+        resp = _ros2_call_service(
+            GetGnssConfig, srv_name, GetGnssConfig.Request())
+        if resp is None:
+            return jsonify({'error': f'Service {srv_name} unavailable'}), 503
+        cfg_json = ros2_config_msg_to_json(resp.config)
+        gps_state['current_config'] = cfg_json
+        return jsonify(cfg_json)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def _ros2_set_config():
+    """POST /api/config handler for ros2 mode — calls /gnss/set_config service"""
+    from jp_gnss_hat.srv import SetGnssConfig
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON body'}), 400
+
+    try:
+        srv_name = f'{_ros2_topic_prefix()}/set_config'
+        _safe_emit('config_progress',
+                       {'step': 'config', 'message': 'Sending config via ROS 2 service...'},
+                       namespace='/')
+
+        req = SetGnssConfig.Request()
+        req.config = json_to_ros2_config_msg(data)
+        req.save_to_yaml = bool(data.get('save_to_yaml', False))
+
+        resp = _ros2_call_service(SetGnssConfig, srv_name, req, timeout=30.0)
+        if resp is None:
+            _safe_emit('config_progress',
+                           {'step': 'error', 'message': f'Service {srv_name} unavailable'},
+                           namespace='/')
+            return jsonify({'error': f'Service {srv_name} unavailable'}), 503
+
+        if not resp.success:
+            _safe_emit('config_progress',
+                           {'step': 'error', 'message': f'Config rejected: {resp.message}'},
+                           namespace='/')
+            return jsonify({'error': resp.message}), 500
+
+        gps_state['current_config'] = data
+        gps_state['reference_position'] = None
+        _safe_emit('config_progress',
+                       {'step': 'done', 'message': 'Configuration applied successfully!'},
+                       namespace='/')
+        return jsonify({'success': True, 'config': data})
+
+    except Exception as e:
+        _safe_emit('config_progress',
+                       {'step': 'error', 'message': f'Error: {str(e)}'},
+                       namespace='/')
+        return jsonify({'error': str(e)}), 500
+
+
+def start_gps():
+    """Initialize and start GPS data source based on RUN_MODE"""
+    if RUN_MODE == 'native':
+        return start_gps_native()
+    elif RUN_MODE == 'ros2':
+        return start_gps_ros2()
+    else:
+        return start_gps_external_tty()
+
+
+def start_gps_native():
+    """Initialize GnssHat and start native reader thread"""
+    from jimmypaputto import gnsshat
+
+    print("Starting GnssHat in native mode...")
+    try:
+        hat = gnsshat.GnssHat()
+        hat.soft_reset_hot_start()
+        config = create_default_config()
+        if not hat.start(config):
+            print("Failed to start GnssHat")
+            return False
+
+        hat_name = hat.name()
+        print(f"GnssHat started successfully! HAT: {hat_name}")
+        gps_state['hat'] = hat
+        gps_state['hat_name'] = hat_name
+        gps_state['current_config'] = config
+
+        # Enable time mark trigger if configured
+        timing = config.get('timing')
+        tm_enabled = bool(timing and timing.get('enable_time_mark'))
+        gps_state['time_mark_enabled'] = tm_enabled
+        if tm_enabled:
+            try:
+                hat.enable_time_mark_trigger()
+                print("TimeMark trigger enabled")
+            except Exception as e:
+                print(f"Warning: could not enable time mark trigger: {e}")
+                gps_state['time_mark_enabled'] = False
+
+        gps_state['running'] = True
+        gps_state['thread'] = _native_threading.Thread(target=native_reader_thread, daemon=True)
+        gps_state['thread'].start()
+        return True
+
+    except Exception as e:
+        print(f"Error starting GnssHat: {e}")
+        return False
+
+
+def start_gps_external_tty():
+    """Initialize and start GPS serial port reading (NMEA)"""
+    import serial
+
+    print(f"Opening serial port: {SERIAL_PORT} at {BAUD_RATE} baud...")
+    
+    try:
+        gps_state['serial_port'] = serial.Serial(
+            port=SERIAL_PORT,
+            baudrate=BAUD_RATE,
+            timeout=1.0,
+            bytesize=serial.EIGHTBITS,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE
+        )
+        
+        if not gps_state['serial_port'].is_open:
+            print("Failed to open serial port")
+            return False
+        
+        print(f"Serial port {SERIAL_PORT} opened successfully!")
+        
+        gps_state['running'] = True
+        gps_state['thread'] = _native_threading.Thread(target=gps_reader_thread, daemon=True)
+        gps_state['thread'].start()
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error opening serial port: {e}")
+        return False
+
+
+def start_gps_ros2():
+    """Start ROS 2 subscriber thread for /gnss/[node_name/]navigation topic"""
+    import rclpy
+
+    nav_topic = f'{_ros2_topic_prefix()}/navigation'
+    print(f"Starting in ROS 2 mode — subscribing to {nav_topic}...")
+    try:
+        rclpy.init()
+        gps_state['hat_name'] = 'L1 GNSS HAT'
+        gps_state['running'] = True
+        gps_state['thread'] = _native_threading.Thread(target=ros2_reader_thread, daemon=True)
+        gps_state['thread'].start()
+        return True
+    except Exception as e:
+        print(f"Error starting ROS 2 subscriber: {e}")
+        return False
+
+
+def stop_gps():
+    """Stop GPS data source"""
+    print("Stopping GPS...")
+
+    # Stop NTRIP client if running
+    if ntrip_state['connected']:
+        stop_ntrip()
+
+    gps_state['running'] = False
+
+    # Disable time mark trigger before stopping
+    if gps_state.get('time_mark_enabled') and gps_state.get('hat'):
+        try:
+            gps_state['hat'].disable_time_mark_trigger()
+        except Exception:
+            pass
+        gps_state['time_mark_enabled'] = False
+    
+    if gps_state['thread']:
+        gps_state['thread'].join(timeout=5)
+    
+    if gps_state['serial_port'] and gps_state['serial_port'].is_open:
+        gps_state['serial_port'].close()
+
+    if RUN_MODE == 'ros2':
+        try:
+            import rclpy
+            rclpy.shutdown()
+        except Exception:
+            pass
+    
+    gps_state['serial_port'] = None
+    gps_state['hat'] = None
+    gps_state['ros2_node'] = None
+    gps_state['reference_position'] = None
+    gps_state['current_data'] = None
+    gps_state['last_gga'] = None
+    gps_state['last_rmc'] = None
+    gps_state['last_gsa'] = []
+    gps_state['last_gsv'] = []
+    gps_state['gsv_collector'] = {}
+    
+    print("GPS stopped")
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='GPS Visualization Server')
+    parser.add_argument(
+        'mode',
+        choices=['native', 'external_tty', 'ros2'],
+        nargs='?',
+        default='native',
+        help='Data source mode: native (GnssHat library), external_tty (NMEA serial), or ros2 (ROS 2 topic). Default: native'
+    )
+    parser.add_argument(
+        'node_name',
+        nargs='?',
+        default=None,
+        help='Optional ROS 2 node name (e.g. rover, base). Changes topic prefix to /gnss/<node_name>/...'
+    )
+    args = parser.parse_args()
+    RUN_MODE = args.mode
+    ROS2_NODE_NAME = args.node_name
+
+    print("=" * 60)
+    print("GPS Visualization Server - Jimmy Paputto 2025")
+    print(f"Mode: {RUN_MODE}")
+    if RUN_MODE == 'external_tty':
+        print(f"Reading from: {SERIAL_PORT} @ {BAUD_RATE} baud")
+    elif RUN_MODE == 'ros2':
+        nav_topic = f'{_ros2_topic_prefix()}/navigation'
+        print(f"Subscribing to ROS 2 topic {nav_topic}")
+        if ROS2_NODE_NAME:
+            print(f"Node name: {ROS2_NODE_NAME}")
+    else:
+        print("Using GnssHat native library")
+    print("=" * 60)
+    
+    if not start_gps():
+        print("Failed to initialize GPS. Exiting.")
+        sys.exit(1)
+    
+    try:
+        print("\nStarting web server...")
+        print("Access the visualization at:")
+        print("  - From this device: http://localhost:5000")
+        print("  - From network: http://<raspberry-pi-ip>:5000")
+        print("\nPress Ctrl+C to stop")
+        print("=" * 60)
+
+        # Bridge real-OS-thread emits onto a greenlet under eventlet so
+        # `socketio.emit` is always invoked from the hub's context.
+        # No-op when running with async_mode='threading'.
+        if _EVENTLET_ACTIVE:
+            socketio.start_background_task(_emitter_loop)
+
+        # Start the periodic NTRIP-tick pusher (replaces 5× HTTP polling
+        # from the UI every 1.5 s).
+        socketio.start_background_task(_ntrip_tick_loop)
+
+        socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+        
+    except KeyboardInterrupt:
+        print("\n\nShutdown requested...")
+    finally:
+        if _EVENTLET_ACTIVE:
+            import eventlet.tpool as _tpool
+            _tpool.killall()
+        stop_gps()
+        print("Server stopped. Goodbye!")

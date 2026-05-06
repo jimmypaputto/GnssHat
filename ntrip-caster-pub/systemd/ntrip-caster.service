@@ -1,0 +1,34 @@
+[Unit]
+Description=Standalone NTRIP v2.0 caster
+Documentation=https://github.com/jimmypaputto/GnssHat
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Configuration is loaded from /etc/ntrip-caster/ntrip-caster.toml.
+# CLI flags (if any) override values from the config file.
+ExecStart=/usr/local/bin/ntrip-caster --config /etc/ntrip-caster/ntrip-caster.toml
+
+# Hardening
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -6,8 +6,27 @@ project(GnssHat VERSION 1.0.0)
 
 option(BUILD_PYTHON "Build Python bindings" OFF)
 option(BUILD_EXAMPLES "Build C and C++ examples" OFF)
+option(BUILD_TOOLS "Build CLI tools (gnsshat-info, gnsshat-probe)" ON)
+option(BUILD_TESTS "Build unit tests (requires GTest)" OFF)
+option(NTRIP_TLS_SUPPORT "Enable TLS for NTRIP connections (requires OpenSSL)" OFF)
 
-set(LIBGPIOD_VERSION 2)
+set(GNSSHAT_PLATFORM "auto" CACHE STRING "Target platform: auto, generic, rpi4, or rpi5")
+set_property(CACHE GNSSHAT_PLATFORM PROPERTY STRINGS auto generic rpi4 rpi5)
+
+include(CheckSymbolExists)
+
+set(_GNSSHAT_CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES}")
+list(APPEND CMAKE_REQUIRED_LIBRARIES gpiod)
+check_symbol_exists(gpiod_line_settings_new "gpiod.h" GNSSHAT_HAS_LIBGPIOD_V2)
+set(CMAKE_REQUIRED_LIBRARIES "${_GNSSHAT_CMAKE_REQUIRED_LIBRARIES}")
+unset(_GNSSHAT_CMAKE_REQUIRED_LIBRARIES)
+
+if(GNSSHAT_HAS_LIBGPIOD_V2)
+    set(LIBGPIOD_VERSION 2)
+else()
+    set(LIBGPIOD_VERSION 1)
+endif()
+
 add_compile_definitions(LIBGPIOD_VERSION=${LIBGPIOD_VERSION})
 
 set(CMAKE_CXX_STANDARD 20)
@@ -16,51 +35,78 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+include(GNUInstallDirs)
+
+set(GNSSHAT_DETECTED_PLATFORM "${GNSSHAT_PLATFORM}")
+
+if(GNSSHAT_DETECTED_PLATFORM STREQUAL "auto" AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
     execute_process(
         COMMAND grep "Model" /proc/cpuinfo
         OUTPUT_VARIABLE RPI_MODEL
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
-    
+
     if(RPI_MODEL MATCHES "Raspberry Pi 5")
-        add_definitions(-DRPI5)
-        if(LIBGPIOD_VERSION MATCHES 2)
-            add_compile_definitions(CHIP_NAME="/dev/gpiochip4")
-            message(STATUS "Using LIBGPIOD >=2")
-        else()
-            add_compile_definitions(CHIP_NAME="gpiochip4")
-            message(STATUS "Using LIBGPIOD < 2")
-        endif()
-        message(STATUS "Building for Raspberry Pi 5")
+        set(GNSSHAT_DETECTED_PLATFORM "rpi5")
     elseif(RPI_MODEL MATCHES "Raspberry Pi 4")
-        if(LIBGPIOD_VERSION MATCHES 2)
-            add_compile_definitions(CHIP_NAME="/dev/gpiochip0")
-            message(STATUS "Using LIBGPIOD >=2")
-        else()
-            add_compile_definitions(CHIP_NAME="gpiochip0")
-            message(STATUS "Using LIBGPIOD < 2")
-        endif()
-        add_definitions(-DRPI4)
-        message(STATUS "Building for Raspberry Pi 4")
-    else()
-        message(
-            FATAL_ERROR
-            "Unsupported platform: ${RPI_MODEL}. Raspberry Pi 4 or 5 is required."
-        )
+        set(GNSSHAT_DETECTED_PLATFORM "rpi4")
     endif()
-else()
+endif()
+
+if(GNSSHAT_DETECTED_PLATFORM STREQUAL "rpi5")
+    add_definitions(-DRPI5)
+    if(LIBGPIOD_VERSION MATCHES 2)
+        add_compile_definitions(CHIP_NAME="/dev/gpiochip4")
+        message(STATUS "Using libgpiod v2 API")
+    else()
+        add_compile_definitions(CHIP_NAME="gpiochip4")
+        message(STATUS "Using libgpiod v1 API")
+    endif()
+    message(STATUS "Building for Raspberry Pi 5")
+elseif(GNSSHAT_DETECTED_PLATFORM STREQUAL "rpi4")
+    if(LIBGPIOD_VERSION MATCHES 2)
+        add_compile_definitions(CHIP_NAME="/dev/gpiochip0")
+        message(STATUS "Using libgpiod v2 API")
+    else()
+        add_compile_definitions(CHIP_NAME="gpiochip0")
+        message(STATUS "Using libgpiod v1 API")
+    endif()
+    add_definitions(-DRPI4)
+    message(STATUS "Building for Raspberry Pi 4")
+elseif(GNSSHAT_DETECTED_PLATFORM STREQUAL "generic")
+    if(LIBGPIOD_VERSION MATCHES 2)
+        add_compile_definitions(CHIP_NAME="/dev/gpiochip0")
+        message(STATUS "Using libgpiod v2 API")
+    else()
+        add_compile_definitions(CHIP_NAME="gpiochip0")
+        message(STATUS "Using libgpiod v1 API")
+    endif()
+    add_compile_definitions(GNSSHAT_GENERIC_LINUX=1)
+    message(WARNING "Building in generic Linux mode; Raspberry Pi hardware-specific behavior is not validated in this configuration.")
+elseif(GNSSHAT_DETECTED_PLATFORM STREQUAL "auto")
     message(
         FATAL_ERROR
         "Unsupported platform: ${CMAKE_SYSTEM_PROCESSOR}. Raspberry Pi 4 or 5 is required."
     )
+else()
+    message(FATAL_ERROR "Unsupported GNSSHAT_PLATFORM value: ${GNSSHAT_PLATFORM}")
 endif()
+
+configure_file(
+    ${CMAKE_SOURCE_DIR}/src/Version.hpp.in
+    ${CMAKE_SOURCE_DIR}/src/Version.hpp
+    @ONLY
+)
 
 include_directories(
     src
 )
 
 set(LIB_SOURCES
+    src/ntrip/NtripCaster.cpp
+    src/ntrip/NtripClient.cpp
+    src/ntrip/NtripServer.cpp
+    src/common/BuildInfo.cpp
     src/common/GpioInterruptLine.cpp
     src/common/JPGuard.cpp
     src/common/Utils.cpp
@@ -88,12 +134,67 @@ set(LIB_SOURCES
 
 add_library(GnssHat SHARED ${LIB_SOURCES})
 
+target_include_directories(GnssHat
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/jimmypaputto>
+)
+
+# Git info for BuildInfo
+execute_process(
+    COMMAND git describe --always --dirty
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_REVISION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+execute_process(
+    COMMAND git rev-list --count HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_BUILD_NUMBER
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT GIT_REVISION)
+    set(GIT_REVISION "unknown")
+endif()
+if(NOT GIT_BUILD_NUMBER)
+    set(GIT_BUILD_NUMBER 0)
+endif()
+set_source_files_properties(src/common/BuildInfo.cpp PROPERTIES
+    COMPILE_DEFINITIONS "GNSSHAT_GIT_REVISION=\"${GIT_REVISION}\";GNSSHAT_BUILD_NUMBER=${GIT_BUILD_NUMBER}"
+)
+
+# Force BuildInfo.cpp recompile on every build for fresh __DATE__/__TIME__
+add_custom_target(BuildInfoRefresh ALL
+    COMMAND ${CMAKE_COMMAND} -E touch_nocreate ${CMAKE_SOURCE_DIR}/src/common/BuildInfo.cpp
+)
+add_dependencies(GnssHat BuildInfoRefresh)
+
 set_target_properties(GnssHat PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
+    OUTPUT_NAME gnsshat
 )
 
 target_link_libraries(GnssHat gpiod pthread util)
+
+if(NTRIP_TLS_SUPPORT)
+    find_package(OpenSSL REQUIRED)
+    target_compile_definitions(GnssHat PUBLIC GNSSHAT_HAS_TLS)
+    target_link_libraries(GnssHat OpenSSL::SSL OpenSSL::Crypto)
+    message(STATUS "NTRIP TLS support enabled")
+endif()
+
+if(BUILD_TOOLS)
+    find_package(toml11 REQUIRED)
+    add_subdirectory(tools)
+endif()
+
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 if(BUILD_EXAMPLES)
     file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include)
@@ -101,29 +202,29 @@ if(BUILD_EXAMPLES)
     target_include_directories(GnssHat PUBLIC $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>)
 
     # C examples
-    add_subdirectory(examples/C/Geofencing)
-    add_subdirectory(examples/C/HotStart)
-    add_subdirectory(examples/C/JammingDetector)
-    add_subdirectory(examples/C/PrintNavigation)
-    add_subdirectory(examples/C/PrintSatellites)
-    add_subdirectory(examples/C/RTK)
-    add_subdirectory(examples/C/TimeBase)
-    add_subdirectory(examples/C/TimeMark)
-    add_subdirectory(examples/C/TimepulseInterrupt)
+    add_subdirectory(examples/c/geofencing)
+    add_subdirectory(examples/c/hot-start)
+    add_subdirectory(examples/c/jamming-detector)
+    add_subdirectory(examples/c/print-navigation)
+    add_subdirectory(examples/c/print-satellites)
+    add_subdirectory(examples/c/rtk)
+    add_subdirectory(examples/c/time-base)
+    add_subdirectory(examples/c/time-mark)
+    add_subdirectory(examples/c/timepulse-interrupt)
 
     # C++ examples
-    add_subdirectory(examples/CPP/Geofencing)
-    add_subdirectory(examples/CPP/HotStart)
-    add_subdirectory(examples/CPP/JammingDetector)
-    add_subdirectory(examples/CPP/PrintNavigation)
-    add_subdirectory(examples/CPP/PrintSatellites)
-    add_subdirectory(examples/CPP/RTK)
-    add_subdirectory(examples/CPP/TimeBase)
-    add_subdirectory(examples/CPP/TimeMark)
-    add_subdirectory(examples/CPP/TimepulseInterrupt)
+    add_subdirectory(examples/cpp/geofencing)
+    add_subdirectory(examples/cpp/hot-start)
+    add_subdirectory(examples/cpp/jamming-detector)
+    add_subdirectory(examples/cpp/print-navigation)
+    add_subdirectory(examples/cpp/print-satellites)
+    add_subdirectory(examples/cpp/rtk)
+    add_subdirectory(examples/cpp/time-base)
+    add_subdirectory(examples/cpp/time-mark)
+    add_subdirectory(examples/cpp/timepulse-interrupt)
 
-    # Create BinariesSymlinks directory with symlinks to C++ example binaries
-    set(SYMLINK_DIR ${CMAKE_SOURCE_DIR}/examples/BinariesSymlinks)
+    # Create bin directory with symlinks to C++ example binaries
+    set(SYMLINK_DIR ${CMAKE_SOURCE_DIR}/examples/bin)
     file(MAKE_DIRECTORY ${SYMLINK_DIR})
 
     set(CPP_TARGETS
@@ -141,29 +242,50 @@ if(BUILD_EXAMPLES)
         TimepulseInterrupt
     )
 
+    # Map CMake target names to output binary names for symlinks
+    set(CPP_SYMLINK_NAMES
+        geofencing
+        hot-start
+        jamming-detector
+        print-navigation-advanced
+        print-navigation-basic
+        print-satellites-basic
+        print-satellites-advanced
+        rtk-base
+        rtk-rover
+        time-base
+        time-mark
+        timepulse-interrupt
+    )
+
     set(SYMLINK_COMMANDS)
-    foreach(TARGET_NAME ${CPP_TARGETS})
+    list(LENGTH CPP_TARGETS _len)
+    math(EXPR _last "${_len} - 1")
+    foreach(_i RANGE ${_last})
+        list(GET CPP_TARGETS ${_i} _target)
+        list(GET CPP_SYMLINK_NAMES ${_i} _name)
         list(APPEND SYMLINK_COMMANDS
-            COMMAND ln -snf $<TARGET_FILE:${TARGET_NAME}> ${SYMLINK_DIR}/${TARGET_NAME}
+            COMMAND ln -snf $<TARGET_FILE:${_target}> ${SYMLINK_DIR}/${_name}
         )
     endforeach()
 
     add_custom_target(BinariesSymlinks ALL
         ${SYMLINK_COMMANDS}
         DEPENDS ${CPP_TARGETS}
-        COMMENT "Creating symlinks in examples/BinariesSymlinks/"
+        COMMENT "Creating symlinks in examples/bin/"
     )
 
     set(SYMLINK_FILES)
-    foreach(TARGET_NAME ${CPP_TARGETS})
-        list(APPEND SYMLINK_FILES ${SYMLINK_DIR}/${TARGET_NAME})
+    foreach(_name ${CPP_SYMLINK_NAMES})
+        list(APPEND SYMLINK_FILES ${SYMLINK_DIR}/${_name})
     endforeach()
     set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES ${SYMLINK_FILES})
 endif()
 
 install(TARGETS GnssHat
-    LIBRARY DESTINATION /usr/local/lib
-    ARCHIVE DESTINATION /usr/local/lib
+    EXPORT GnssHatTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
 install(
@@ -185,19 +307,136 @@ install(
         src/ublox/RtkConfig.hpp
         src/ublox/TimingConfig.hpp
         src/ublox/SatelliteInfo.hpp
+        src/ublox/SystemHealth.hpp
         src/ublox/TimeMark.hpp
         src/ublox/TimepulsePinConfig.hpp
         src/ublox/RFBlockSpectrumData.hpp
     DESTINATION
-        /usr/local/include/jimmypaputto/ublox
+        ${CMAKE_INSTALL_INCLUDEDIR}/jimmypaputto/ublox
 )
 
 install(
     FILES
         src/GnssHat.hpp
         src/GnssHat.h
+        src/Version.hpp
     DESTINATION
-        /usr/local/include/jimmypaputto
+        ${CMAKE_INSTALL_INCLUDEDIR}/jimmypaputto
+)
+
+install(
+    FILES
+        src/common/BuildInfo.hpp
+    DESTINATION
+        ${CMAKE_INSTALL_INCLUDEDIR}/jimmypaputto/common
+)
+
+install(
+    FILES
+        src/ntrip/NtripCaster.hpp
+        src/ntrip/NtripClient.hpp
+        src/ntrip/NtripServer.hpp
+        src/ntrip/NtripLog.hpp
+        src/ntrip/NtripStats.hpp
+        src/ntrip/NtripTls.hpp
+    DESTINATION
+        ${CMAKE_INSTALL_INCLUDEDIR}/jimmypaputto/ntrip
+)
+
+# ── CMake package config (enables find_package(GnssHat)) ────────────────────
+
+include(CMakePackageConfigHelpers)
+
+install(EXPORT GnssHatTargets
+    FILE GnssHatTargets.cmake
+    NAMESPACE GnssHat::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/GnssHat
+)
+
+configure_package_config_file(
+    ${CMAKE_SOURCE_DIR}/cmake/GnssHatConfig.cmake.in
+    ${CMAKE_BINARY_DIR}/GnssHatConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/GnssHat
+)
+
+write_basic_package_version_file(
+    ${CMAKE_BINARY_DIR}/GnssHatConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+install(
+    FILES
+        ${CMAKE_BINARY_DIR}/GnssHatConfig.cmake
+        ${CMAKE_BINARY_DIR}/GnssHatConfigVersion.cmake
+    DESTINATION
+        ${CMAKE_INSTALL_LIBDIR}/cmake/GnssHat
+)
+
+# ── pkg-config ───────────────────────────────────────────────────────────────
+
+configure_file(
+    ${CMAKE_SOURCE_DIR}/cmake/gnsshat.pc.in
+    ${CMAKE_BINARY_DIR}/gnsshat.pc
+    @ONLY
+)
+
+install(
+    FILES ${CMAKE_BINARY_DIR}/gnsshat.pc
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
+)
+
+install(CODE "
+    if(EXISTS \"/etc/ld.so.conf\")
+        execute_process(COMMAND ldconfig)
+    endif()
+")
+
+file(WRITE ${CMAKE_BINARY_DIR}/cmake_uninstall.cmake "
+    set(MANIFEST \"\${CMAKE_BINARY_DIR}/install_manifest.txt\")
+    if(NOT EXISTS \${MANIFEST})
+        message(FATAL_ERROR \"Cannot find install manifest: \${MANIFEST}\")
+    endif()
+    file(READ \${MANIFEST} FILES)
+    string(STRIP \"\${FILES}\" FILES)
+    string(REGEX REPLACE \"\\n\" \";\" FILES \"\${FILES}\")
+    set(FAILED_FILES)
+    foreach(FILE \${FILES})
+        if(IS_SYMLINK \"\${FILE}\" OR EXISTS \"\${FILE}\")
+            message(STATUS \"Removing: \${FILE}\")
+            file(REMOVE \"\${FILE}\")
+            if(EXISTS \"\${FILE}\")
+                list(APPEND FAILED_FILES \"\${FILE}\")
+                message(WARNING \"Failed to remove: \${FILE} (permission denied?)\")
+            else()
+                get_filename_component(DIR \"\${FILE}\" DIRECTORY)
+                if(IS_DIRECTORY \"\${DIR}\")
+                    file(GLOB DIR_CONTENTS \"\${DIR}/*\")
+                    if(NOT DIR_CONTENTS)
+                        message(STATUS \"Removing empty directory: \${DIR}\")
+                        file(REMOVE_RECURSE \"\${DIR}\")
+                    endif()
+                endif()
+            endif()
+        else()
+            message(STATUS \"Not found (skipping): \${FILE}\")
+        endif()
+    endforeach()
+    if(IS_DIRECTORY \"${CMAKE_INSTALL_FULL_INCLUDEDIR}/jimmypaputto\")
+        message(STATUS \"Removing: ${CMAKE_INSTALL_FULL_INCLUDEDIR}/jimmypaputto\")
+        file(REMOVE_RECURSE \"${CMAKE_INSTALL_FULL_INCLUDEDIR}/jimmypaputto\")
+    endif()
+    execute_process(COMMAND ldconfig)
+    if(FAILED_FILES)
+        string(REPLACE \";\" \"\\n  \" FAILED_LIST \"\${FAILED_FILES}\")
+        message(FATAL_ERROR \"Failed to remove the following files (try running with sudo):\\n  \${FAILED_LIST}\")
+    endif()
+    message(STATUS \"GnssHat uninstalled.\")
+")
+
+add_custom_target(uninstall
+    COMMAND ${CMAKE_COMMAND} -DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR} -P ${CMAKE_BINARY_DIR}/cmake_uninstall.cmake
+    COMMENT "Uninstalling GnssHat"
 )
 
 if(BUILD_PYTHON)

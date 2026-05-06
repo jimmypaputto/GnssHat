@@ -79,6 +79,71 @@ void Gnss::satellites(const std::vector<SatelliteInfo>& satellites)
     }
 }
 
+void Gnss::monVer(const std::string& swVersion, const std::string& hwVersion,
+                  const std::vector<std::string>& extensions)
+{
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        swVersion_ = swVersion;
+        hwVersion_ = hwVersion;
+        monVerExtensions_ = extensions;
+        xSemaphore_.releaseResource();
+    }
+}
+
+std::string Gnss::swVersion() const
+{
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        auto v = swVersion_;
+        xSemaphore_.releaseResource();
+        return v;
+    }
+    return {};
+}
+
+std::string Gnss::hwVersion() const
+{
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        auto v = hwVersion_;
+        xSemaphore_.releaseResource();
+        return v;
+    }
+    return {};
+}
+
+std::vector<std::string> Gnss::monVerExtensions() const
+{
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        auto v = monVerExtensions_;
+        xSemaphore_.releaseResource();
+        return v;
+    }
+    return {};
+}
+
+void Gnss::systemHealth(const SystemHealth& systemHealth)
+{
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        systemHealth_ = systemHealth;
+        xSemaphore_.releaseResource();
+    }
+}
+
+SystemHealth Gnss::systemHealth() const
+{
+    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+    {
+        auto s = systemHealth_;
+        xSemaphore_.releaseResource();
+        return s;
+    }
+    return {};
+}
+
 void Gnss::timeMark(const TimeMark& timeMark)
 {
     if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))

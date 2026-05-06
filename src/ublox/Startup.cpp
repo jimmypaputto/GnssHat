@@ -14,12 +14,14 @@
 
 #include "common/Utils.hpp"
 #include "ublox/Geofencing.hpp"
+#include "ublox/Gnss.hpp"
 #include "ublox/SpiDriver.hpp"
 #include "ublox/UartDriver.hpp"
 #include "ublox/UbxCfgKeys.hpp"
 #include "ublox/ubxmsg/UBX_CFG_CFG.hpp"
 #include "ublox/ubxmsg/UBX_CFG_VALGET.hpp"
 #include "ublox/ubxmsg/UBX_CFG_VALSET.hpp"
+#include "ublox/ubxmsg/UBX_MON_VER.hpp"
 
 
 namespace JimmyPaputto
@@ -133,6 +135,82 @@ void StartupBase::rate2Registers(const uint16_t measurementRate_Hz)
     const uint16_t navRate = 1;
     ecv[CFG_RATE_NAV] = serializeInt2LittleEndian<uint16_t>(navRate);
     ecv[CFG_RATE_TIMEREF] = {to_underlying(E_CFG_RATE_TIMEREF::UTC)};
+}
+
+std::vector<uint32_t> StartupBase::navigationFilters2Registers(
+    const std::optional<GnssConfig::NavigationFilters>& filters)
+{
+    std::vector<uint32_t> keys;
+    if (!filters.has_value())
+        return keys;
+
+    using namespace UbxCfgKeys;
+    auto& ecv = StartupBase::expectedConfigValues_;
+
+    if (filters->minSvs.has_value())
+    {
+        ecv[CFG_NAVSPG_INFIL_MINSVS] = {*filters->minSvs};
+        keys.push_back(CFG_NAVSPG_INFIL_MINSVS);
+    }
+    if (filters->maxSvs.has_value())
+    {
+        ecv[CFG_NAVSPG_INFIL_MAXSVS] = {*filters->maxSvs};
+        keys.push_back(CFG_NAVSPG_INFIL_MAXSVS);
+    }
+    if (filters->minCno_dBHz.has_value())
+    {
+        ecv[CFG_NAVSPG_INFIL_MINCNO] = {*filters->minCno_dBHz};
+        keys.push_back(CFG_NAVSPG_INFIL_MINCNO);
+    }
+    if (filters->minElev_deg.has_value())
+    {
+        // I1 (signed byte) — store the two's-complement byte so the VALGET
+        // verification cycle compares byte-for-byte against the receiver.
+        ecv[CFG_NAVSPG_INFIL_MINELEV] =
+            {static_cast<uint8_t>(*filters->minElev_deg)};
+        keys.push_back(CFG_NAVSPG_INFIL_MINELEV);
+    }
+    if (filters->nCnoThrs.has_value())
+    {
+        ecv[CFG_NAVSPG_INFIL_NCNOTHRS] = {*filters->nCnoThrs};
+        keys.push_back(CFG_NAVSPG_INFIL_NCNOTHRS);
+    }
+    if (filters->cnoThrs_dBHz.has_value())
+    {
+        ecv[CFG_NAVSPG_INFIL_CNOTHRS] = {*filters->cnoThrs_dBHz};
+        keys.push_back(CFG_NAVSPG_INFIL_CNOTHRS);
+    }
+    if (filters->fixMode.has_value())
+    {
+        ecv[CFG_NAVSPG_FIXMODE] =
+            {static_cast<uint8_t>(*filters->fixMode)};
+        keys.push_back(CFG_NAVSPG_FIXMODE);
+    }
+    if (filters->pdopMask_x10.has_value())
+    {
+        ecv[CFG_NAVSPG_OUTFIL_PDOP] =
+            serializeInt2LittleEndian<uint16_t>(*filters->pdopMask_x10);
+        keys.push_back(CFG_NAVSPG_OUTFIL_PDOP);
+    }
+    if (filters->tdopMask_x10.has_value())
+    {
+        ecv[CFG_NAVSPG_OUTFIL_TDOP] =
+            serializeInt2LittleEndian<uint16_t>(*filters->tdopMask_x10);
+        keys.push_back(CFG_NAVSPG_OUTFIL_TDOP);
+    }
+    if (filters->pAccMask_m.has_value())
+    {
+        ecv[CFG_NAVSPG_OUTFIL_PACC] =
+            serializeInt2LittleEndian<uint16_t>(*filters->pAccMask_m);
+        keys.push_back(CFG_NAVSPG_OUTFIL_PACC);
+    }
+    if (filters->tAccMask_m.has_value())
+    {
+        ecv[CFG_NAVSPG_OUTFIL_TACC] =
+            serializeInt2LittleEndian<uint16_t>(*filters->tAccMask_m);
+        keys.push_back(CFG_NAVSPG_OUTFIL_TACC);
+    }
+    return keys;
 }
 
 enum class CFG_UART1_DATABITS : uint8_t
@@ -258,6 +336,8 @@ M9NStartup::M9NStartup(ICommDriver& commDriver,
     ecv[UbxCfgKeys::CFG_NAVSPG_DYNMODEL] = {to_underlying(config.dynamicModel)};
     rate2Registers(config.measurementRate_Hz);
     timepulsePinConfig2Registers(config.timepulsePinConfig);
+    navigationFilterKeys_ =
+        navigationFilters2Registers(config.navigationFilters);
 
     constexpr uint32_t fenceUseKeys[4] = {
         UbxCfgKeys::CFG_GEOFENCE_USE_FENCE1,
@@ -425,6 +505,13 @@ bool M9NStartup::execute()
         return false;
     }
 
+    result = configure(navigationFilterKeys_);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] Navigation filter configuration failed\r\n");
+        return false;
+    }
+
     constexpr std::array<uint32_t, 4> geofenceCommonKeys = {
         UbxCfgKeys::CFG_GEOFENCE_CONFLVL,
         UbxCfgKeys::CFG_GEOFENCE_USE_PIO,
@@ -511,6 +598,7 @@ bool M9NStartup::execute()
         }
     }
 
+    pollMonVer();
     return true;
 }
 
@@ -645,6 +733,7 @@ std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigVa
     {UbxCfgKeys::CFG_TXREADY_INTERFACE, {to_underlying(E_CFG_TXREADY_INTERFACE::SPI)}},
 
     {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_UART1,  {0x01}},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_UART1, {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_UART1, {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_UART1, {0x01}},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_UART1, {0x01}},
@@ -722,6 +811,49 @@ int StartupBase::pollRxData(uint8_t* rxBuff, const uint32_t size,
 {
     commDriver_.getRxBuff(rxBuff, size);
     return size;
+}
+
+bool StartupBase::pollMonVer(int timeoutMs)
+{
+    // UBX-MON-VER is poll-only (not periodically emitted). Send the poll and
+    // feed any received bytes through the parser so the registered MON-VER
+    // callback updates Gnss::instance() with the receiver/firmware version.
+    const auto pollFrame = ubxmsg::UBX_MON_VER::poll();
+    std::ranges::fill(rxBuff_, 0);
+    commDriver_.transmitReceive(pollFrame, rxBuff_);
+    auto unfinished = ubxParser_.parse(rxBuff_);
+
+    if (!Gnss::instance().swVersion().empty())
+        return true;
+
+    const auto deadline = std::chrono::steady_clock::now()
+        + std::chrono::milliseconds(timeoutMs);
+    do
+    {
+        std::copy(unfinished.begin(), unfinished.end(), rxBuff_.begin());
+        const uint32_t offset = unfinished.size();
+        const int bytesRead = pollRxData(
+            rxBuff_.data() + offset,
+            rxBuff_.size() - offset,
+            timeoutMs
+        );
+
+        if (bytesRead <= 0)
+            continue;
+
+        unfinished = ubxParser_.parse(
+            std::span<const uint8_t>(rxBuff_.data(), offset + bytesRead)
+        );
+
+        if (!Gnss::instance().swVersion().empty())
+            return true;
+    }
+    while (std::chrono::steady_clock::now() < deadline);
+
+    fprintf(stderr,
+        "[Startup] MON-VER poll timed out after %d ms (non-fatal)\r\n",
+        timeoutMs);
+    return true;  // best-effort: do not abort startup
 }
 
 bool StartupBase::verifyConfig(std::span<const uint32_t> keys)
@@ -843,6 +975,8 @@ F10TStartup::F10TStartup(ICommDriver& commDriver,
 
     rate2Registers(config.measurementRate_Hz);
     timepulsePinConfig2Registers(config.timepulsePinConfig);
+    navigationFilterKeys_ =
+        navigationFilters2Registers(config.navigationFilters);
 
     ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]    = {0x01};
     ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {0x01};
@@ -903,8 +1037,16 @@ bool F10TStartup::execute()
         return false;
     }
 
-    constexpr std::array<uint32_t, 4> msgCfgKeys = {
+    result = configure(navigationFilterKeys_);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] Navigation filter configuration failed\r\n");
+        return false;
+    }
+
+    constexpr std::array<uint32_t, 5> msgCfgKeys = {
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_UART1,
+        UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_UART1,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_UART1,
         UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_UART1,
         UbxCfgKeys::CFG_MSGOUT_UBX_TIM_TM2_UART1
@@ -943,6 +1085,7 @@ bool F10TStartup::execute()
         }
     }
 
+    pollMonVer();
     return true;
 }
 
@@ -1019,13 +1162,21 @@ F9PStartup::F9PStartup(ICommDriver& commDriver,
     ecv[UbxCfgKeys::CFG_SPIINPROT_SPARTN] = {0x00};
     ecv[UbxCfgKeys::CFG_SPIOUTPROT_RTCM3X] = {0x00};
 
+    ecv[UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_SPI] = {0x01};
+
     if (config.rtk == std::nullopt)
+    {
+        ecv[UbxCfgKeys::CFG_TMODE_MODE] =
+            {static_cast<uint8_t>(CFG_TMODE_MODE::DISABLED)};
         return;
+    }
 
     base_ = config.rtk->mode == ERtkMode::Base && config.rtk->base.has_value();
     if (!base_)
     {
         rover_ = true;
+        ecv[UbxCfgKeys::CFG_TMODE_MODE] =
+            {static_cast<uint8_t>(CFG_TMODE_MODE::DISABLED)};
         return;
     }
 
@@ -1070,6 +1221,19 @@ bool F9PStartup::execute()
         return false;
     }
 
+    constexpr std::array<uint32_t, 1> monSysSpiKeys = {
+        UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_SPI
+    };
+    result = configure(monSysSpiKeys);
+    if (!result)
+    {
+        fprintf(
+            stderr,
+            "[Startup] UBX-MON-SYS SPI message output configuration failed\r\n"
+        );
+        return false;
+    }
+
     constexpr std::array<uint32_t, 5> uart2Keys = {
         UbxCfgKeys::CFG_UART2_ENABLED,
         UbxCfgKeys::CFG_UART2_BAUDRATE,
@@ -1087,11 +1251,27 @@ bool F9PStartup::execute()
         if (!result)
             return false;
     }
-    else if (rover_)
+    else
     {
-        result = rtkRoverStartup();
+        constexpr std::array<uint32_t, 1> tmodeDisableKey = {
+            UbxCfgKeys::CFG_TMODE_MODE
+        };
+        result = configure(tmodeDisableKey);
         if (!result)
+        {
+            fprintf(
+                stderr,
+                "[Startup] TMODE disable configuration failed\r\n"
+            );
             return false;
+        }
+
+        if (rover_)
+        {
+            result = rtkRoverStartup();
+            if (!result)
+                return false;
+        }
     }
 
     if (configRegistry_.getGnssConfig().saveToFlash

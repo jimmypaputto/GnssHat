@@ -101,6 +101,20 @@ public:
     void disableTimeMarkTrigger() override;
     void triggerTimeMark(ETimeMarkTriggerEdge edge) override;
 
+    SystemHealth systemHealth() const override;
+    std::string swVersion() const override
+    {
+        return gnss_.swVersion();
+    }
+    std::string hwVersion() const override
+    {
+        return gnss_.hwVersion();
+    }
+    std::vector<std::string> monVerExtensions() const override
+    {
+        return gnss_.monVerExtensions();
+    }
+
 protected:
     void stopUbloxThread();
     virtual std::optional<std::reference_wrapper<Rtcm3Store>> rtcm3Store();
@@ -185,11 +199,15 @@ public:
     {
         return gnss_.timeMark();
     }
-
     TimeMark waitAndGetFreshTimeMark() override
     {
         timeMarkNotifier_.wait(stopSource_.get_token());
         return Gnss::instance().timeMark().value_or(TimeMark{});
+    }
+
+    SystemHealth systemHealth() const override
+    {
+        return gnss_.systemHealth();
     }
 
     bool enableTimeMarkTrigger() override
@@ -277,6 +295,11 @@ public:
         return rtk_.get();
     }
 
+    SystemHealth systemHealth() const override
+    {
+        return gnss_.systemHealth();
+    }
+
     std::optional<std::reference_wrapper<Rtcm3Store>> rtcm3Store() override
     {
         return std::ref(rtcm3Store_);
@@ -289,15 +312,27 @@ private:
 
 static std::string readHatProduct()
 {
-    const std::string productPath = "/proc/device-tree/hat/product";
-    std::ifstream file(productPath);
-    if (!file.is_open())
-        return "";
-
-    std::string product;
-    std::getline(file, product, '\0');
-    return product;
+    return Hat::detectProduct();
 }
+
+namespace Hat
+{
+    std::string readEepromField(const std::string& field)
+    {
+        const std::string path = "/proc/device-tree/hat/" + field;
+        std::ifstream file(path);
+        if (!file.is_open())
+            return {};
+        std::string value;
+        std::getline(file, value, '\0');
+        return value;
+    }
+
+    std::string detectProduct()
+    {
+        return readEepromField("product");
+    }
+}  // namespace Hat
 
 IGnssHat* IGnssHat::create()
 {
@@ -345,6 +380,8 @@ bool validateConfig(const GnssConfig& config)
     if (!checkMeasurementRate(config.measurementRate_Hz))
         return false;
     if (!checkTimepulsePinConfig(config.timepulsePinConfig))
+        return false;
+    if (!checkNavigationFilters(config.navigationFilters))
         return false;
 
     if constexpr (std::is_same_v<StartupStrategy, M9NStartup> ||
@@ -553,6 +590,15 @@ std::optional<TimeMark> GnssHat::timeMark() const
         "Use L1/L5 GNSS TIME HAT.\r\n",
         static_cast<int>(name().size()), name().data());
     return std::nullopt;
+}
+
+SystemHealth GnssHat::systemHealth() const
+{
+    fprintf(stderr,
+        "[GNSS] SystemHealth (UBX-MON-SYS) is not supported on %.*s. "
+        "Use L1/L5 GNSS TIME HAT or L1/L5 GNSS RTK HAT.\r\n",
+        static_cast<int>(name().size()), name().data());
+    return SystemHealth{};
 }
 
 TimeMark GnssHat::waitAndGetFreshTimeMark()

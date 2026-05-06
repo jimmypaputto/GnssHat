@@ -1,0 +1,2426 @@
+/* Jimmy Paputto 2025 - GPS Visualization Dark Theme */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --bg-primary: #0f0f1e;
+    --bg-secondary: #1a1a2e;
+    --bg-card: #16213e;
+    --border-color: #2a2a3e;
+    --text-primary: #ffffff;
+    --text-secondary: #b4b4c8;
+    --accent-cyan: #00d9ff;
+    --accent-green: #00ff88;
+    --accent-red: #ff4444;
+    --accent-yellow: #ffaa00;
+    --shadow: rgba(0, 0, 0, 0.5);
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    overflow-x: hidden;
+}
+
+.container {
+    max-width: 1920px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header */
+header {
+    background: var(--bg-secondary);
+    padding: 20px 30px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 20px var(--shadow);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border: 1px solid var(--border-color);
+}
+
+header h1 {
+    font-size: 2rem;
+    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-green));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-logo {
+    height: 2.4rem;
+    width: auto;
+    -webkit-text-fill-color: initial;
+}
+
+.header-info-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.badge-mode {
+    color: var(--accent-cyan);
+    border: 1px solid var(--accent-cyan);
+    background: rgba(34, 211, 238, 0.1);
+}
+
+.badge-hat {
+    color: var(--accent-green);
+    border: 1px solid var(--accent-green);
+    background: rgba(34, 197, 94, 0.1);
+}
+
+.status-bar {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.status-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.status-value {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 14px;
+    padding: 4px 8px;
+    background: var(--bg-card);
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.status-value.connected {
+    color: var(--accent-green);
+    border-color: var(--accent-green);
+    background: rgba(34, 197, 94, 0.1);
+}
+
+.status-value.disconnected {
+    color: var(--accent-red);
+    border-color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+/* Round-trip latency badge next to the Connection status.
+   Matches `.status-value` metrics so both pills share the same height. */
+.status-latency {
+    margin-left: 6px;
+    padding: 4px 8px;
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+}
+.status-latency.latency-good {
+    color: var(--accent-green);
+    border-color: var(--accent-green);
+    background: rgba(34, 197, 94, 0.1);
+}
+.status-latency.latency-warn {
+    color: #f59e0b;
+    border-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+}
+.status-latency.latency-bad {
+    color: var(--accent-red);
+    border-color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.1);
+}
+.status-latency.latency-unknown {
+    opacity: 0.7;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    background: var(--bg-card);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    animation: pulse 2s infinite;
+}
+
+.status-dot.connected {
+    background: var(--accent-yellow);
+}
+
+.status-dot.active {
+    background: var(--accent-green);
+}
+
+.status-dot.disconnected {
+    background: var(--accent-red);
+    animation: none;
+}
+
+.status-dot.error {
+    background: var(--accent-red);
+    animation: blink 0.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+
+.status-text {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Main Content */
+.main-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+/* Map Section */
+.map-container {
+    background: var(--bg-secondary);
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px var(--shadow);
+    border: 1px solid var(--border-color);
+}
+
+.map-section {
+    background: var(--bg-secondary);
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px var(--shadow);
+    border: 1px solid var(--border-color);
+}
+
+.map-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.map-header h2 {
+    color: var(--accent-cyan);
+}
+
+/* Map Tabs */
+.map-tabs {
+    display: flex;
+    gap: 10px;
+}
+
+/* Mobile prev/next tab arrows. Hidden on desktop — the full tab strip is
+   visible there. */
+.map-tab-nav {
+    display: none;
+    width: 32px;
+    height: 36px;
+    padding: 0;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 22px;
+    line-height: 1;
+    user-select: none;
+    flex: 0 0 auto;
+}
+.map-tab-nav:hover { background: var(--accent-cyan); color: var(--bg-primary); border-color: var(--accent-cyan); }
+.map-tab-nav:disabled { opacity: 0.35; cursor: not-allowed; background: var(--bg-card); color: var(--text-secondary); border-color: var(--border-color); }
+
+.map-tab {
+    padding: 10px 20px;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.map-tab:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+.map-tab.active {
+    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-green));
+    color: var(--bg-primary);
+    border-color: var(--accent-cyan);
+}
+
+.map-view {
+    display: none;
+}
+
+.map-view.active {
+    display: block;
+}
+
+#skyview-map.active {
+    display: flex;
+}
+
+.map-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    margin-bottom: 8px;
+}
+
+/* Make every chip in the map-info row the same height so the toolbar reads
+   as a single horizontal band. Children opt in via box-sizing + height. */
+.map-info > *,
+.map-info > .btn-reset,
+.map-info > .btn-theme {
+    height: 36px;
+    box-sizing: border-box;
+}
+.map-info > .btn-theme {
+    /* Emoji glyphs have large intrinsic ascent/descent — centre via flex
+       so the height rule above isn't fought by the glyph's own metrics. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+.map-info > .alt-source-toggle .alt-source-btn,
+.map-info > button {
+    height: 100%;
+}
+
+#scale-info {
+    color: var(--text-secondary);
+    font-family: monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 14px;
+    padding: 5px 12px;
+    background: var(--bg-card);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    width: 110px;
+    flex: 0 0 110px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#scale-info .si-key,
+#altitude-scale-info .si-key { flex: 0 0 auto; opacity: 0.85; }
+#scale-info .si-sep,
+#altitude-scale-info .si-sep { flex: 0 0 auto; opacity: 0.5; padding: 0 2px; margin-left: -2px; }
+#scale-info .si-val,
+#altitude-scale-info .si-val { text-align: left; white-space: nowrap; }
+#scale-info .si-val-scale,
+#altitude-scale-info .si-val-scale { flex: 0 0 48px; }
+#scale-info .si-val-grid,
+#altitude-scale-info .si-val-grid { flex: 0 0 auto; }
+
+.scale-slider-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--bg-card);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    flex: 0 0 auto;
+}
+
+.scale-slider-container label {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.scale-slider {
+    width: 140px;
+    flex: 0 0 140px;
+    height: 18px;                /* match thumb height so the runnable
+                                    track sits in the vertical centre on
+                                    every engine (Chromium/Edge/Firefox) */
+    background: transparent;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+    /* Discrete ladder ticks. --ticks is set per slider id below. */
+    --ticks: 10;
+    padding: 0;
+    margin: 0;
+}
+
+/* Paint the track + ticks on the actual runnable track element so the
+   ticks line up with the thumb on every engine (the slider element
+   itself is taller than the track and a background-image on it would
+   anchor to the wrong vertical position in Chromium/Edge). */
+.scale-slider::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 3px;
+    background-color: var(--border-color);
+    background-image:
+        linear-gradient(to right, var(--text-secondary) 1px, transparent 1px);
+    background-size: calc(100% / (var(--ticks) - 1)) 100%;
+    background-repeat: repeat-x;
+    background-position: 0 50%;
+}
+.scale-slider::-moz-range-track {
+    height: 6px;
+    border-radius: 3px;
+    background-color: var(--border-color);
+    background-image:
+        linear-gradient(to right, var(--text-secondary) 1px, transparent 1px);
+    background-size: calc(100% / (var(--ticks) - 1)) 100%;
+    background-repeat: repeat-x;
+    background-position: 0 50%;
+    border: none;
+}
+
+#scale-slider          { --ticks: 12; }
+#altitude-scale-slider { --ticks: 11; }
+
+.scale-slider:focus-visible {
+    box-shadow: 0 0 0 2px var(--accent-cyan);
+}
+
+.scale-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    transition: background 0.2s ease;
+    /* Centre the 18 px thumb on the 6 px runnable track in Chromium/Edge. */
+    margin-top: -6px;
+}
+
+.scale-slider::-webkit-slider-thumb:hover {
+    background: var(--accent-green);
+}
+
+.scale-slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    transition: background 0.2s ease;
+}
+
+.scale-slider::-moz-range-thumb:hover {
+    background: var(--accent-green);
+}
+
+#scale-value {
+    color: var(--text-primary);
+    font-family: monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 13px;
+    width: 64px;
+    flex: 0 0 64px;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.btn-reset {
+    padding: 8px 16px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.btn-reset:hover {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+    border-color: var(--accent-cyan);
+    transform: translateY(-2px);
+}
+
+.canvas-container {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 3;
+    min-height: 400px;
+    background: #ffffff;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid #333333;
+    position: relative;
+}
+
+.osm-map-wrapper {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 3;
+    min-height: 400px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.canvas-wrapper {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+}
+
+#gps-map {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+#altitude-tape {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+#map-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.map-legend {
+    display: flex;
+    gap: 20px;
+    margin-top: 15px;
+    padding: 10px;
+    background: var(--bg-card);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.map-footer {
+    padding: 15px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    border-radius: 0 0 8px 8px;
+}
+
+.position-display {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.coord-item {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    /* Reserve a stable slot regardless of value text width so the row
+       layout doesn't reflow as live values stream in. */
+    flex: 0 0 auto;
+}
+
+.coord-label {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.coord-value {
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    /* Fixed-advance digits + minimum width so a leading minus sign or
+       extra digit doesn't push neighbouring chips around. */
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    min-width: 7ch;
+    display: inline-block;
+    text-align: right;
+}
+
+/* Below ~620 px wide, the X / Y / Distance chips can't reliably sit on
+   one line without text getting pushed around as digits change. Stack
+   them as a 2-column grid (label | value) so labels left-align and
+   values right-align in their own column — robust at any value width. */
+@media (max-width: 620px) {
+    .position-display {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        column-gap: 12px;
+        row-gap: 6px;
+    }
+    .coord-item {
+        display: contents;
+    }
+    .coord-value {
+        min-width: 0;
+        text-align: left;
+    }
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.legend-marker {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid;
+}
+
+.legend-marker.start {
+    border-color: var(--accent-cyan);
+    background: var(--accent-cyan);
+}
+
+.legend-marker.current {
+    border-color: var(--accent-green);
+    background: var(--accent-green);
+}
+
+/* Data Section */
+.data-container {
+    background: var(--bg-secondary);
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px var(--shadow);
+    border: 1px solid var(--border-color);
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.data-header {
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Mobile prev/next tab arrows for the data panel — hidden on desktop. */
+.data-tab-nav {
+    display: none;
+    width: 32px;
+    height: 36px;
+    padding: 0;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 22px;
+    line-height: 1;
+    user-select: none;
+    flex: 0 0 auto;
+}
+.data-tab-nav:hover { background: var(--accent-green); color: var(--bg-primary); border-color: var(--accent-green); }
+.data-tab-nav:disabled { opacity: 0.35; cursor: not-allowed; background: var(--bg-card); color: var(--text-secondary); border-color: var(--border-color); }
+
+/* Two-column layout for native mode */
+.data-content.two-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+}
+
+.data-column {
+    min-width: 0;
+}
+
+/* RF Block cards */
+.rf-block-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+}
+
+.rf-block-card:last-child {
+    margin-bottom: 0;
+}
+
+.rf-block-header {
+    color: var(--accent-cyan);
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.rf-block-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    font-size: 13px;
+}
+
+.rf-block-label {
+    color: var(--text-secondary);
+}
+
+.rf-block-value {
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+}
+
+.rf-no-data {
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding: 8px 0;
+    font-style: italic;
+}
+
+/* Jamming state colors */
+.jamming-ok { color: var(--accent-green); }
+.jamming-warning { color: var(--accent-yellow); }
+.jamming-critical { color: var(--accent-red); }
+.jamming-unknown { color: var(--text-secondary); }
+
+/* ─── Sky View ─────────────────────────────────────────── */
+
+#skyview-map {
+    display: flex;
+    flex-direction: column;
+}
+
+.skyview-layout {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    grid-template-rows: 1fr;
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.skyview-plot-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.skyview-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 6px 8px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: var(--bg-card);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.legend-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.legend-dot-filled {
+    background: var(--text-secondary) !important;
+}
+
+.legend-dot-outline {
+    background: transparent !important;
+    border: 2px solid var(--text-secondary);
+    width: 6px;
+    height: 6px;
+}
+
+.legend-sep {
+    color: var(--border-color);
+    font-weight: 300;
+    margin: 0 2px;
+}
+
+.skyview-constellation-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 6px 8px;
+    margin-top: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-card);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+#sky-canvas {
+    width: 100%;
+    aspect-ratio: 1;
+    display: block;
+}
+
+.skyview-table-wrap {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.skyview-summary {
+    padding: 8px 4px;
+    color: var(--accent-cyan);
+    font-weight: 600;
+    font-size: 14px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.skyview-table-scroll {
+    overflow-y: auto;
+    flex: 1;
+}
+
+.sat-table.sat-table {
+    font-size: 12px;
+    /* The lat/lon data tables use table-layout:fixed to keep columns
+       stable as values stream in; the satellite table doesn't want that
+       — it has 6 columns of varying width (incl. the C/N0 bar) and
+       fixed layout squeezes the bar column until the bar + number wraps
+       onto two lines, making each row twice as tall.
+       NB: doubled selector boosts specificity above the generic
+       `.data-table` rule that lives later in this file. */
+    table-layout: auto;
+    border-collapse: collapse;
+}
+
+/* Per-cell horizontal padding gives the inter-column gap. We keep
+   border-collapse:collapse so the row-highlight (tr.sat-used) stays
+   one continuous strip instead of being split into per-cell chunks. */
+.sat-table.sat-table th,
+.sat-table.sat-table td {
+    padding-left: 6px;
+    padding-right: 6px;
+}
+.sat-table.sat-table th:first-child,
+.sat-table.sat-table td:first-child { padding-left: 4px; }
+.sat-table.sat-table th:last-child,
+.sat-table.sat-table td:last-child  { padding-right: 4px; text-align: center; }
+
+.sat-table tbody td {
+    padding: 4px 0;
+    white-space: nowrap;
+}
+
+.sat-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--bg-secondary);
+    color: var(--accent-cyan);
+    font-weight: 600;
+    padding: 6px 0;
+    text-align: left;
+    border-bottom: 2px solid var(--border-color);
+    z-index: 1;
+}
+
+.sat-table tbody tr.sat-used {
+    background: rgba(0, 255, 136, 0.07);
+}
+
+.sat-gnss-gps     { color: #4fc3f7; }
+.sat-gnss-galileo { color: #81c784; }
+.sat-gnss-glonass { color: #e57373; }
+.sat-gnss-beidou  { color: #ffb74d; }
+.sat-gnss-sbas    { color: #ce93d8; }
+.sat-gnss-qzss    { color: #fff176; }
+.sat-gnss-other   { color: var(--text-secondary); }
+
+.sat-cno-bar {
+    display: inline-block;
+    height: 10px;
+    border-radius: 2px;
+    vertical-align: middle;
+    margin-right: 8px;
+}
+
+/* Layout for the C/N0 cell:
+   [ 40px bar slot ][ number, right-aligned in its own slot ]
+   The slot widths are constant so the number's position never
+   shifts as the bar grows, and the cell's overall width also
+   stays constant — the El° column next door stops getting nudged. */
+.sat-cno-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.sat-cno-track {
+    display: inline-block;
+    width: 40px;
+    height: 10px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+    flex: 0 0 40px;
+}
+.sat-cno-cell .sat-cno-bar {
+    display: block;
+    height: 100%;
+    margin-right: 0;
+    border-radius: 2px;
+}
+.sat-cno-num {
+    display: inline-block;
+    min-width: 2ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ─── RF Analyzer ──────────────────────────────────────── */
+
+#rfanalyzer-map {
+    display: flex;
+    flex-direction: column;
+}
+
+.rfanalyzer-layout {
+    display: grid;
+    grid-template-columns: 3fr 1fr;
+    grid-template-rows: 1fr;
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.rfanalyzer-chart-wrap {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#spectrum-charts-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.spectrum-single-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 4px;
+}
+
+.spectrum-single-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.rfanalyzer-info-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.rfanalyzer-status-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.rfanalyzer-status-card .rf-block-header {
+    color: var(--accent-cyan);
+    font-weight: 700;
+    font-size: 13px;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.rfanalyzer-status-card .rf-block-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    font-size: 12px;
+}
+
+.rfanalyzer-status-card .rf-block-label {
+    color: var(--text-secondary);
+}
+
+.rfanalyzer-status-card .rf-block-value {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+@media (max-width: 900px) {
+    .rfanalyzer-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 900px) {
+    .skyview-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.data-header h2 {
+    color: var(--accent-green);
+    font-size: 1.2rem;
+}
+
+/* ─── Data Panel Tabs ──────────────────────────────────── */
+.data-tabs {
+    display: flex;
+    gap: 8px;
+}
+
+.data-tab {
+    padding: 8px 16px;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.data-tab:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+.data-tab.active {
+    background: linear-gradient(135deg, var(--accent-green), var(--accent-cyan));
+    color: var(--bg-primary);
+    border-color: var(--accent-green);
+}
+
+.data-pane {
+    display: none;
+}
+
+.data-pane.active {
+    display: block;
+}
+
+/* ─── Config Form ──────────────────────────────────────── */
+.config-form {
+    position: relative;
+}
+
+.cfg-section {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: var(--bg-card);
+}
+
+.cfg-section legend {
+    color: var(--accent-cyan);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 0 6px;
+}
+
+/* "experimental" pill shown next to a legend label. Visually muted so it
+   reads as a caveat, not a primary action. */
+.cfg-experimental {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    background: rgba(255, 170, 0, 0.18);
+    color: #ffb84d;
+    border: 1px solid rgba(255, 170, 0, 0.6);
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    vertical-align: middle;
+    cursor: help;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+/* Collapsible cfg-section — the legend acts as the toggle */
+.cfg-section.cfg-collapsible > legend {
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    transition: background 0.15s ease;
+}
+
+.cfg-section.cfg-collapsible > legend:hover {
+    background: color-mix(in srgb, var(--accent-cyan) 15%, transparent);
+}
+
+.cfg-section.cfg-collapsible > legend::before {
+    content: '▾';
+    display: inline-block;
+    font-size: 12px;
+    width: 12px;
+    transition: transform 0.15s ease;
+    color: var(--text-secondary);
+}
+
+/* Collapsed state: fieldset becomes a single full-width header row.
+   We kill the native fieldset chrome and let the legend fill the row. */
+.cfg-section.cfg-collapsible.cfg-section-collapsed {
+    padding: 0;
+    border: none;
+    background: transparent;
+    margin-bottom: 6px;
+    display: block;
+}
+
+.cfg-section.cfg-collapsible.cfg-section-collapsed > legend {
+    display: flex;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 14px;
+    font-size: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-card);
+    float: none;
+}
+
+.cfg-section.cfg-collapsible.cfg-section-collapsed > legend:hover {
+    border-color: var(--accent-cyan);
+}
+
+.cfg-section.cfg-collapsible.cfg-section-collapsed > legend::before {
+    transform: rotate(-90deg);
+}
+
+.cfg-section.cfg-collapsible.cfg-section-collapsed > *:not(legend) {
+    display: none !important;
+}
+
+/* ─── Collapsible details/summary ──────────────────────── */
+.cfg-collapse {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin: 8px 0;
+    background: color-mix(in srgb, var(--bg-card) 60%, transparent);
+}
+
+.cfg-collapse summary {
+    cursor: pointer;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+
+.cfg-collapse summary:hover {
+    background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
+}
+
+.cfg-collapse summary::before {
+    content: '\25B6';
+    font-size: 9px;
+    transition: transform 0.2s;
+    display: inline-block;
+    color: var(--accent-cyan);
+}
+
+.cfg-collapse[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.cfg-collapse .cfg-collapse-body {
+    padding: 4px 10px 10px;
+    border-top: 1px solid var(--border-color);
+}
+
+.cfg-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.cfg-row:last-child {
+    margin-bottom: 0;
+}
+
+.cfg-row label {
+    color: var(--text-secondary);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.cfg-hint {
+    color: var(--text-secondary);
+    font-size: 11px;
+    opacity: 0.7;
+    margin-top: 4px;
+}
+
+.cfg-input {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: monospace;
+    transition: border-color 0.2s;
+}
+
+.cfg-input:focus {
+    border-color: var(--accent-cyan);
+    outline: none;
+}
+
+.cfg-input-sm {
+    width: 100px;
+}
+
+.cfg-checkbox {
+    accent-color: var(--accent-cyan);
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+/* Geofence row */
+.cfg-geo-fence {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+    padding: 6px 8px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.cfg-geo-fence input {
+    width: 100%;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+    font-family: monospace;
+}
+
+.cfg-geo-fence input:focus {
+    border-color: var(--accent-cyan);
+    outline: none;
+}
+
+.cfg-geo-fence .cfg-fence-remove {
+    background: none;
+    border: none;
+    color: var(--accent-red, #e57373);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.cfg-geo-fence .cfg-fence-remove:hover {
+    background: rgba(229, 115, 115, 0.15);
+}
+
+.cfg-geo-labels {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 6px;
+    padding: 0 8px 4px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+/* Action buttons */
+.cfg-actions {
+    display: flex;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+    margin-top: 4px;
+}
+
+.cfg-btn {
+    padding: 8px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+}
+
+.cfg-btn:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+.cfg-btn-sm {
+    padding: 4px 12px;
+    font-size: 12px;
+    margin-top: 6px;
+}
+
+.cfg-btn-primary {
+    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-green));
+    color: var(--bg-primary);
+    border-color: var(--accent-cyan);
+    flex: 1;
+}
+
+.cfg-btn-primary:hover {
+    filter: brightness(1.1);
+}
+
+.cfg-btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: none;
+}
+
+.cfg-btn-secondary {
+    flex: 1;
+}
+
+/* Progress overlay */
+.config-progress {
+    position: absolute;
+    inset: 0;
+    background: rgba(13, 17, 23, 0.92);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+}
+
+.config-progress-inner {
+    width: 80%;
+    max-width: 320px;
+    text-align: center;
+}
+
+.config-progress-bar-wrap {
+    width: 100%;
+    height: 6px;
+    background: var(--border-color);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.config-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green));
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.config-progress-msg {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin: 0;
+}
+
+/* Status banner */
+.config-status {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 12px;
+    animation: fadeInStatus 0.3s ease;
+}
+
+.config-status.success {
+    background: rgba(0, 255, 136, 0.1);
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    color: var(--accent-green);
+}
+
+.config-status.error {
+    background: rgba(229, 115, 115, 0.1);
+    border: 1px solid rgba(229, 115, 115, 0.3);
+    color: #e57373;
+}
+
+@keyframes fadeInStatus {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── NTRIP Status Badge ──────────────────────────────── */
+.ntrip-status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    transition: all 0.3s ease;
+}
+
+.ntrip-status-badge.connected {
+    color: var(--accent-green);
+    border-color: var(--accent-green);
+    background: rgba(0, 255, 136, 0.1);
+}
+
+.ntrip-status-badge.disconnected {
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+    background: var(--bg-primary);
+}
+
+.ntrip-status-badge.connecting {
+    color: var(--accent-yellow);
+    border-color: var(--accent-yellow);
+    background: rgba(255, 170, 0, 0.1);
+    animation: pulse 1.5s infinite;
+}
+
+.ntrip-status-badge.reconnecting {
+    color: var(--accent-yellow);
+    border-color: var(--accent-yellow);
+    background: rgba(255, 170, 0, 0.1);
+    animation: pulse 1.5s infinite;
+}
+
+.ntrip-status-badge.error {
+    color: var(--accent-red);
+    border-color: var(--accent-red);
+    background: rgba(255, 68, 68, 0.1);
+}
+
+.ntrip-log-panel {
+    max-height: 150px;
+    overflow-y: auto;
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 0.4em;
+    font-family: monospace;
+    font-size: 0.8em;
+    line-height: 1.4;
+    flex: 1;
+}
+
+.ntrip-log-panel .log-error   { color: #ff4444; }
+.ntrip-log-panel .log-warning { color: #ffaa00; }
+.ntrip-log-panel .log-info    { color: #88cc88; }
+.ntrip-log-panel .log-debug   { color: #888; }
+
+.ntrip-collapsible {
+    margin: -0.2em 0 0.4em 0;
+    padding: 0.4em 0.6em;
+    border-left: 2px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 0 4px 4px 0;
+}
+
+.ntrip-stats-grid {
+    margin-top: 0.5em;
+    padding: 0.4em 0;
+    font-size: 0.9em;
+}
+
+.data-content {
+    width: 100%;
+}
+
+.data-section {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.data-section > h2 {
+    background: var(--bg-secondary);
+    padding: 15px 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px var(--shadow);
+    border: 1px solid var(--border-color);
+    color: var(--accent-green);
+}
+
+.data-card {
+    background: var(--bg-secondary);
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px var(--shadow);
+    border: 1px solid var(--border-color);
+    transition: transform 0.3s ease;
+}
+
+.data-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-cyan);
+}
+
+.data-card h3 {
+    color: var(--accent-cyan);
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 10px;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    /* Lock the column widths so the value column doesn't reflow every time
+       a digit/sign/unit changes — prevents the whole panel from twitching
+       sideways as live values update. */
+    table-layout: fixed;
+}
+
+.data-table tr {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.data-table tr:last-child {
+    border-bottom: none;
+}
+
+.data-table td {
+    padding: 10px 5px;
+}
+
+.data-table tr.section-header {
+    background: var(--border-color);
+}
+
+.data-table tr.section-header td {
+    color: var(--accent-cyan);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 12px 5px;
+}
+
+.data-table td.data-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+    width: 50%;
+}
+
+.data-table td.data-value {
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    text-align: right;
+    /* Keep every digit the same advance width so values like
+       "-12.345678°" don't make the column wider than "0.000000°". */
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Opt-in modifier for cells whose content can be longer than the
+   column (e.g. "Fence States: #1: Inside, #2: Outside"). Lets the
+   text wrap onto multiple lines instead of being clipped with an
+   ellipsis. */
+.data-table td.data-value.data-value-wrap {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    word-break: break-word;
+}
+
+.fix-status.good {
+    color: var(--accent-green);
+}
+
+.fix-status.bad {
+    color: var(--accent-red);
+}
+
+/* Footer */
+footer {
+    background: var(--bg-secondary);
+    padding: 15px 30px;
+    border-radius: 12px;
+    margin-top: 20px;
+    text-align: center;
+    box-shadow: 0 4px 20px var(--shadow);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+#last-update {
+    color: var(--accent-green);
+    font-weight: 600;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .main-content {
+        grid-template-columns: 1fr;
+    }
+    
+    .canvas-container {
+        aspect-ratio: 3 / 2;
+    }
+}
+
+@media (max-width: 768px) {
+    header {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    header h1 {
+        font-size: 1.5rem;
+    }
+    
+    .map-header {
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: nowrap;
+    }
+
+    /* Show the prev/next arrows on phones and let the tab strip scroll
+       horizontally between them so it never overflows the card. */
+    .map-tab-nav {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .map-tabs {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow-x: auto;
+        scroll-behavior: smooth;
+        scrollbar-width: none;          /* Firefox */
+        -ms-overflow-style: none;       /* IE/old Edge */
+        gap: 8px;
+    }
+    .map-tabs::-webkit-scrollbar { display: none; }
+    .map-tab {
+        padding: 8px 14px;
+        font-size: 13px;
+        white-space: nowrap;
+        flex: 0 0 auto;
+    }
+
+    /* Same treatment for the data panel tabs (Navigation Data /
+       Configuration / NTRIP). */
+    .data-tab-nav {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .data-tabs {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow-x: auto;
+        scroll-behavior: smooth;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        gap: 8px;
+    }
+    .data-tabs::-webkit-scrollbar { display: none; }
+    .data-tab {
+        padding: 8px 12px;
+        font-size: 13px;
+        white-space: nowrap;
+        flex: 0 0 auto;
+    }
+    .data-container {
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: hidden;
+        box-sizing: border-box;
+    }
+    /* Collapse the two-column native data layout to a single column on
+       phones — the side-by-side tables become unreadable below ~600 px. */
+    .data-content.two-columns {
+        grid-template-columns: 1fr;
+    }
+
+    /* Stack every Configuration / NTRIP row vertically: label on top,
+       control filling the row width below. This gives a single, predictable
+       left edge on mobile (instead of inputs floating at random offsets
+       depending on label length). */
+    .cfg-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
+    }
+    .cfg-row > label {
+        white-space: normal;        /* allow long labels to wrap */
+    }
+    .cfg-row > .cfg-input,
+    .cfg-row > select.cfg-input,
+    .cfg-row > input[type="text"],
+    .cfg-row > input[type="number"],
+    .cfg-row > input[type="password"] {
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .cfg-input-sm { width: 100%; }
+    /* Inline rows inside NTRIP that mix an input with a small button
+       (mountpoint fetch, local-source dropdown, etc.) — written with inline
+       flex styles in the template. Make them span the full row too. */
+    .cfg-row > div[style*="flex"] {
+        width: 100%;
+    }
+    /* Action button row: full-width buttons stack neatly on narrow screens. */
+    .cfg-actions {
+        flex-wrap: wrap;
+    }
+    .cfg-actions > .cfg-btn { flex: 1 1 140px; }
+    /* Stats grid: keep the label/value pair on one line per row. */
+    .ntrip-stats-grid .cfg-row {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+    }
+    .ntrip-stats-grid .cfg-row > label { white-space: nowrap; }
+    
+    .canvas-container {
+        aspect-ratio: 1 / 1;
+    }
+
+    /* Toolbar above the canvas: on phones, give the slider its own full-width
+       row so it can never overflow the card. The Grid chip + Reset/theme
+       buttons sit on a separate row above. */
+    .map-info {
+        gap: 8px;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+    .map-info > #scale-info,
+    .map-info > #altitude-scale-info {
+        width: 92px;
+        flex: 0 0 92px;
+        padding-left: 8px;
+        padding-right: 8px;
+        font-size: 13px;
+    }
+    .map-info > .scale-slider-container {
+        /* Force the slider chip onto its own row at full width so internal
+           contents (− button, track, + button, ±value) always fit. */
+        flex: 1 0 100%;
+        order: 10;             /* push below the small chips */
+        min-width: 0;
+        width: 100%;
+        padding-left: 8px;
+        padding-right: 8px;
+        gap: 6px;
+        box-sizing: border-box;
+    }
+    .map-info > .scale-slider-container .scale-slider {
+        width: auto;
+        flex: 1 1 auto;
+        min-width: 0;          /* let the track shrink with the row */
+    }
+    .map-info > .scale-slider-container label {
+        display: none;         /* "Range:" label is redundant on mobile */
+    }
+    #scale-value,
+    #altitude-scale-value {
+        width: 56px;
+        flex: 0 0 56px;
+        font-size: 12px;
+    }
+    .btn-reset {
+        padding: 6px 10px;
+        font-size: 13px;
+    }
+
+    /* Belt-and-braces: the map-view and its inner wrapper must clip rather
+       than scroll horizontally if anything inside them tries to overflow. */
+    .map-view,
+    .map-container {
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: hidden;
+        box-sizing: border-box;
+    }
+    
+    .map-legend {
+        flex-direction: column;
+        gap: 10px;
+    }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-cyan);
+}
+
+/* Altitude tape view */
+#altitude-scale-info {
+    color: var(--text-secondary);
+    font-family: monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 14px;
+    padding: 5px 12px;
+    background: var(--bg-card);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    width: 110px;
+    flex: 0 0 110px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
+}
+
+#altitude-scale-value {
+    color: var(--text-primary);
+    font-family: monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 13px;
+    /* Fixed width — see #scale-value. Fits "±100m" / "±50cm". */
+    width: 64px;
+    flex: 0 0 64px;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.alt-source-toggle {
+    display: inline-flex;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.alt-source-btn {
+    padding: 6px 14px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    border-right: 1px solid var(--border-color);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: monospace;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.alt-source-btn:last-child {
+    border-right: none;
+}
+
+.alt-source-btn:hover {
+    background: rgba(0, 180, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.alt-source-btn.active {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+}
+
+/* Theme toggle button (per-chart light/dark) */
+.btn-theme {
+    /* Same padding/font as .btn-reset so it intrinsically lands at the
+       same height as its toolbar siblings (the parent .map-info > * rule
+       is not always honoured on <button> by every browser). */
+    padding: 8px 12px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.btn-theme:hover {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+    border-color: var(--accent-cyan);
+    transform: translateY(-1px);
+}
+
+.btn-theme-floating {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    z-index: 10;
+}
+
+/* Ensure parents of floating buttons are positioned */
+#skyview-map,
+#rfanalyzer-map {
+    position: relative;
+}
+
+/* Zoom +/- buttons next to range sliders */
+.btn-zoom {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+    user-select: none;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-zoom:hover {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+    border-color: var(--accent-cyan);
+}
+
+.btn-zoom:active {
+    transform: translateY(1px);
+}
+
+/* ─── Fullscreen toggle (relative + altitude) ─────────────────────── */
+.btn-fullscreen {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    box-sizing: border-box;
+    /* Flex centring keeps the glyph centred regardless of its own
+       ascent/descent, same trick as .btn-theme. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+/* Higher-specificity override to win over `.map-info > button { height:100% }`
+   ambiguity and ensure the button matches the 36 px chip height exactly. */
+.map-info > .btn-fullscreen {
+    height: 36px;
+    padding: 0;
+}
+.btn-fullscreen:hover {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+    border-color: var(--accent-cyan);
+}
+
+/* CSS-pinned fullscreen fallback for browsers (or contexts) where the
+   native Fullscreen API isn't available — e.g. iOS Safari. The card
+   covers the viewport at z-index 9999; toolbar and footer stay visible
+   overlaid on the canvas because they're already part of the card. */
+.map-view.is-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--bg-primary);
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+.map-view.is-fullscreen .canvas-wrapper {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.map-view.is-fullscreen .map-footer {
+    flex: 0 0 auto;
+}
+/* When the browser engages real Fullscreen API on the card, give the
+   same generous padding so toolbar/footer aren't glued to the bezel. */
+.map-view:fullscreen,
+.map-view:-webkit-full-screen {
+    background: var(--bg-primary);
+    padding: 12px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+}
+.map-view:fullscreen .canvas-wrapper,
+.map-view:-webkit-full-screen .canvas-wrapper {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+/* Show that the canvas is scroll-zoomable */
+#relative-map .canvas-wrapper,
+#altitude-map .canvas-wrapper {
+    cursor: ns-resize;
+    /* Prevent the browser from interpreting two-finger gestures as
+       page pinch-zoom or pan — we handle them ourselves to drive the
+       chart's scale ladder (see attachPinchZoom in map.js). */
+    touch-action: none;
+}
+
+/* ================================
+   Navigation Filters (Elevation Mask)
+   ================================ */
+.cfg-slider {
+    flex: 1 1 auto;
+    min-width: 120px;
+    accent-color: var(--accent-cyan);
+    padding: 0;
+}
+
+.cfg-num-narrow {
+    width: 70px;
+    text-align: right;
+}
+
+.cfg-unit {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-family: monospace;
+    min-width: 24px;
+}
+
+.cfg-help {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.4;
+    margin: 4px 2px 10px 2px;
+    opacity: 0.8;
+}
+
+.cfg-btn-inline {
+    padding: 4px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+    /* Override .cfg-btn-secondary { flex: 1 } so the ↺ Default button
+       sits at its natural width next to a slider + number input instead
+       of stretching across the remainder of the row. */
+    flex: 0 0 auto;
+}
+
+/* Extra vertical breathing room for rows that replaced a verbose help
+   paragraph with a label-hover tooltip. */
+.cfg-row-spaced {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border-color);
+    /* Table-like grid so label / slider / number / unit / default
+       button line up across rows regardless of which control sits in
+       the "slider" slot. */
+    display: grid;
+    grid-template-columns:
+        180px          /* label column */
+        1fr            /* slider / select */
+        70px           /* number input */
+        32px           /* unit */
+        96px;          /* ↺ Default button */
+    column-gap: 10px;
+    align-items: center;
+}
+
+/* Rows whose control is a <select> (e.g. Fix Mode) don't have a
+   number/unit input — let the select span those tracks so the Default
+   button still lines up with the others. */
+.cfg-row-spaced > select.cfg-input {
+    grid-column: 2 / span 3;
+    justify-self: start;
+    min-width: 160px;
+}
+
+/* Slider fills its grid cell. */
+.cfg-row-spaced > .cfg-slider {
+    width: 100%;
+    min-width: 0;
+}
+.cfg-row-spaced > .cfg-num-narrow {
+    width: 100%;
+}
+.cfg-row-spaced > .cfg-unit {
+    min-width: 0;
+    text-align: left;
+}
+.cfg-row-spaced > .cfg-btn-inline {
+    width: 100%;
+}
+
+/* Label with a hover tooltip (uses the native `title` attribute). The
+   dotted underline + help cursor hint that more info is available. */
+.cfg-label-tip {
+    cursor: help;
+    border-bottom: 1px dotted var(--border-color);
+    padding-bottom: 1px;
+}
+.cfg-tip-icon {
+    color: var(--accent-cyan);
+    font-size: 11px;
+    margin-left: 4px;
+    opacity: 0.75;
+}
+.cfg-label-tip:hover .cfg-tip-icon {
+    opacity: 1;
+}
+
+.cfg-navfilt-preview-wrap {
+    margin-top: 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    overflow: hidden;
+    aspect-ratio: 2 / 1;
+    width: 100%;
+}
+
+#cfg-navfilt-preview {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+
+/* ── System tab (UBX-MON-SYS + UBX-MON-VER) ────────────────────────────── */
+
+#system-map {
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.system-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    /* `stretch` makes cards in the same grid row share the height of the
+     * tallest sibling, which keeps the dashboard tidy even when one card
+     * (e.g. Receiver Information with many extensions) is much taller. */
+    align-items: stretch;
+}
+
+.system-card {
+    /* So the inner content can flex / push the bottom edge to fill the
+     * stretched height. */
+    display: flex;
+    flex-direction: column;
+}
+
+@media (max-width: 1100px) {
+    .system-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.system-card {
+    background: var(--bg-secondary, #1a1d24);
+    border: 1px solid var(--border-color, #2a2f3a);
+    border-radius: 8px;
+    padding: 16px 18px;
+}
+
+.system-card h3 {
+    margin: 0 0 14px 0;
+    font-size: 1.05rem;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+
+.system-card h4 {
+    margin: 12px 0 6px 0;
+    font-size: 0.9rem;
+    opacity: 0.75;
+}
+
+.system-card-sub {
+    font-size: 0.8rem;
+    font-weight: 400;
+    opacity: 0.7;
+    margin-left: auto;
+}
+
+.system-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.system-stat {
+    background: var(--bg-primary, #0f1115);
+    border: 1px solid var(--border-color, #2a2f3a);
+    border-radius: 6px;
+    padding: 10px 12px;
+    transition: border-color .2s ease;
+}
+
+.system-stat-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.7;
+    margin-bottom: 4px;
+}
+
+.system-stat-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.system-stat-value .sys-unit {
+    font-size: 0.85rem;
+    font-weight: 400;
+    opacity: 0.6;
+    margin-left: 2px;
+}
+
+.system-stat-bar {
+    margin-top: 8px;
+    height: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.system-stat-bar-fill {
+    height: 100%;
+    width: 0;
+    background: var(--accent-color, #4a9eff);
+    transition: width .3s ease, background .3s ease;
+}
+
+.system-stat-max {
+    margin-top: 6px;
+    font-size: 0.72rem;
+    opacity: 0.6;
+}
+
+.system-stat.load-ok       .system-stat-bar-fill { background: #2ecc71; }
+.system-stat.load-warn     .system-stat-bar-fill { background: #f1c40f; }
+.system-stat.load-critical .system-stat-bar-fill { background: #e74c3c; }
+.system-stat.load-ok       { border-color: rgba(46,204,113,0.35); }
+.system-stat.load-warn     { border-color: rgba(241,196,15,0.45); }
+.system-stat.load-critical { border-color: rgba(231,76,60,0.55); }
+
+.system-stat.load-critical .system-stat-value,
+.system-stat.load-critical .sys-val { color: #e74c3c; }
+
+.system-counters,
+.system-info {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.system-counters tr td,
+.system-info tr td {
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.system-counters tr td:first-child,
+.system-info tr td:first-child {
+    opacity: 0.7;
+}
+
+.system-counters tr td:last-child,
+.system-info tr td:last-child {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+#sys-warn-count.non-zero { color: #f1c40f; font-weight: 600; }
+#sys-error-count.critical { color: #e74c3c; font-weight: 600; }
+
+.badge-good,
+.badge-bad {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    vertical-align: middle;
+}
+.badge-good {
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+    border: 1px solid rgba(46, 204, 113, 0.4);
+}
+.badge-bad {
+    background: rgba(231, 76, 60, 0.15);
+    color: #e74c3c;
+    border: 1px solid rgba(231, 76, 60, 0.4);
+}
+
+.system-extensions {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.system-extensions li {
+    padding: 4px 8px;
+    border-bottom: 1px dashed rgba(255,255,255,0.06);
+    word-break: break-all;
+}
+
+.system-extensions li.sys-no-data {
+    opacity: 0.5;
+    font-style: italic;
+    font-family: inherit;
+    border-bottom: none;
+}

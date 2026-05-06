@@ -1,0 +1,161 @@
+# Python Examples for GNSS HAT
+
+This directory contains Python examples demonstrating how to use the GNSS HAT library.
+
+## Prerequisites
+
+Make sure the Python module is installed:
+```bash
+cd ../../
+mkdir -p build && cd build
+cmake .. -DBUILD_PYTHON=ON
+make -j$(nproc)
+sudo make install && sudo ldconfig
+```
+
+## Examples
+
+### 1. print_navigation.py
+Basic example showing how to:
+- Configure the GNSS HAT with hardcoded settings
+- Read navigation data continuously
+
+```bash
+python print_navigation.py
+```
+
+### 2. config_from_json.py
+Advanced example demonstrating:
+- Loading configuration from JSON files
+- Supporting geofencing and timepulse configurations
+
+```bash
+python config_from_json.py res/config.json
+python config_from_json.py res/config_no_geofencing.json
+python config_from_json.py res/config_no_timepulse.json
+```
+
+### 3. geofencing.py
+Geofencing example demonstrating:
+- Setting up multiple geofences around specific locations
+- Monitoring geofence status in real-time
+- Understanding geofencing states and confidence levels
+
+```bash
+python geofencing.py
+```
+
+### 4. hot_start.py
+Performance comparison example showing:
+- Cold start vs hot start acquisition times
+- Hard reset (cold start) that clears all satellite data
+- Soft reset (hot start) that preserves satellite data
+- Performance measurement and comparison
+
+```bash
+python hot_start.py
+```
+
+### 5. jamming_detector.py
+RF interference and jamming detection example demonstrating:
+- Real-time monitoring of RF blocks for interference
+- Analysis of CW interference suppression levels
+- Jamming state detection and classification
+- Antenna status monitoring
+- Detailed RF signal quality metrics
+
+```bash
+python jamming_detector.py
+```
+
+### 6. timepulse_interrupt.py
+Timepulse interrupt example demonstrating:
+- Configuring timepulse at a custom frequency
+- Blocking wait for timepulse events
+- Reading UTC time synchronized with timepulse
+
+```bash
+python timepulse_interrupt.py
+```
+
+### 7. rtk_base.py
+RTK Base Station example demonstrating:
+- Reading RTCM3 correction frames from a base station
+- Parsing RTCM3 message IDs
+- Monitoring fix type for RTK readiness
+
+```bash
+python rtk_base.py
+```
+
+### 8. rtk_rover.py
+RTK Rover example with NTRIP client demonstrating:
+- Connecting to an NTRIP caster to receive RTCM3 corrections over the internet
+- Applying RTCM3 corrections to the GNSS receiver for centimeter-level accuracy
+- Real-time monitoring of RTK fix quality
+- Batched correction application with per-frame RTCM3 message identification
+- Uses native `gnsshat.NtripClient` for NTRIP communication
+
+Edit the configuration constants at the top of the script to set your NTRIP caster credentials (caster_ip, port, mountpoint, username, password).
+
+```bash
+python rtk_rover.py
+```
+
+### 9. print_satellites.py
+Satellite visibility and signal quality example demonstrating:
+- Per-satellite GNSS data from UBX-NAV-SAT
+- Constellation identification (GPS, Galileo, GLONASS, BeiDou, SBAS, QZSS)
+- Signal quality, C/N0, elevation, azimuth per satellite
+- Used-in-fix and health status
+- Ephemeris, almanac, and DGPS availability counters
+
+```bash
+python print_satellites.py
+```
+
+### 10. time_mark.py
+TimeMark example demonstrating:
+- Configuring the GNSS HAT with TimeMark enabled
+- Enabling the TimeMark trigger on the EXTINT pin
+- Toggling the EXTINT pin periodically to generate time mark events
+- Reading time mark data (TIM-TM2) with precise timestamps
+- Multi-threaded operation: trigger thread + reader thread
+
+**Requires:** L1/L5 GNSS TIME HAT (NEO-F10T)
+
+```bash
+python time_mark.py
+```
+
+### 11. time_base.py
+Time Base example demonstrating:
+- Configuring the TIME HAT in time base mode (Survey-In or Fixed Position)
+- Improved time accuracy by entering TimeOnlyFix
+- Three configuration variants: Survey-In, Fixed Position (ECEF), Fixed Position (LLA)
+
+**Requires:** L1/L5 GNSS TIME HAT (NEO-F10T)
+
+```bash
+python time_base.py
+```
+
+### 12. ntrip_server.py
+NTRIP server example demonstrating:
+- Pushing RTCM3 correction data from a local GNSS base station to a remote NTRIP caster
+- Useful when the base station is behind NAT / a firewall
+
+Edit the command-line arguments to set your NTRIP caster credentials.
+
+```bash
+python ntrip_server.py --caster-host <HOST> --caster-port 2101 --mountpoint <MOUNT> --password <PWD>
+```
+
+### 13. benchmark_25hz.py
+25 Hz measurement rate benchmark:
+- Measures frames/s received via `wait_and_get_fresh_navigation()` at 25 Hz
+- Outputs one ISO 8601 UTC time per line for post-processing
+
+```bash
+sudo python3 benchmark_25hz.py > /tmp/bench_py.csv
+```

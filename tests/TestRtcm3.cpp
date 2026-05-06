@@ -8,11 +8,6 @@
 
 using namespace JimmyPaputto;
 
-namespace JimmyPaputto
-{
-uint32_t crc24q(const uint8_t* data, size_t length);
-}
-
 namespace
 {
 
@@ -33,7 +28,7 @@ std::vector<uint8_t> buildValidRtcm3Frame(uint16_t msgId)
     frame.push_back(0x00);
 
     size_t crcDataLen = 3 + dataLength;
-    uint32_t crc = crc24q(frame.data(), crcDataLen);
+    uint32_t crc = Rtcm3Parser::crc24q(frame.data(), crcDataLen);
     frame.push_back((crc >> 16) & 0xFF);
     frame.push_back((crc >> 8) & 0xFF);
     frame.push_back(crc & 0xFF);
@@ -47,7 +42,7 @@ std::vector<uint8_t> buildValidRtcm3Frame(uint16_t msgId)
 TEST(Crc24q, KnownValues)
 {
     uint8_t data[] = { 0xD3, 0x00, 0x00 };
-    uint32_t crc = crc24q(data, 3);
+    uint32_t crc = Rtcm3Parser::crc24q(data, 3);
     EXPECT_NE(crc, 0u);
     EXPECT_EQ(crc & 0xFF000000, 0u);
 }
@@ -55,8 +50,8 @@ TEST(Crc24q, KnownValues)
 TEST(Crc24q, Deterministic)
 {
     uint8_t data[] = { 0xD3, 0x00, 0x04, 0x01, 0x02, 0x03, 0x04 };
-    uint32_t crc1 = crc24q(data, sizeof(data));
-    uint32_t crc2 = crc24q(data, sizeof(data));
+    uint32_t crc1 = Rtcm3Parser::crc24q(data, sizeof(data));
+    uint32_t crc2 = Rtcm3Parser::crc24q(data, sizeof(data));
     EXPECT_EQ(crc1, crc2);
 }
 
@@ -64,7 +59,7 @@ TEST(Crc24q, DifferentInputsDifferentCrc)
 {
     uint8_t data1[] = { 0xD3, 0x00, 0x01, 0xAA };
     uint8_t data2[] = { 0xD3, 0x00, 0x01, 0xBB };
-    EXPECT_NE(crc24q(data1, 4), crc24q(data2, 4));
+    EXPECT_NE(Rtcm3Parser::crc24q(data1, 4), Rtcm3Parser::crc24q(data2, 4));
 }
 
 

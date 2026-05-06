@@ -1,6 +1,6 @@
 # GNSS HAT - Python Bindings
 
-CPython extension module for the Jimmy Paputto GNSS HAT library. Wraps the C API (`libGnssHat.so`) as a native Python module.
+CPython extension module for the Jimmy Paputto GNSS HAT library. Wraps the C API (`libgnsshat.so`) as a native Python module.
 
 ```python
 from jimmypaputto import gnsshat

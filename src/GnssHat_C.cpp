@@ -7,6 +7,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
 #include <new>
 #include <optional>
 
@@ -97,6 +98,19 @@ static_assert(static_cast<int>(ESvQuality::CodeAndCarrierLocked2) == JP_GNSS_SV_
 static_assert(static_cast<int>(ESvQuality::CodeAndCarrierLocked3) == JP_GNSS_SV_QUALITY_CODE_AND_CARRIER_LOCKED_3);
 
 static_assert(SatelliteInfo::maxNumberOfSatellites == UBLOX_MAX_SATELLITES);
+
+static_assert(static_cast<int>(EBootType::Unknown)        == JP_GNSS_BOOT_TYPE_UNKNOWN);
+static_assert(static_cast<int>(EBootType::ColdStart)      == JP_GNSS_BOOT_TYPE_COLD_START);
+static_assert(static_cast<int>(EBootType::Watchdog)       == JP_GNSS_BOOT_TYPE_WATCHDOG);
+static_assert(static_cast<int>(EBootType::HardwareReset)  == JP_GNSS_BOOT_TYPE_HARDWARE_RESET);
+static_assert(static_cast<int>(EBootType::HardwareBackup) == JP_GNSS_BOOT_TYPE_HARDWARE_BACKUP);
+static_assert(static_cast<int>(EBootType::SoftwareBackup) == JP_GNSS_BOOT_TYPE_SOFTWARE_BACKUP);
+static_assert(static_cast<int>(EBootType::SoftwareReset)  == JP_GNSS_BOOT_TYPE_SOFTWARE_RESET);
+static_assert(static_cast<int>(EBootType::VioFail)        == JP_GNSS_BOOT_TYPE_VIO_FAIL);
+static_assert(static_cast<int>(EBootType::VddXFail)       == JP_GNSS_BOOT_TYPE_VDD_X_FAIL);
+static_assert(static_cast<int>(EBootType::VddRfFail)      == JP_GNSS_BOOT_TYPE_VDD_RF_FAIL);
+static_assert(static_cast<int>(EBootType::VCoreHighFail)  == JP_GNSS_BOOT_TYPE_V_CORE_HIGH_FAIL);
+static_assert(static_cast<int>(EBootType::SystemReset)    == JP_GNSS_BOOT_TYPE_SYSTEM_RESET);
 
 static_assert(static_cast<int>(ERtkMode::Base) == JP_GNSS_RTK_MODE_BASE);
 static_assert(static_cast<int>(ERtkMode::Rover) == JP_GNSS_RTK_MODE_ROVER);
@@ -402,7 +416,28 @@ std::optional<GnssConfig> convert_gnss_config(
 
         cpp_config.timing = timing;
     }
- 
+
+    if (c_config.has_navigation_filters)
+    {
+        const auto& src = c_config.navigation_filters;
+        GnssConfig::NavigationFilters f;
+        if (src.has_min_svs)        f.minSvs        = src.min_svs;
+        if (src.has_max_svs)        f.maxSvs        = src.max_svs;
+        if (src.has_min_cno_dbhz)   f.minCno_dBHz   = src.min_cno_dbhz;
+        if (src.has_min_elev_deg)   f.minElev_deg   = src.min_elev_deg;
+        if (src.has_n_cno_thrs)     f.nCnoThrs      = src.n_cno_thrs;
+        if (src.has_cno_thrs_dbhz)  f.cnoThrs_dBHz  = src.cno_thrs_dbhz;
+        if (src.has_fix_mode)
+            f.fixMode =
+                static_cast<GnssConfig::NavigationFilters::FixMode>(
+                    src.fix_mode);
+        if (src.has_pdop_mask_x10)  f.pdopMask_x10  = src.pdop_mask_x10;
+        if (src.has_tdop_mask_x10)  f.tdopMask_x10  = src.tdop_mask_x10;
+        if (src.has_p_acc_mask_m)   f.pAccMask_m    = src.p_acc_mask_m;
+        if (src.has_t_acc_mask_m)   f.tAccMask_m    = src.t_acc_mask_m;
+        cpp_config.navigationFilters = f;
+    }
+
     cpp_config.saveToFlash = c_config.save_to_flash;
  
     return cpp_config;
@@ -658,6 +693,65 @@ bool jp_gnss_hat_get_navigation(jp_gnss_hat_t* hat,
     return true;
 }
 
+bool jp_gnss_hat_get_system_health(jp_gnss_hat_t* hat,
+    jp_gnss_system_health_t* system_health)
+{
+    if (!hat || !system_health || !hat->instance)
+        return false;
+
+    const SystemHealth s = hat->instance->systemHealth();
+    system_health->valid          = s.valid;
+    system_health->msg_version    = s.msgVersion;
+    system_health->boot_type      =
+        static_cast<jp_gnss_boot_type_t>(s.bootType);
+    system_health->cpu_load       = s.cpuLoad;
+    system_health->cpu_load_max   = s.cpuLoadMax;
+    system_health->mem_usage      = s.memUsage;
+    system_health->mem_usage_max  = s.memUsageMax;
+    system_health->io_usage       = s.ioUsage;
+    system_health->io_usage_max   = s.ioUsageMax;
+    system_health->run_time_s     = s.runTime;
+    system_health->notice_count   = s.noticeCount;
+    system_health->warn_count     = s.warnCount;
+    system_health->error_count    = s.errorCount;
+    system_health->temperature_c  = s.temperatureC;
+    return true;
+}
+
+bool jp_gnss_hat_get_mon_ver(jp_gnss_hat_t* hat,
+    jp_gnss_mon_ver_t* mon_ver)
+{
+    if (!hat || !mon_ver || !hat->instance)
+        return false;
+
+    const std::string sw = hat->instance->swVersion();
+    const std::string hw = hat->instance->hwVersion();
+    const auto exts = hat->instance->monVerExtensions();
+
+    std::memset(mon_ver, 0, sizeof(*mon_ver));
+    mon_ver->valid = !sw.empty() || !hw.empty() || !exts.empty();
+
+    auto copy_truncated = [](char* dst, size_t dstSize, const std::string& src)
+    {
+        const size_t n = std::min(src.size(), dstSize - 1);
+        std::memcpy(dst, src.data(), n);
+        dst[n] = '\0';
+    };
+
+    copy_truncated(mon_ver->sw_version, JP_GNSS_MON_VER_STR_MAX, sw);
+    copy_truncated(mon_ver->hw_version, JP_GNSS_MON_VER_STR_MAX, hw);
+
+    const size_t nExt = std::min<size_t>(
+        exts.size(), JP_GNSS_MON_VER_MAX_EXTENSIONS);
+    mon_ver->num_extensions = static_cast<uint8_t>(nExt);
+    for (size_t i = 0; i < nExt; ++i)
+    {
+        copy_truncated(
+            mon_ver->extensions[i], JP_GNSS_MON_VER_STR_MAX, exts[i]);
+    }
+    return true;
+}
+
 bool jp_gnss_hat_enable_timepulse(jp_gnss_hat_t* hat)
 {
     if (!hat)
@@ -862,6 +956,9 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
     std::memset(&config->rtk, 0, sizeof(config->rtk));
     config->has_timing = false;
     std::memset(&config->timing, 0, sizeof(config->timing));
+    config->has_navigation_filters = false;
+    std::memset(
+        &config->navigation_filters, 0, sizeof(config->navigation_filters));
     config->save_to_flash = false;
 }
 
@@ -1165,6 +1262,624 @@ const char* jp_gnss_time_mark_time_base_to_string(
     result = Utils::timeMarkTimeBase2string(
         static_cast<ETimeMarkTimeBase>(time_base));
     return result.c_str();
+}
+
+/* ── NTRIP Caster ───────────────────────────────────────────────────── */
+
+struct jp_gnss_ntrip_caster
+{
+    NtripCaster* instance;
+};
+
+jp_gnss_ntrip_caster_t* jp_gnss_ntrip_caster_create(
+    const char* host, uint16_t port,
+    const char* mountpoint, uint32_t max_clients)
+{
+    if (!host || !mountpoint)
+        return nullptr;
+
+    try
+    {
+        auto* wrapper = new jp_gnss_ntrip_caster;
+        wrapper->instance = new NtripCaster(
+            host, port, mountpoint, static_cast<size_t>(max_clients));
+        return wrapper;
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
+}
+
+void jp_gnss_ntrip_caster_destroy(jp_gnss_ntrip_caster_t* caster)
+{
+    if (!caster)
+        return;
+
+    delete caster->instance;
+    delete caster;
+}
+
+bool jp_gnss_ntrip_caster_start(jp_gnss_ntrip_caster_t* caster)
+{
+    if (!caster || !caster->instance)
+        return false;
+
+    return caster->instance->start();
+}
+
+void jp_gnss_ntrip_caster_stop(jp_gnss_ntrip_caster_t* caster)
+{
+    if (!caster || !caster->instance)
+        return;
+
+    caster->instance->stop();
+}
+
+void jp_gnss_ntrip_caster_feed(jp_gnss_ntrip_caster_t* caster,
+    const jp_gnss_rtcm3_frame_t* frames, uint32_t count)
+{
+    if (!caster || !caster->instance || !frames || count == 0)
+        return;
+
+    std::vector<std::vector<uint8_t>> cpp_frames;
+    cpp_frames.reserve(count);
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        cpp_frames.emplace_back(
+            frames[i].data, frames[i].data + frames[i].size);
+    }
+
+    caster->instance->feed(cpp_frames);
+}
+
+uint32_t jp_gnss_ntrip_caster_client_count(
+    const jp_gnss_ntrip_caster_t* caster)
+{
+    if (!caster || !caster->instance)
+        return 0;
+
+    return static_cast<uint32_t>(caster->instance->clientCount());
+}
+
+void jp_gnss_ntrip_caster_update_position(
+    jp_gnss_ntrip_caster_t* caster, double lat, double lon)
+{
+    if (!caster || !caster->instance)
+        return;
+
+    caster->instance->updatePosition(lat, lon);
+}
+
+void jp_gnss_ntrip_caster_set_credentials(
+    jp_gnss_ntrip_caster_t* caster,
+    const char* username, const char* password)
+{
+    if (!caster || !caster->instance)
+        return;
+
+    caster->instance->setCredentials(
+        username ? username : "",
+        password ? password : "");
+}
+
+void jp_gnss_ntrip_caster_set_log_callback(
+    jp_gnss_ntrip_caster_t* caster,
+    jp_ntrip_log_callback_t callback, void* user_data)
+{
+    if (!caster || !caster->instance)
+        return;
+
+    if (callback)
+    {
+        caster->instance->setLogCallback(
+            [callback, user_data](ENtripLogLevel level,
+                                  const std::string& msg)
+            {
+                callback(static_cast<jp_ntrip_log_level_t>(level),
+                         msg.c_str(), user_data);
+            });
+    }
+    else
+    {
+        caster->instance->setLogCallback(nullptr);
+    }
+}
+
+void jp_gnss_ntrip_caster_set_log_level(
+    jp_gnss_ntrip_caster_t* caster, jp_ntrip_log_level_t level)
+{
+    if (!caster || !caster->instance)
+        return;
+
+    caster->instance->setLogLevel(static_cast<ENtripLogLevel>(level));
+}
+
+/* ── NTRIP Client ───────────────────────────────────────────────────── */
+
+struct jp_gnss_ntrip_client
+{
+    NtripClient* instance;
+};
+
+jp_gnss_ntrip_client_t* jp_gnss_ntrip_client_create(
+    const char* host, uint16_t port,
+    const char* mountpoint,
+    const char* username, const char* password)
+{
+    if (!host || !mountpoint)
+        return nullptr;
+
+    try
+    {
+        auto* wrapper = new jp_gnss_ntrip_client;
+        wrapper->instance = new NtripClient(
+            host, port, mountpoint,
+            username ? username : "",
+            password ? password : "");
+        return wrapper;
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
+}
+
+void jp_gnss_ntrip_client_destroy(jp_gnss_ntrip_client_t* client)
+{
+    if (!client)
+        return;
+
+    delete client->instance;
+    delete client;
+}
+
+bool jp_gnss_ntrip_client_connect(jp_gnss_ntrip_client_t* client)
+{
+    if (!client || !client->instance)
+        return false;
+
+    return client->instance->connect();
+}
+
+void jp_gnss_ntrip_client_disconnect(jp_gnss_ntrip_client_t* client)
+{
+    if (!client || !client->instance)
+        return;
+
+    client->instance->disconnect();
+}
+
+bool jp_gnss_ntrip_client_is_connected(
+    const jp_gnss_ntrip_client_t* client)
+{
+    if (!client || !client->instance)
+        return false;
+
+    return client->instance->isConnected();
+}
+
+uint32_t jp_gnss_ntrip_client_receive(
+    jp_gnss_ntrip_client_t* client,
+    jp_gnss_rtcm3_frame_t** frames_out)
+{
+    if (!client || !client->instance || !frames_out)
+    {
+        if (frames_out) *frames_out = nullptr;
+        return 0;
+    }
+
+    auto cpp_frames = client->instance->receiveFrames();
+    if (cpp_frames.empty())
+    {
+        *frames_out = nullptr;
+        return 0;
+    }
+
+    uint32_t count = static_cast<uint32_t>(cpp_frames.size());
+    auto* frames = static_cast<jp_gnss_rtcm3_frame_t*>(
+        calloc(count, sizeof(jp_gnss_rtcm3_frame_t)));
+    if (!frames)
+    {
+        *frames_out = nullptr;
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        frames[i].size = static_cast<uint32_t>(cpp_frames[i].size());
+        frames[i].data = static_cast<uint8_t*>(malloc(frames[i].size));
+        if (frames[i].data)
+            memcpy(frames[i].data, cpp_frames[i].data(), frames[i].size);
+    }
+
+    *frames_out = frames;
+    return count;
+}
+
+void jp_gnss_ntrip_client_free_frames(
+    jp_gnss_rtcm3_frame_t* frames, uint32_t count)
+{
+    if (!frames)
+        return;
+
+    for (uint32_t i = 0; i < count; ++i)
+        free(frames[i].data);
+    free(frames);
+}
+
+void jp_gnss_ntrip_client_send_position(
+    jp_gnss_ntrip_client_t* client,
+    double lat, double lon, double alt)
+{
+    if (!client || !client->instance)
+        return;
+
+    client->instance->sendPosition(lat, lon, alt);
+}
+
+void jp_gnss_ntrip_client_set_log_callback(
+    jp_gnss_ntrip_client_t* client,
+    jp_ntrip_log_callback_t callback, void* user_data)
+{
+    if (!client || !client->instance)
+        return;
+
+    if (callback)
+    {
+        client->instance->setLogCallback(
+            [callback, user_data](ENtripLogLevel level,
+                                  const std::string& msg)
+            {
+                callback(static_cast<jp_ntrip_log_level_t>(level),
+                         msg.c_str(), user_data);
+            });
+    }
+    else
+    {
+        client->instance->setLogCallback(nullptr);
+    }
+}
+
+void jp_gnss_ntrip_client_set_log_level(
+    jp_gnss_ntrip_client_t* client, jp_ntrip_log_level_t level)
+{
+    if (!client || !client->instance)
+        return;
+
+    client->instance->setLogLevel(static_cast<ENtripLogLevel>(level));
+}
+
+// ── Stats helpers ──────────────────────────────────────────────────────
+
+static void fillStats(const NtripStats& src, jp_ntrip_stats_t* dst)
+{
+    dst->bytes_tx = src.bytesTx;
+    dst->bytes_rx = src.bytesRx;
+    dst->frames_tx = src.framesTx;
+    dst->frames_rx = src.framesRx;
+    dst->uptime_ms = src.uptimeMs;
+    dst->last_frame_age_ms = src.lastFrameAgeMs;
+    dst->avg_inter_frame_ms = src.avgInterFrameMs;
+    dst->max_inter_frame_ms = src.maxInterFrameMs;
+
+    dst->num_msg_types = 0;
+    for (const auto& [id, count] : src.messageTypeCounts)
+    {
+        if (dst->num_msg_types >= JP_NTRIP_STATS_MAX_MSG_TYPES)
+            break;
+        dst->msg_type_ids[dst->num_msg_types] = id;
+        dst->msg_type_counts[dst->num_msg_types] = count;
+        dst->num_msg_types++;
+    }
+}
+
+void jp_gnss_ntrip_caster_get_stats(
+    const jp_gnss_ntrip_caster_t* caster, jp_ntrip_stats_t* stats)
+{
+    if (!caster || !caster->instance || !stats)
+        return;
+    memset(stats, 0, sizeof(*stats));
+    fillStats(caster->instance->getStats(), stats);
+}
+
+void jp_gnss_ntrip_client_get_stats(
+    const jp_gnss_ntrip_client_t* client, jp_ntrip_stats_t* stats)
+{
+    if (!client || !client->instance || !stats)
+        return;
+    memset(stats, 0, sizeof(*stats));
+    fillStats(client->instance->getStats(), stats);
+}
+
+void jp_gnss_ntrip_client_set_auto_reconnect(
+    jp_gnss_ntrip_client_t* client,
+    int enable, uint32_t initial_delay_ms, uint32_t max_delay_ms)
+{
+    if (!client || !client->instance)
+        return;
+    client->instance->setAutoReconnect(enable != 0, initial_delay_ms, max_delay_ms);
+}
+
+uint32_t jp_gnss_ntrip_client_reconnect_count(
+    const jp_gnss_ntrip_client_t* client)
+{
+    if (!client || !client->instance)
+        return 0;
+    return client->instance->reconnectCount();
+}
+
+/* ── NTRIP Client Auto-GGA ─────────────────────────────────────────── */
+
+void jp_gnss_ntrip_client_update_position(
+    jp_gnss_ntrip_client_t* client,
+    double lat, double lon, double alt)
+{
+    if (!client || !client->instance)
+        return;
+    client->instance->updatePosition(lat, lon, alt);
+}
+
+void jp_gnss_ntrip_client_set_auto_gga(
+    jp_gnss_ntrip_client_t* client, uint32_t interval_ms)
+{
+    if (!client || !client->instance)
+        return;
+    client->instance->setAutoGGA(interval_ms);
+}
+
+/* ── NTRIP TLS (client) ────────────────────────────────────────────── */
+
+void jp_gnss_ntrip_client_set_tls(
+    jp_gnss_ntrip_client_t* client, int enable, int verify_peer)
+{
+    if (!client || !client->instance) return;
+    client->instance->setUseTls(enable != 0, verify_peer != 0);
+}
+
+/* ── NTRIP Server ───────────────────────────────────────────────────── */
+
+struct jp_gnss_ntrip_server
+{
+    NtripServer* instance;
+};
+
+jp_gnss_ntrip_server_t* jp_gnss_ntrip_server_create(
+    const char* host, uint16_t port,
+    const char* mountpoint, const char* username, const char* password)
+{
+    if (!host || !mountpoint)
+        return nullptr;
+
+    try
+    {
+        auto* wrapper = new jp_gnss_ntrip_server;
+        wrapper->instance = new NtripServer(
+            host, port, mountpoint,
+            username ? username : "",
+            password ? password : "");
+        return wrapper;
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
+}
+
+void jp_gnss_ntrip_server_destroy(jp_gnss_ntrip_server_t* server)
+{
+    if (!server)
+        return;
+
+    delete server->instance;
+    delete server;
+}
+
+bool jp_gnss_ntrip_server_connect(jp_gnss_ntrip_server_t* server)
+{
+    if (!server || !server->instance)
+        return false;
+
+    return server->instance->connect();
+}
+
+void jp_gnss_ntrip_server_disconnect(jp_gnss_ntrip_server_t* server)
+{
+    if (!server || !server->instance)
+        return;
+
+    server->instance->disconnect();
+}
+
+bool jp_gnss_ntrip_server_is_connected(
+    const jp_gnss_ntrip_server_t* server)
+{
+    if (!server || !server->instance)
+        return false;
+
+    return server->instance->isConnected();
+}
+
+void jp_gnss_ntrip_server_feed(jp_gnss_ntrip_server_t* server,
+    const jp_gnss_rtcm3_frame_t* frames, uint32_t count)
+{
+    if (!server || !server->instance || !frames || count == 0)
+        return;
+
+    std::vector<std::vector<uint8_t>> cpp_frames;
+    cpp_frames.reserve(count);
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        cpp_frames.emplace_back(
+            frames[i].data, frames[i].data + frames[i].size);
+    }
+
+    server->instance->feed(cpp_frames);
+}
+
+void jp_gnss_ntrip_server_set_auto_reconnect(
+    jp_gnss_ntrip_server_t* server,
+    int enable, uint32_t initial_delay_ms, uint32_t max_delay_ms)
+{
+    if (!server || !server->instance)
+        return;
+    server->instance->setAutoReconnect(enable != 0, initial_delay_ms, max_delay_ms);
+}
+
+uint32_t jp_gnss_ntrip_server_reconnect_count(
+    const jp_gnss_ntrip_server_t* server)
+{
+    if (!server || !server->instance)
+        return 0;
+    return server->instance->reconnectCount();
+}
+
+void jp_gnss_ntrip_server_set_log_callback(
+    jp_gnss_ntrip_server_t* server,
+    jp_ntrip_log_callback_t callback, void* user_data)
+{
+    if (!server || !server->instance)
+        return;
+
+    if (callback)
+    {
+        server->instance->setLogCallback(
+            [callback, user_data](ENtripLogLevel level,
+                                  const std::string& msg)
+            {
+                callback(static_cast<jp_ntrip_log_level_t>(level),
+                         msg.c_str(), user_data);
+            });
+    }
+    else
+    {
+        server->instance->setLogCallback(nullptr);
+    }
+}
+
+void jp_gnss_ntrip_server_set_log_level(
+    jp_gnss_ntrip_server_t* server, jp_ntrip_log_level_t level)
+{
+    if (!server || !server->instance)
+        return;
+
+    server->instance->setLogLevel(static_cast<ENtripLogLevel>(level));
+}
+
+void jp_gnss_ntrip_server_get_stats(
+    const jp_gnss_ntrip_server_t* server, jp_ntrip_stats_t* stats)
+{
+    if (!server || !server->instance || !stats)
+        return;
+    memset(stats, 0, sizeof(*stats));
+    fillStats(server->instance->getStats(), stats);
+}
+
+/* ── NTRIP TLS (server + availability) ─────────────────────────────── */
+
+void jp_gnss_ntrip_server_set_tls(
+    jp_gnss_ntrip_server_t* server, int enable, int verify_peer)
+{
+    if (!server || !server->instance) return;
+    server->instance->setUseTls(enable != 0, verify_peer != 0);
+}
+
+bool jp_gnss_ntrip_is_tls_available(void)
+{
+    return NtripClient::isTlsAvailable();
+}
+
+bool jp_gnss_ntrip_caster_set_tls(
+    jp_gnss_ntrip_caster_t* caster,
+    const char* cert_file, const char* key_file)
+{
+    if (!caster || !caster->instance || !cert_file || !key_file)
+        return false;
+    return caster->instance->setTls(cert_file, key_file);
+}
+
+/* ── NTRIP Sourcetable Fetch ────────────────────────────────────────── */
+
+static char* strdup_safe(const std::string& s)
+{
+    char* p = static_cast<char*>(malloc(s.size() + 1));
+    if (p)
+    {
+        memcpy(p, s.c_str(), s.size() + 1);
+    }
+    return p;
+}
+
+uint32_t jp_gnss_ntrip_fetch_sourcetable(
+    const char* host, uint16_t port,
+    const char* username, const char* password,
+    uint32_t timeout_ms,
+    jp_ntrip_sourcetable_entry_t** entries_out,
+    int use_tls, int tls_verify_peer)
+{
+    if (!host || !entries_out)
+    {
+        if (entries_out) *entries_out = nullptr;
+        return 0;
+    }
+
+    auto cpp_entries = NtripClient::fetchSourcetable(
+        host, port,
+        username ? username : "",
+        password ? password : "",
+        timeout_ms,
+        use_tls != 0,
+        tls_verify_peer != 0);
+
+    if (cpp_entries.empty())
+    {
+        *entries_out = nullptr;
+        return 0;
+    }
+
+    uint32_t count = static_cast<uint32_t>(cpp_entries.size());
+    auto* entries = static_cast<jp_ntrip_sourcetable_entry_t*>(
+        calloc(count, sizeof(jp_ntrip_sourcetable_entry_t)));
+    if (!entries)
+    {
+        *entries_out = nullptr;
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        entries[i].mountpoint = strdup_safe(cpp_entries[i].mountpoint);
+        entries[i].identifier = strdup_safe(cpp_entries[i].identifier);
+        entries[i].format = strdup_safe(cpp_entries[i].format);
+        entries[i].format_details = strdup_safe(cpp_entries[i].formatDetails);
+        entries[i].carrier = strdup_safe(cpp_entries[i].carrier);
+        entries[i].nav_system = strdup_safe(cpp_entries[i].navSystem);
+        entries[i].latitude = cpp_entries[i].latitude;
+        entries[i].longitude = cpp_entries[i].longitude;
+    }
+
+    *entries_out = entries;
+    return count;
+}
+
+void jp_gnss_ntrip_free_sourcetable(
+    jp_ntrip_sourcetable_entry_t* entries, uint32_t count)
+{
+    if (!entries)
+        return;
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        free(entries[i].mountpoint);
+        free(entries[i].identifier);
+        free(entries[i].format);
+        free(entries[i].format_details);
+        free(entries[i].carrier);
+        free(entries[i].nav_system);
+    }
+    free(entries);
 }
 
 }  // extern "C"

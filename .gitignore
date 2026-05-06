@@ -4,7 +4,7 @@ build/
 .ai/
 .claude/
 examples/build/
-examples/ConfigFromJson/build/
-examples/Python/__pycache__/
-examples/Visualization/venv/
-examples/BinariesSymlinks/
+examples/python/__pycache__/
+examples/visualization/venv/
+examples/bin/
+src/Version.hpp

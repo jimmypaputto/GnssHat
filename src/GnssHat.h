@@ -6,10 +6,7 @@
 #ifndef GNSS_HAT_H_
 #define GNSS_HAT_H_
 
-#define GNSS_HAT_VERSION_MAJOR 1
-#define GNSS_HAT_VERSION_MINOR 0
-#define GNSS_HAT_VERSION_PATCH 0
-#define GNSS_HAT_VERSION "1.0.0"
+#include "Version.hpp"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -380,6 +377,49 @@ typedef struct
     jp_gnss_base_config_t time_base;
 } jp_gnss_timing_config_t;
 
+/*
+ * Navigation input filters — wrapper around u-blox CFG-NAVSPG-INFIL_*.
+ * Each field is gated by a `has_*` flag to emulate std::optional<> across
+ * the C boundary. An unset field (has_* == false) means "leave at the
+ * receiver's current value".
+ */
+typedef enum
+{
+    JP_GNSS_FIX_MODE_2D_ONLY = 1,
+    JP_GNSS_FIX_MODE_3D_ONLY = 2,
+    JP_GNSS_FIX_MODE_AUTO    = 3,
+} jp_gnss_fix_mode_t;
+
+typedef struct
+{
+    bool has_min_svs;
+    uint8_t min_svs;          /* 3 - 32 */
+    bool has_max_svs;
+    uint8_t max_svs;          /* 3 - 32, must be >= min_svs when both set */
+    bool has_min_cno_dbhz;
+    uint8_t min_cno_dbhz;     /* 0 - 63 */
+    bool has_min_elev_deg;
+    int8_t min_elev_deg;      /* -90 - 90 */
+    bool has_n_cno_thrs;
+    uint8_t n_cno_thrs;
+    bool has_cno_thrs_dbhz;
+    uint8_t cno_thrs_dbhz;    /* 0 - 63 */
+
+    /* CFG-NAVSPG-FIXMODE */
+    bool has_fix_mode;
+    jp_gnss_fix_mode_t fix_mode;
+
+    /* CFG-NAVSPG-OUTFIL_* — solution-output masks. */
+    bool has_pdop_mask_x10;
+    uint16_t pdop_mask_x10;   /* 0.1 DOP units, 0 disables (e.g. 250 = 25.0) */
+    bool has_tdop_mask_x10;
+    uint16_t tdop_mask_x10;   /* 0.1 DOP units, 0 disables */
+    bool has_p_acc_mask_m;
+    uint16_t p_acc_mask_m;    /* metres, 0 disables */
+    bool has_t_acc_mask_m;
+    uint16_t t_acc_mask_m;    /* metres, 0 disables */
+} jp_gnss_navigation_filters_t;
+
 typedef struct
 {
     uint16_t measurement_rate_hz;
@@ -391,6 +431,8 @@ typedef struct
     jp_gnss_rtk_config_t rtk;
     bool has_timing;
     jp_gnss_timing_config_t timing;
+    bool has_navigation_filters;
+    jp_gnss_navigation_filters_t navigation_filters;
     bool save_to_flash;
 } jp_gnss_gnss_config_t;
 
@@ -442,6 +484,56 @@ typedef struct
     jp_gnss_satellite_info_t satellites[UBLOX_MAX_SATELLITES];
 } jp_gnss_navigation_t;
 
+/* ── UBX-MON-SYS — Current system performance ─────────────────────── */
+
+typedef enum
+{
+    JP_GNSS_BOOT_TYPE_UNKNOWN         = 0,
+    JP_GNSS_BOOT_TYPE_COLD_START      = 1,
+    JP_GNSS_BOOT_TYPE_WATCHDOG        = 2,
+    JP_GNSS_BOOT_TYPE_HARDWARE_RESET  = 3,
+    JP_GNSS_BOOT_TYPE_HARDWARE_BACKUP = 4,
+    JP_GNSS_BOOT_TYPE_SOFTWARE_BACKUP = 5,
+    JP_GNSS_BOOT_TYPE_SOFTWARE_RESET  = 6,
+    JP_GNSS_BOOT_TYPE_VIO_FAIL        = 7,
+    JP_GNSS_BOOT_TYPE_VDD_X_FAIL      = 8,
+    JP_GNSS_BOOT_TYPE_VDD_RF_FAIL     = 9,
+    JP_GNSS_BOOT_TYPE_V_CORE_HIGH_FAIL = 10,
+    JP_GNSS_BOOT_TYPE_SYSTEM_RESET    = 11
+} jp_gnss_boot_type_t;
+
+typedef struct
+{
+    bool valid;            /* false until the first MON-SYS frame arrives */
+    uint8_t msg_version;
+    jp_gnss_boot_type_t boot_type;
+    uint8_t cpu_load;      /* % */
+    uint8_t cpu_load_max;  /* % since last MON-SYS report */
+    uint8_t mem_usage;     /* % */
+    uint8_t mem_usage_max; /* % since last MON-SYS report */
+    uint8_t io_usage;      /* % */
+    uint8_t io_usage_max;  /* % since last MON-SYS report */
+    uint32_t run_time_s;   /* seconds since last restart */
+    uint16_t notice_count;
+    uint16_t warn_count;
+    uint16_t error_count;
+    int8_t temperature_c;  /* °C, ±2°C accuracy */
+} jp_gnss_system_health_t;
+
+/* ── UBX-MON-VER — Receiver / firmware identification ──────────────── */
+
+#define JP_GNSS_MON_VER_STR_MAX 32
+#define JP_GNSS_MON_VER_MAX_EXTENSIONS 16
+
+typedef struct
+{
+    bool valid;
+    char sw_version[JP_GNSS_MON_VER_STR_MAX];
+    char hw_version[JP_GNSS_MON_VER_STR_MAX];
+    uint8_t num_extensions;
+    char extensions[JP_GNSS_MON_VER_MAX_EXTENSIONS][JP_GNSS_MON_VER_STR_MAX];
+} jp_gnss_mon_ver_t;
+
 typedef struct
 {
     uint8_t* data;
@@ -465,6 +557,10 @@ bool jp_gnss_hat_wait_and_get_fresh_navigation(jp_gnss_hat_t* hat,
     jp_gnss_navigation_t* navigation);
 bool jp_gnss_hat_get_navigation(jp_gnss_hat_t* hat,
     jp_gnss_navigation_t* navigation);
+bool jp_gnss_hat_get_system_health(jp_gnss_hat_t* hat,
+    jp_gnss_system_health_t* system_health);
+bool jp_gnss_hat_get_mon_ver(jp_gnss_hat_t* hat,
+    jp_gnss_mon_ver_t* mon_ver);
 bool jp_gnss_hat_enable_timepulse(jp_gnss_hat_t* hat);
 void jp_gnss_hat_disable_timepulse(jp_gnss_hat_t* hat);
 bool jp_gnss_hat_start_forward_for_gpsd(jp_gnss_hat_t* hat);
@@ -521,6 +617,169 @@ const char* jp_gnss_time_mark_time_base_to_string(
 
 const char* jp_gnss_utc_time_iso8601(
     const jp_gnss_position_velocity_time_t* pvt);
+
+/* ── NTRIP Logging ──────────────────────────────────────────────────── */
+
+typedef enum {
+    JP_NTRIP_LOG_ERROR   = 0,
+    JP_NTRIP_LOG_WARNING = 1,
+    JP_NTRIP_LOG_INFO    = 2,
+    JP_NTRIP_LOG_DEBUG   = 3,
+} jp_ntrip_log_level_t;
+
+typedef void (*jp_ntrip_log_callback_t)(
+    jp_ntrip_log_level_t level, const char* message, void* user_data);
+
+/* ── NTRIP Caster ───────────────────────────────────────────────────── */
+
+typedef struct jp_gnss_ntrip_caster jp_gnss_ntrip_caster_t;
+
+jp_gnss_ntrip_caster_t* jp_gnss_ntrip_caster_create(
+    const char* host, uint16_t port,
+    const char* mountpoint, uint32_t max_clients);
+void jp_gnss_ntrip_caster_destroy(jp_gnss_ntrip_caster_t* caster);
+bool jp_gnss_ntrip_caster_start(jp_gnss_ntrip_caster_t* caster);
+void jp_gnss_ntrip_caster_stop(jp_gnss_ntrip_caster_t* caster);
+void jp_gnss_ntrip_caster_feed(jp_gnss_ntrip_caster_t* caster,
+    const jp_gnss_rtcm3_frame_t* frames, uint32_t count);
+uint32_t jp_gnss_ntrip_caster_client_count(
+    const jp_gnss_ntrip_caster_t* caster);
+void jp_gnss_ntrip_caster_update_position(
+    jp_gnss_ntrip_caster_t* caster, double lat, double lon);
+void jp_gnss_ntrip_caster_set_credentials(
+    jp_gnss_ntrip_caster_t* caster,
+    const char* username, const char* password);
+void jp_gnss_ntrip_caster_set_log_callback(
+    jp_gnss_ntrip_caster_t* caster,
+    jp_ntrip_log_callback_t callback, void* user_data);
+void jp_gnss_ntrip_caster_set_log_level(
+    jp_gnss_ntrip_caster_t* caster, jp_ntrip_log_level_t level);
+
+/* ── NTRIP Client ───────────────────────────────────────────────────── */
+
+typedef struct jp_gnss_ntrip_client jp_gnss_ntrip_client_t;
+
+jp_gnss_ntrip_client_t* jp_gnss_ntrip_client_create(
+    const char* host, uint16_t port,
+    const char* mountpoint,
+    const char* username, const char* password);
+void jp_gnss_ntrip_client_destroy(jp_gnss_ntrip_client_t* client);
+bool jp_gnss_ntrip_client_connect(jp_gnss_ntrip_client_t* client);
+void jp_gnss_ntrip_client_disconnect(jp_gnss_ntrip_client_t* client);
+bool jp_gnss_ntrip_client_is_connected(
+    const jp_gnss_ntrip_client_t* client);
+uint32_t jp_gnss_ntrip_client_receive(
+    jp_gnss_ntrip_client_t* client,
+    jp_gnss_rtcm3_frame_t** frames_out);
+void jp_gnss_ntrip_client_free_frames(
+    jp_gnss_rtcm3_frame_t* frames, uint32_t count);
+void jp_gnss_ntrip_client_send_position(
+    jp_gnss_ntrip_client_t* client,
+    double lat, double lon, double alt);
+void jp_gnss_ntrip_client_set_log_callback(
+    jp_gnss_ntrip_client_t* client,
+    jp_ntrip_log_callback_t callback, void* user_data);
+void jp_gnss_ntrip_client_set_log_level(
+    jp_gnss_ntrip_client_t* client, jp_ntrip_log_level_t level);
+
+/* ── NTRIP Client Auto-GGA ─────────────────────────────────────────── */
+
+void jp_gnss_ntrip_client_update_position(
+    jp_gnss_ntrip_client_t* client,
+    double lat, double lon, double alt);
+void jp_gnss_ntrip_client_set_auto_gga(
+    jp_gnss_ntrip_client_t* client, uint32_t interval_ms);
+
+/* ── NTRIP Server (push to remote caster) ───────────────────────────── */
+
+typedef struct jp_gnss_ntrip_server jp_gnss_ntrip_server_t;
+
+jp_gnss_ntrip_server_t* jp_gnss_ntrip_server_create(
+    const char* host, uint16_t port,
+    const char* mountpoint, const char* username, const char* password);
+void jp_gnss_ntrip_server_destroy(jp_gnss_ntrip_server_t* server);
+bool jp_gnss_ntrip_server_connect(jp_gnss_ntrip_server_t* server);
+void jp_gnss_ntrip_server_disconnect(jp_gnss_ntrip_server_t* server);
+bool jp_gnss_ntrip_server_is_connected(
+    const jp_gnss_ntrip_server_t* server);
+void jp_gnss_ntrip_server_feed(jp_gnss_ntrip_server_t* server,
+    const jp_gnss_rtcm3_frame_t* frames, uint32_t count);
+void jp_gnss_ntrip_server_set_auto_reconnect(
+    jp_gnss_ntrip_server_t* server,
+    int enable, uint32_t initial_delay_ms, uint32_t max_delay_ms);
+uint32_t jp_gnss_ntrip_server_reconnect_count(
+    const jp_gnss_ntrip_server_t* server);
+void jp_gnss_ntrip_server_set_log_callback(
+    jp_gnss_ntrip_server_t* server,
+    jp_ntrip_log_callback_t callback, void* user_data);
+void jp_gnss_ntrip_server_set_log_level(
+    jp_gnss_ntrip_server_t* server, jp_ntrip_log_level_t level);
+
+/* ── NTRIP TLS ─────────────────────────────────────────────────────── */
+
+void jp_gnss_ntrip_client_set_tls(
+    jp_gnss_ntrip_client_t* client, int enable, int verify_peer);
+void jp_gnss_ntrip_server_set_tls(
+    jp_gnss_ntrip_server_t* server, int enable, int verify_peer);
+bool jp_gnss_ntrip_caster_set_tls(
+    jp_gnss_ntrip_caster_t* caster,
+    const char* cert_file, const char* key_file);
+bool jp_gnss_ntrip_is_tls_available(void);
+
+/* ── NTRIP Sourcetable Fetch ────────────────────────────────────────── */
+
+typedef struct {
+    char* mountpoint;
+    char* identifier;
+    char* format;
+    char* format_details;
+    char* carrier;
+    char* nav_system;
+    double latitude;
+    double longitude;
+} jp_ntrip_sourcetable_entry_t;
+
+uint32_t jp_gnss_ntrip_fetch_sourcetable(
+    const char* host, uint16_t port,
+    const char* username, const char* password,
+    uint32_t timeout_ms,
+    jp_ntrip_sourcetable_entry_t** entries_out,
+    int use_tls, int tls_verify_peer);
+void jp_gnss_ntrip_free_sourcetable(
+    jp_ntrip_sourcetable_entry_t* entries, uint32_t count);
+
+/* ── NTRIP Statistics ───────────────────────────────────────────────── */
+
+#define JP_NTRIP_STATS_MAX_MSG_TYPES 32
+
+typedef struct {
+    uint64_t bytes_tx;
+    uint64_t bytes_rx;
+    uint64_t frames_tx;
+    uint64_t frames_rx;
+    uint64_t uptime_ms;
+    uint64_t last_frame_age_ms;
+    double   avg_inter_frame_ms;
+    double   max_inter_frame_ms;
+    uint32_t num_msg_types;
+    uint16_t msg_type_ids[JP_NTRIP_STATS_MAX_MSG_TYPES];
+    uint32_t msg_type_counts[JP_NTRIP_STATS_MAX_MSG_TYPES];
+} jp_ntrip_stats_t;
+
+void jp_gnss_ntrip_caster_get_stats(
+    const jp_gnss_ntrip_caster_t* caster, jp_ntrip_stats_t* stats);
+void jp_gnss_ntrip_client_get_stats(
+    const jp_gnss_ntrip_client_t* client, jp_ntrip_stats_t* stats);
+void jp_gnss_ntrip_server_get_stats(
+    const jp_gnss_ntrip_server_t* server, jp_ntrip_stats_t* stats);
+
+/* ── NTRIP Auto-Reconnect ──────────────────────────────────────────── */
+
+void jp_gnss_ntrip_client_set_auto_reconnect(
+    jp_gnss_ntrip_client_t* client,
+    int enable, uint32_t initial_delay_ms, uint32_t max_delay_ms);
+uint32_t jp_gnss_ntrip_client_reconnect_count(
+    const jp_gnss_ntrip_client_t* client);
 
 #ifdef __cplusplus
 }

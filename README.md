@@ -1,5 +1,10 @@
 # JP_GNSS_HAT
 
+| Branch | Debian | Pi 5 |
+|--------|--------|------|
+| `develop` | [![Debian CI](https://img.shields.io/github/actions/workflow/status/jimmypaputto/gnssHat/generic-ci.yml?branch=develop&label=Debian%20CI&logo=debian)](https://github.com/jimmypaputto/gnssHat/actions/workflows/generic-ci.yml) | [![Pi 5 CI](https://img.shields.io/github/actions/workflow/status/jimmypaputto/gnssHat/pi5-ci.yml?branch=develop&label=Pi%205%20CI&logo=raspberrypi)](https://github.com/jimmypaputto/gnssHat/actions/workflows/pi5-ci.yml) |
+| `master` | [![Debian CI](https://img.shields.io/github/actions/workflow/status/jimmypaputto/gnssHat/generic-ci.yml?branch=master&label=Debian%20CI&logo=debian)](https://github.com/jimmypaputto/gnssHat/actions/workflows/generic-ci.yml) | [![Pi 5 CI](https://img.shields.io/github/actions/workflow/status/jimmypaputto/gnssHat/pi5-ci.yml?branch=master&label=Pi%205%20CI&logo=raspberrypi)](https://github.com/jimmypaputto/gnssHat/actions/workflows/pi5-ci.yml) |
+
 Driver library for Jimmy Paputto GNSS HATs on Raspberry Pi. Handles the full u-blox UBX protocol and provides a high-level API in C++, C and Python. Buy our HATs at [jimmypaputto.com](https://jimmypaputto.com) - if you have custom u-blox hardware, most of the code will still be useful.
 
 ## Supported Hardware

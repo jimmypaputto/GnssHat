@@ -1,11 +1,7 @@
 name: pi4-ci
 
 on:
-  workflow_run:
-    workflows:
-      - generic-ci
-    types:
-      - completed
+  push:
     branches:
       - develop
       - master
@@ -15,13 +11,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.workflow_run.head_branch }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   pi-build:
     name: Raspberry Pi 4 build
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on:
       - self-hosted
       - linux
@@ -36,7 +31,6 @@ jobs:
           clean: true
           fetch-depth: 1
           persist-credentials: false
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
 
       - name: Configure
         run: >-

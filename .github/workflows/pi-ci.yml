@@ -1,0 +1,53 @@
+name: pi-ci
+
+on:
+  workflow_run:
+    workflows:
+      - generic-ci
+    types:
+      - completed
+    branches:
+      - develop
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  pi-build:
+    name: Raspberry Pi build
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on:
+      - self-hosted
+      - linux
+      - arm64
+      - pi5
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          clean: true
+          persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build-ci-pi
+          -DGNSSHAT_PLATFORM=auto
+          -DNTRIP_TLS_SUPPORT=ON
+          -DBUILD_TOOLS=ON
+          -DBUILD_TESTS=ON
+          -DBUILD_EXAMPLES=ON
+          -DBUILD_PYTHON=ON
+
+      - name: Build
+        run: cmake --build build-ci-pi
+
+      - name: Test
+        run: ctest --test-dir build-ci-pi --output-on-failure

@@ -10,7 +10,18 @@ option(BUILD_TOOLS "Build CLI tools (gnsshat-info, gnsshat-probe)" ON)
 option(BUILD_TESTS "Build unit tests (requires GTest)" OFF)
 option(NTRIP_TLS_SUPPORT "Enable TLS for NTRIP connections (requires OpenSSL)" OFF)
 
-set(LIBGPIOD_VERSION 2)
+set(GNSSHAT_PLATFORM "auto" CACHE STRING "Target platform: auto, generic, rpi4, or rpi5")
+set_property(CACHE GNSSHAT_PLATFORM PROPERTY STRINGS auto generic rpi4 rpi5)
+
+include(CheckSymbolExists)
+check_symbol_exists(gpiod_line_settings_new "gpiod.h" GNSSHAT_HAS_LIBGPIOD_V2)
+
+if(GNSSHAT_HAS_LIBGPIOD_V2)
+    set(LIBGPIOD_VERSION 2)
+else()
+    set(LIBGPIOD_VERSION 1)
+endif()
+
 add_compile_definitions(LIBGPIOD_VERSION=${LIBGPIOD_VERSION})
 
 set(CMAKE_CXX_STANDARD 20)
@@ -21,44 +32,59 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
 include(GNUInstallDirs)
 
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+set(GNSSHAT_DETECTED_PLATFORM "${GNSSHAT_PLATFORM}")
+
+if(GNSSHAT_DETECTED_PLATFORM STREQUAL "auto" AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
     execute_process(
         COMMAND grep "Model" /proc/cpuinfo
         OUTPUT_VARIABLE RPI_MODEL
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
-    
+
     if(RPI_MODEL MATCHES "Raspberry Pi 5")
-        add_definitions(-DRPI5)
-        if(LIBGPIOD_VERSION MATCHES 2)
-            add_compile_definitions(CHIP_NAME="/dev/gpiochip4")
-            message(STATUS "Using LIBGPIOD >=2")
-        else()
-            add_compile_definitions(CHIP_NAME="gpiochip4")
-            message(STATUS "Using LIBGPIOD < 2")
-        endif()
-        message(STATUS "Building for Raspberry Pi 5")
+        set(GNSSHAT_DETECTED_PLATFORM "rpi5")
     elseif(RPI_MODEL MATCHES "Raspberry Pi 4")
-        if(LIBGPIOD_VERSION MATCHES 2)
-            add_compile_definitions(CHIP_NAME="/dev/gpiochip0")
-            message(STATUS "Using LIBGPIOD >=2")
-        else()
-            add_compile_definitions(CHIP_NAME="gpiochip0")
-            message(STATUS "Using LIBGPIOD < 2")
-        endif()
-        add_definitions(-DRPI4)
-        message(STATUS "Building for Raspberry Pi 4")
-    else()
-        message(
-            FATAL_ERROR
-            "Unsupported platform: ${RPI_MODEL}. Raspberry Pi 4 or 5 is required."
-        )
+        set(GNSSHAT_DETECTED_PLATFORM "rpi4")
     endif()
-else()
+endif()
+
+if(GNSSHAT_DETECTED_PLATFORM STREQUAL "rpi5")
+    add_definitions(-DRPI5)
+    if(LIBGPIOD_VERSION MATCHES 2)
+        add_compile_definitions(CHIP_NAME="/dev/gpiochip4")
+        message(STATUS "Using libgpiod v2 API")
+    else()
+        add_compile_definitions(CHIP_NAME="gpiochip4")
+        message(STATUS "Using libgpiod v1 API")
+    endif()
+    message(STATUS "Building for Raspberry Pi 5")
+elseif(GNSSHAT_DETECTED_PLATFORM STREQUAL "rpi4")
+    if(LIBGPIOD_VERSION MATCHES 2)
+        add_compile_definitions(CHIP_NAME="/dev/gpiochip0")
+        message(STATUS "Using libgpiod v2 API")
+    else()
+        add_compile_definitions(CHIP_NAME="gpiochip0")
+        message(STATUS "Using libgpiod v1 API")
+    endif()
+    add_definitions(-DRPI4)
+    message(STATUS "Building for Raspberry Pi 4")
+elseif(GNSSHAT_DETECTED_PLATFORM STREQUAL "generic")
+    if(LIBGPIOD_VERSION MATCHES 2)
+        add_compile_definitions(CHIP_NAME="/dev/gpiochip0")
+        message(STATUS "Using libgpiod v2 API")
+    else()
+        add_compile_definitions(CHIP_NAME="gpiochip0")
+        message(STATUS "Using libgpiod v1 API")
+    endif()
+    add_compile_definitions(GNSSHAT_GENERIC_LINUX=1)
+    message(WARNING "Building in generic Linux mode; Raspberry Pi hardware-specific behavior is not validated in this configuration.")
+elseif(GNSSHAT_DETECTED_PLATFORM STREQUAL "auto")
     message(
         FATAL_ERROR
         "Unsupported platform: ${CMAKE_SYSTEM_PROCESSOR}. Raspberry Pi 4 or 5 is required."
     )
+else()
+    message(FATAL_ERROR "Unsupported GNSSHAT_PLATFORM value: ${GNSSHAT_PLATFORM}")
 endif()
 
 configure_file(

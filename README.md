@@ -1,4 +1,4 @@
-# JP_GNSS_HAT
+# Gnsshat Library
 
 | Branch | Debian | Pi 4 | Pi 5 |
 |--------|--------|------|------|

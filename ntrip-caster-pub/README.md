@@ -1,6 +1,6 @@
 # ntrip-caster-pub
 
-Standalone, single-mountpoint **NTRIP v2.0 caster** designed to run on a public VPS.
+Standalone, single-mountpoint **NTRIP v2.0 caster** designed to run without gnsshat library.
 Acts as a relay: one base station POSTs RTCM3 corrections to the configured
 mountpoint, and every connected rover client receives the stream over plain TCP
 or TLS.
@@ -8,6 +8,8 @@ or TLS.
 Extracted and stripped down from the [GnssHat](../README.md) library — **no
 hardware HAT dependencies**. Builds and runs anywhere with a C++20 compiler,
 `pthreads`, and (optionally) OpenSSL.
+
+Note: this project is not yet ready for production use on the public internet. It is still a work in progress and requires further testing and bug fixes. It currently serves as an auxiliary server for RTK testing.
 
 ## Features
 
